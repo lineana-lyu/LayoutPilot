@@ -45,7 +45,9 @@ export function buildCandidateGroups(
 	const nodeById = new Map(graph.nodes.map(node => [node.id, node]));
 	const netProfiles = buildNetGroupingProfiles(graph);
 
-	const coreFeatures = features.filter(feature => feature.coreLevel === 'high');
+	const coreFeatures = features.filter(
+		feature => feature.coreLevel === 'high' && feature.isCoreEligible,
+	);
 	const coreIds = new Set(coreFeatures.map(feature => feature.id));
 
 	const groups: CandidateGroup[] = coreFeatures.map(core => ({
