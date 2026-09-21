@@ -5,19 +5,22 @@
   "author": "lineana-lyu",
   "license": "Apache-2.0",
   "homepage": "https://github.com/lineana-lyu/LayoutPilot",
-  "engines": { "node": ">=20.17.0" },
+  "engines": {
+    "node": ">=20.17.0"
+  },
   "scripts": {
     "compile": "rimraf ./dist/ && ts-node ./config/esbuild.prod.ts",
     "lint": "eslint",
     "fix": "eslint --fix",
     "build": "npm run compile && ts-node ./build/packaged.ts",
-    "test": "npm run test:domain && npm run test:net-informativeness && npm run test:constraint-policy && npm run test:core-association && npm run test:ownership-relation && npm run test:ownership-capability",
+    "test": "npm run test:domain && npm run test:net-informativeness && npm run test:constraint-policy && npm run test:core-association && npm run test:ownership-relation && npm run test:ownership-capability && npm run test:semantic-snapshot",
     "test:domain": "ts-node ./tests/domain.ts",
     "test:net-informativeness": "ts-node ./tests/netInformativeness.ts",
     "test:constraint-policy": "ts-node ./tests/constraintPolicy.ts",
     "test:core-association": "ts-node ./tests/coreAssociation.ts",
     "test:ownership-relation": "ts-node ./tests/ownershipRelation.ts",
-    "test:ownership-capability": "ts-node ./tests/ownershipCapabilityProbe.ts"
+    "test:ownership-capability": "ts-node ./tests/ownershipCapabilityProbe.ts",
+    "test:semantic-snapshot": "ts-node ./tests/semanticSnapshot.ts"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^5.4.1",
