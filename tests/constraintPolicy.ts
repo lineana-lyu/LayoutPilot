@@ -162,6 +162,25 @@ function makeInference(
 {
 	const context = makeContext();
 	context.ownership = {
+		relation: 'explicit-owner',
+		ownerDesignator: 'U_CORE',
+		hostDesignators: ['U_CORE'],
+		sharedSignalNets: [],
+		railNets: ['VCC_RAIL'],
+		explanation: '用户通过显式确认提供唯一 owner。',
+	};
+	const result = buildConstraintPreview(context, makeInference('medium'));
+
+	assert.equal(result.proposals.length, 1);
+	assert.equal(result.proposals[0].type, 'near');
+	assert.equal(result.proposals[0].target, 'U_CORE');
+	assert.ok(result.proposals[0].evidenceRefs.includes('relation:explicit-owner'));
+	assert.ok(result.proposals[0].evidenceRefs.includes('owner:U_CORE'));
+}
+
+{
+	const context = makeContext();
+	context.ownership = {
 		relation: 'rail-domain',
 		hostDesignators: ['U_CORE'],
 		sharedSignalNets: [],
