@@ -1146,7 +1146,12 @@ export async function previewLayoutConstraints(): Promise<void> {
 
         if (!validation.valid) {
           blocked += 1;
-          rows.push(`${context.designator}：AI 结果被 Validator 拦截`);
+          const reason = validation.errors.length
+            ? validation.errors.join('；')
+            : '未返回具体校验原因';
+          rows.push(
+            `${context.designator}：AI 结果被 Validator 拦截 · ${reason}`,
+          );
           continue;
         }
 
@@ -1174,7 +1179,9 @@ export async function previewLayoutConstraints(): Promise<void> {
             ? '语义证据不足'
             : reason === 'unknown-semantic-role'
               ? '语义角色未知'
-              : '没有可靠的主动布局约束';
+              : reason === 'unsupported-role-constraint'
+                ? '当前语义角色尚无可执行的确定性约束模板'
+                : '没有可靠的主动布局约束';
           rows.push(`${context.designator}：跳过 · ${reasonText}`);
         }
       }
