@@ -2,6 +2,7 @@ import { buildCircuitGraph, type CircuitComponentSnapshot } from './domain/circu
 import { extractStructuralFeatures, type ComponentMetadata } from './domain/componentFeatures';
 import { coreLevelZh, groupEvidenceZh, lockedZh, structuralEvidenceZh } from './i18n/zhCN';
 import { buildCandidateGroups } from './domain/candidateGrouping';
+import { buildSemanticContexts, type SemanticComponentMetadata } from './domain/semanticContext';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
 export function activate(status?: 'onStartupFinished', arg?: string): void {
@@ -595,9 +596,115 @@ export async function inspectCandidateGroups(): Promise<void> {
   }
 }
 
+
+export async function inspectSemanticContext(): Promise<void> {
+  try {
+    const components = await eda.pcb_PrimitiveComponent.getAll();
+    const snapshots: CircuitComponentSnapshot[] = [];
+    const metadata: ComponentMetadata[] = [];
+    const semanticMetadata: SemanticComponentMetadata[] = [];
+
+    for (const component of components) {
+      const primitiveId = component.getState_PrimitiveId();
+      const designator = component.getState_Designator() ?? component.getState_Name() ?? primitiveId;
+      const pads = await eda.pcb_PrimitiveComponent.getAllPinsByPrimitiveId(primitiveId);
+      const footprint = component.getState_Footprint();
+
+      snapshots.push({
+        id: primitiveId,
+        designator,
+        name: component.getState_Name(),
+        padCount: pads?.length ?? 0,
+        pads: (pads ?? []).map((pad) => ({
+          padNumber: String(pad.getState_PadNumber() ?? '?'),
+          net: pad.getState_Net(),
+        })),
+      });
+
+      const commonMeta = {
+        id: primitiveId,
+        designator,
+        manufacturer: component.getState_Manufacturer(),
+        supplier: component.getState_Supplier(),
+        footprintName: footprint?.name,
+      };
+
+      metadata.push(commonMeta);
+      semanticMetadata.push({
+        ...commonMeta,
+        name: component.getState_Name(),
+        otherProperty: component.getState_OtherProperty(),
+      });
+    }
+
+    const graph = buildCircuitGraph(snapshots);
+    const features = extractStructuralFeatures(graph, metadata);
+    const grouping = buildCandidateGroups(graph, features);
+    const contexts = buildSemanticContexts(graph, features, grouping, semanticMetadata);
+
+    console.log('[LayoutPilot] semantic contexts', contexts);
+
+    if (!contexts.length) {
+      await eda.sys_Dialog.showInformationMessage(
+        [
+          '当前没有需要进入语义层的歧义器件。',
+          '',
+          '说明：该功能不会重新分析已被规则层确定的器件，只为不确定项准备 AI 输入上下文。',
+        ].join('\n'),
+        'LayoutPilot · 语义上下文',
+      );
+      return;
+    }
+
+    const preview = contexts.slice(0, 6).map((context) => {
+      const nets = context.connectedNets.length
+        ? context.connectedNets.map((net) => `${net.netName}[${net.classification}]`).join('、')
+        : '无';
+
+      const cores = context.relatedCoreDesignators.length
+        ? context.relatedCoreDesignators.join('、')
+        : '暂未找到直接核心关联';
+
+      const missing = context.missingEvidence.length
+        ? context.missingEvidence.join('、')
+        : '无明显缺失';
+
+      return [
+        `${context.designator} · 待语义分析`,
+        `器件名称：${context.name || '未知'}`,
+        `封装：${context.footprintName || '未知'}`,
+        `网络：${nets}`,
+        `可能相关核心：${cores}`,
+        `缺失证据：${missing}`,
+      ].join('\n');
+    }).join('\n\n');
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        'LayoutPilot 已生成语义上下文。',
+        '',
+        '注意：下面只是准备给 AI 的结构化输入，目前还没有调用 AI。',
+        '',
+        preview,
+        '',
+        '完整结构化上下文已输出到开发者控制台。',
+      ].join('\n'),
+      'LayoutPilot · 语义上下文',
+    );
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Semantic Context failed', error);
+
+    await eda.sys_Dialog.showInformationMessage(
+      `生成语义上下文失败。\n\n${String(error)}`,
+      'LayoutPilot · 第 2 阶段',
+    );
+  }
+}
+
 export async function about(): Promise<void> {
   await eda.sys_Dialog.showInformationMessage(
-    `LayoutPilot v${extensionConfig.version}\n\n第 1 阶段：构建确定性的电路关系图与功能块候选。\n所有写入测试都必须由用户从 LayoutPilot 菜单主动触发，并且当前只作用于 U1。`,
+    `LayoutPilot v${extensionConfig.version}\n\n第 2 阶段：为规则层无法确定的器件构建语义上下文，并逐步引入 AI 语义补全。\n当前不会自动修改 PCB。`,
     '关于 LayoutPilot',
   );
 }
