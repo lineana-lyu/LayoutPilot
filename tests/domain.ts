@@ -4,7 +4,7 @@ import { buildCandidateGroups } from '../src/domain/candidateGrouping';
 import { buildCircuitGraph, type CircuitComponentSnapshot } from '../src/domain/circuitGraph';
 import { extractStructuralFeatures, type ComponentMetadata } from '../src/domain/componentFeatures';
 import { buildNetGroupingProfiles } from '../src/domain/netInformativeness';
-import { buildSemanticContexts, resolveComponentDisplayName } from '../src/domain/semanticContext';
+import { buildSemanticContexts, resolveComponentDisplayName, type SemanticComponentContext } from '../src/domain/semanticContext';
 import { allowedSemanticRolesForPrefix, buildSemanticEvidenceCatalog, validateSemanticInference } from '../src/domain/semanticInference';
 import { buildSemanticGatewayRequest, normalizeGatewayBaseUrl, parseSemanticGatewayResponse } from '../src/ai/gatewayClient';
 
@@ -462,7 +462,7 @@ console.log('Constraint target validation passed.');
 	assert.ok(allowedSemanticRolesForPrefix('L').includes('power-path-inductor'));
 	assert.ok(!allowedSemanticRolesForPrefix('L').includes('filter-capacitor'));
 
-	const context = {
+	const context: SemanticComponentContext = {
 		componentId: 'l1',
 		designator: 'L1',
 		referencePrefix: 'L',
