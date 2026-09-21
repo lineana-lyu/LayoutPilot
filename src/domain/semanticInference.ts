@@ -48,6 +48,21 @@ export interface SemanticInferenceValidation {
 	errors: string[];
 }
 
+function netClassificationLabel(value: string): string {
+	switch (value) {
+		case 'global-ground':
+			return '全局地';
+		case 'global-power':
+			return '全局电源';
+		case 'named-signal':
+			return '明确命名信号';
+		case 'high-fanout':
+			return '高扇出网络';
+		default:
+			return '局部网络';
+	}
+}
+
 export function buildSemanticEvidenceCatalog(
 	context: SemanticComponentContext,
 ): SemanticEvidenceItem[] {
@@ -85,7 +100,7 @@ export function buildSemanticEvidenceCatalog(
 	for (const net of context.connectedNets) {
 		items.push({
 			id: `net:${net.netName}`,
-			label: `网络 ${net.netName}（${net.classification}）`,
+			label: `网络 ${net.netName}（${netClassificationLabel(net.classification)}）`,
 			source: 'net',
 		});
 
@@ -117,6 +132,10 @@ export function validateSemanticInference(
 	const catalog = buildSemanticEvidenceCatalog(context);
 	const allowedEvidenceIds = new Set(catalog.map(item => item.id));
 	const allowedCores = new Set(context.relatedCoreDesignators);
+	const allowedConstraintTargets = new Set([
+		...context.relatedCoreDesignators,
+		...context.connectedNets.map(net => net.netName),
+	]);
 
 	if (inference.status === 'insufficient-evidence') {
 		if (inference.role !== 'unknown') {
@@ -155,6 +174,14 @@ export function validateSemanticInference(
 		}
 		if (constraint.type !== 'no-constraint' && constraint.evidenceRefs.length === 0) {
 			errors.push(`布局约束 ${constraint.type} 必须引用证据。`);
+		}
+		if (
+			constraint.target
+			&& !allowedConstraintTargets.has(constraint.target)
+		) {
+			errors.push(
+				`布局约束目标 ${constraint.target} 不存在于当前器件的候选核心或已连接网络中。`,
+			);
 		}
 	}
 
