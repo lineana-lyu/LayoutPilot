@@ -10,7 +10,7 @@ export interface PlacementCommandRecord {
 	to: PlacementPoint;
 	createdAt: string;
 	verifiedAt?: string;
-	status: 'planned' | 'applied' | 'undone';
+	status: 'planned' | 'applied' | 'undone' | 'superseded';
 }
 
 let lastCommand: PlacementCommandRecord | undefined;
@@ -75,6 +75,15 @@ export function markPlacementCommandUndone(
 	return Object.freeze({
 		...command,
 		status: 'undone' as const,
+	});
+}
+
+export function markPlacementCommandSuperseded(
+	command: PlacementCommandRecord,
+): PlacementCommandRecord {
+	return Object.freeze({
+		...command,
+		status: 'superseded' as const,
 	});
 }
 
