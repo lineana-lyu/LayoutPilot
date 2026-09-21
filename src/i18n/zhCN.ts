@@ -65,3 +65,40 @@ export function groupEvidenceZh(evidence: GroupEvidence): string {
 			return `${evidence.component ?? '该器件'} 同时与多个核心器件存在有效结构关联（${(evidence.cores ?? []).join('、') || '未知'}），归属存在歧义`;
 	}
 }
+
+
+import type { NetGroupingClass } from '../domain/netInformativeness';
+
+export function netGroupingClassZh(value: NetGroupingClass): string {
+	switch (value) {
+		case 'global-ground':
+			return '全局地';
+		case 'global-power':
+			return '全局电源';
+		case 'named-signal':
+			return '明确命名信号';
+		case 'high-fanout':
+			return '高扇出网络';
+		default:
+			return '局部网络';
+	}
+}
+
+export function semanticMissingEvidenceZh(code: string): string {
+	switch (code) {
+		case 'component-name':
+			return '器件名称/数值';
+		case 'footprint':
+			return '封装信息';
+		case 'manufacturer':
+			return '制造商';
+		case 'value-or-extra-properties':
+			return '器件值或扩展属性';
+		case 'informative-signal-net':
+			return '缺少可用于功能判断的明确控制/信号网络';
+		case 'direct-core-relation':
+			return '缺少直接核心器件关联';
+		default:
+			return code;
+	}
+}
