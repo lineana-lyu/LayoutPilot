@@ -4,6 +4,13 @@ export function activate(status?: 'onStartupFinished', arg?: string): void {
   console.log('[LayoutPilot] activated', { status, arg });
 }
 
+async function getTestComponent() {
+  const components = await eda.pcb_PrimitiveComponent.getAll();
+  return components.find(
+    (component) => component.getState_Designator()?.toUpperCase() === 'U1',
+  );
+}
+
 export async function inspectPcb(): Promise<void> {
   try {
     const components = await eda.pcb_PrimitiveComponent.getAll();
@@ -42,10 +49,7 @@ export async function inspectPcb(): Promise<void> {
 
 export async function inspectTestComponent(): Promise<void> {
   try {
-    const components = await eda.pcb_PrimitiveComponent.getAll();
-    const target = components.find(
-      (component) => component.getState_Designator()?.toUpperCase() === 'U1',
-    );
+    const target = await getTestComponent();
 
     if (!target) {
       await eda.sys_Dialog.showInformationMessage(
@@ -121,9 +125,127 @@ export async function inspectTestComponent(): Promise<void> {
   }
 }
 
+export async function moveTestComponent(): Promise<void> {
+  try {
+    const target = await getTestComponent();
+
+    if (!target) {
+      await eda.sys_Dialog.showInformationMessage(
+        'U1 was not found on the current PCB.',
+        'LayoutPilot · Move U1',
+      );
+      return;
+    }
+
+    if (target.getState_PrimitiveLock()) {
+      await eda.sys_Dialog.showInformationMessage(
+        'U1 is currently locked. Unlock it before running the move test.',
+        'LayoutPilot · Move U1',
+      );
+      return;
+    }
+
+    const primitiveId = target.getState_PrimitiveId();
+    const beforeX = target.getState_X();
+    const beforeY = target.getState_Y();
+    const requestedX = beforeX + 100;
+
+    await eda.pcb_PrimitiveComponent.modify(primitiveId, { x: requestedX });
+
+    const readBack = await eda.pcb_PrimitiveComponent.get(primitiveId);
+    if (!readBack) {
+      throw new Error('U1 could not be read back after the move operation.');
+    }
+
+    const afterX = readBack.getState_X();
+    const afterY = readBack.getState_Y();
+    const passed = afterX === requestedX && afterY === beforeY;
+
+    console.log('[LayoutPilot] U1 move test', {
+      before: { x: beforeX, y: beforeY },
+      requested: { x: requestedX, y: beforeY },
+      after: { x: afterX, y: afterY },
+      passed,
+    });
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        passed ? 'PASS: U1 move + read-back verified.' : 'WARNING: U1 moved, but read-back did not match the requested coordinate.',
+        '',
+        `Before: X=${beforeX}, Y=${beforeY}`,
+        `Requested: X=${requestedX}, Y=${beforeY}`,
+        `Read-back: X=${afterX}, Y=${afterY}`,
+      ].join('\n'),
+      'LayoutPilot · Move U1',
+    );
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Move U1 failed', error);
+
+    await eda.sys_Dialog.showInformationMessage(
+      `Failed to move U1.\n\n${String(error)}`,
+      'LayoutPilot · API PoC',
+    );
+  }
+}
+
+export async function toggleTestComponentLock(): Promise<void> {
+  try {
+    const target = await getTestComponent();
+
+    if (!target) {
+      await eda.sys_Dialog.showInformationMessage(
+        'U1 was not found on the current PCB.',
+        'LayoutPilot · Toggle U1 Lock',
+      );
+      return;
+    }
+
+    const primitiveId = target.getState_PrimitiveId();
+    const before = target.getState_PrimitiveLock();
+    const requested = !before;
+
+    await eda.pcb_PrimitiveComponent.modify(primitiveId, { primitiveLock: requested });
+
+    const readBack = await eda.pcb_PrimitiveComponent.get(primitiveId);
+    if (!readBack) {
+      throw new Error('U1 could not be read back after the lock operation.');
+    }
+
+    const after = readBack.getState_PrimitiveLock();
+    const passed = after === requested;
+
+    console.log('[LayoutPilot] U1 lock test', {
+      before,
+      requested,
+      after,
+      passed,
+    });
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        passed ? 'PASS: U1 lock state + read-back verified.' : 'WARNING: U1 lock read-back did not match the requested state.',
+        '',
+        `Before: ${before ? 'Locked' : 'Unlocked'}`,
+        `Requested: ${requested ? 'Locked' : 'Unlocked'}`,
+        `Read-back: ${after ? 'Locked' : 'Unlocked'}`,
+      ].join('\n'),
+      'LayoutPilot · Toggle U1 Lock',
+    );
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Toggle U1 lock failed', error);
+
+    await eda.sys_Dialog.showInformationMessage(
+      `Failed to toggle U1 lock.\n\n${String(error)}`,
+      'LayoutPilot · API PoC',
+    );
+  }
+}
+
 export async function about(): Promise<void> {
   await eda.sys_Dialog.showInformationMessage(
-    `LayoutPilot v${extensionConfig.version}\n\nPhase 0: JLCEDA Extension API feasibility PoC.\nCurrent build is read-only and does not modify the PCB.`,
+    `LayoutPilot v${extensionConfig.version}\n\nPhase 0: JLCEDA Extension API feasibility PoC.\nWrite tests only run when explicitly selected from the LayoutPilot menu and target U1 only.`,
     'About LayoutPilot',
   );
 }
