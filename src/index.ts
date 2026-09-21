@@ -1,23 +1,17 @@
 import { buildCircuitGraph, type CircuitComponentSnapshot } from './domain/circuitGraph';
 import { extractStructuralFeatures, type ComponentMetadata } from './domain/componentFeatures';
-import { coreLevelZh, groupEvidenceZh, layoutConstraintTypeZh, lockedZh, netGroupingClassZh, semanticConfidenceZh, semanticMissingEvidenceZh, semanticRoleZh, structuralEvidenceZh } from './i18n/zhCN';
+import { coreLevelZh, groupEvidenceZh, layoutConstraintTypeZh, lockedZh, netGroupingClassZh, ownershipRelationZh, semanticConfidenceZh, semanticMissingEvidenceZh, semanticRoleZh, structuralEvidenceZh } from './i18n/zhCN';
 import { buildCandidateGroups } from './domain/candidateGrouping';
 import { buildSemanticContexts, type SemanticComponentContext, type SemanticComponentMetadata } from './domain/semanticContext';
 import { allowedSemanticRolesForPrefix, buildSemanticEvidenceCatalog, validateSemanticInference } from './domain/semanticInference';
 import { buildSemanticGatewayRequest, normalizeGatewayBaseUrl, parseSemanticGatewayResponse } from './ai/gatewayClient';
 import { buildConstraintPreview, mergeConstraintPreviewResults } from './domain/layoutConstraintEngine';
 import { resolveAmbiguousCoreAssociations } from './domain/coreAssociation';
+import { resolveOwnershipRelations } from './domain/ownershipRelation';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
 export function activate(status?: 'onStartupFinished', arg?: string): void {
   console.log('[LayoutPilot] activated', { status, arg });
-}
-
-async function getTestComponent() {
-  const components = await eda.pcb_PrimitiveComponent.getAll();
-  return components.find(
-    (component) => component.getState_Designator()?.toUpperCase() === 'U1',
-  );
 }
 
 export async function inspectPcb(): Promise<void> {
@@ -638,6 +632,96 @@ export async function inspectCoreAssociations(): Promise<void> {
     await eda.sys_Dialog.showInformationMessage(
       `核心关联诊断失败。\n\n${String(error)}\n\nPCB 未发生任何修改。`,
       'LayoutPilot · Phase 3A',
+    );
+  }
+}
+
+
+export async function inspectOwnershipRelations(): Promise<void> {
+  try {
+    const {
+      graph,
+      features,
+      grouping,
+    } = await collectAnalysisState();
+
+    const results = resolveOwnershipRelations(
+      graph,
+      features,
+      grouping.ambiguousComponentIds,
+    );
+
+    console.log('[LayoutPilot] ownership relation results', results);
+    console.table(results.map(result => ({
+      component: result.designator,
+      relation: result.relation,
+      owner: result.ownerDesignator ?? '',
+      hosts: result.hostDesignators.join(', '),
+      buses: result.sharedBusNets.join(', '),
+      rails: result.railNets.join(', '),
+    })));
+
+    const counts = new Map<string, number>();
+    for (const result of results) {
+      counts.set(
+        result.relation,
+        (counts.get(result.relation) ?? 0) + 1,
+      );
+    }
+
+    const rows = results.map((result) => {
+      const owner = result.ownerDesignator
+        ? ` · owner=${result.ownerDesignator}`
+        : '';
+      const hosts = result.hostDesignators.length
+        ? ` · hosts=${result.hostDesignators.join('、')}`
+        : '';
+      const buses = result.sharedBusNets.length
+        ? ` · bus=${result.sharedBusNets.join('、')}`
+        : '';
+      const rails = result.railNets.length
+        ? ` · rail=${result.railNets.join('、')}`
+        : '';
+
+      return [
+        `${result.designator}：${ownershipRelationZh(result.relation)}`,
+        owner,
+        hosts,
+        buses,
+        rails,
+        `\n  ${result.explanation}`,
+      ].join('');
+    });
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        'LayoutPilot 归属关系诊断完成。',
+        '',
+        `歧义器件：${results.length}`,
+        `显式归属：${counts.get('explicit-owner') ?? 0}`,
+        `单核心归属：${counts.get('single-core') ?? 0}`,
+        `跨核心桥接：${counts.get('bridge') ?? 0}`,
+        `共享总线/共享信号：${counts.get('shared-bus') ?? 0}`,
+        `电源域关系：${counts.get('rail-domain') ?? 0}`,
+        `未知关系：${counts.get('unknown') ?? 0}`,
+        '',
+        ...rows,
+        '',
+        '说明：',
+        '• 先判断关系类型，再决定是否存在唯一 owner；',
+        '• 共享总线、桥接、电源域不会被强行压成单核心归属；',
+        '• 显式归属接口已预留，但当前尚未从嘉立创工程读取复用模块/分组元数据；',
+        '• 当前结果只用于诊断，不会改写 Semantic Context、Constraint Policy 或 PCB。',
+      ].join('\n'),
+      'LayoutPilot · 归属关系诊断',
+    );
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Ownership Relation Resolver failed', error);
+
+    await eda.sys_Dialog.showInformationMessage(
+      `归属关系诊断失败。\n\n${String(error)}\n\nPCB 未发生任何修改。`,
+      'LayoutPilot · Phase 3A.2',
     );
   }
 }
