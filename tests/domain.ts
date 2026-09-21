@@ -413,3 +413,44 @@ console.log('Semantic inference validator passed.');
 }
 
 console.log('AI gateway contract regression passed.');
+
+
+{
+	const { graph, features } = featuresFor(sharedRailFixture());
+	const grouping = buildCandidateGroups(graph, features);
+	const context = buildSemanticContexts(
+		graph,
+		features,
+		grouping,
+		sharedRailFixture().map(component => ({
+			id: component.id,
+			designator: component.designator,
+			name: component.designator,
+		})),
+	).find(item => item.designator === 'C1');
+
+	assert.ok(context);
+	const catalog = buildSemanticEvidenceCatalog(context);
+	assert.ok(catalog.some(item => item.label.includes('全局地')));
+	assert.ok(catalog.some(item => item.label.includes('全局电源')));
+
+	const invalidTarget = validateSemanticInference(context, {
+		status: 'inferred',
+		role: 'decoupling-capacitor',
+		associatedCore: 'U1',
+		confidence: 'medium',
+		evidenceRefs: ['net:GND', 'net:3V3', 'core:U1'],
+		explanation: '测试无效约束目标。',
+		constraints: [
+			{
+				type: 'near',
+				target: 'U99',
+				evidenceRefs: ['core:U1'],
+			},
+		],
+	});
+	assert.equal(invalidTarget.valid, false);
+	assert.ok(invalidTarget.errors.some(error => error.includes('布局约束目标 U99')));
+}
+
+console.log('Constraint target validation passed.');
