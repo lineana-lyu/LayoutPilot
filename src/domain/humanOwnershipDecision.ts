@@ -37,6 +37,18 @@ export function upsertHumanOwnershipDecision(
 	];
 }
 
+export function removeHumanOwnershipDecision(
+	snapshotId: string,
+	componentId: string,
+): void {
+	decisions = decisions.filter(item =>
+		!(
+			item.snapshotId === snapshotId
+				&& item.componentId === componentId
+		),
+	);
+}
+
 export function getHumanOwnershipDecisions(
 	snapshotId: string,
 ): HumanOwnershipDecision[] {
