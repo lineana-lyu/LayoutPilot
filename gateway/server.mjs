@@ -201,20 +201,40 @@ async function inferWithDeepSeek(request) {
 		throw new Error('缺少 DEEPSEEK_API_KEY。');
 	}
 
+	const allowedRoles = Array.isArray(request.allowedRoles)
+		? request.allowedRoles
+		: ['unknown'];
+	const allowedConstraintTargets = Array.isArray(request.allowedConstraintTargets)
+		? request.allowedConstraintTargets
+		: [];
+	const validationFeedback = Array.isArray(request.validationFeedback)
+		? request.validationFeedback
+		: [];
+
+	const exampleRole = allowedRoles.find(role => role !== 'unknown') || 'unknown';
+	const exampleTarget = allowedConstraintTargets[0] ?? null;
 	const outputExample = {
-		status: 'inferred',
-		role: 'decoupling-capacitor',
-		associatedCore: 'U1',
+		status: exampleRole === 'unknown' ? 'insufficient-evidence' : 'inferred',
+		role: exampleRole,
+		associatedCore: request.context?.relatedCoreDesignators?.[0] ?? null,
 		confidence: 'medium',
-		evidenceRefs: ['component:value', 'net:VDD', 'net:GND', 'core:U1'],
+		evidenceRefs: [],
 		explanation: '示例说明。',
-		constraints: [
-			{
-				type: 'near',
-				target: 'U1',
-				evidenceRefs: ['net:VDD', 'net:GND', 'core:U1'],
-			},
-		],
+		constraints: exampleTarget
+			? [
+				{
+					type: 'near',
+					target: exampleTarget,
+					evidenceRefs: [],
+				},
+			]
+			: [
+				{
+					type: 'no-constraint',
+					target: null,
+					evidenceRefs: [],
+				},
+			],
 	};
 
 	const messages = [
@@ -227,11 +247,11 @@ async function inferWithDeepSeek(request) {
 				'evidenceRefs 和 constraints[*].evidenceRefs 只能引用 evidenceCatalog 中存在的 id。',
 				'associatedCore 只能从 context.relatedCoreDesignators 中选择；不能确定时使用 null。',
 				'status 只允许 inferred 或 insufficient-evidence。',
-				'role 只允许：decoupling-capacitor, bulk-capacitor, filter-capacitor, power-path-inductor, power-switch, protection-device, reset-network, timing-device, connector-interface, other, unknown。',
+				'role 必须严格从输入中的 allowedRoles 数组中选择，禁止输出 allowedRoles 之外的角色。',
 				'confidence 只允许 low, medium, high。',
 				'constraint.type 只允许 near, group-with, keep-short, edge, keepout, no-constraint。',
-				'constraint.target 只能精确使用 context.relatedCoreDesignators 中的一个器件位号，或 context.connectedNets 中的一个 netName；禁止拼接 VDD-GND、U1.VDD 之类的新字符串。',
-				'器件位号前缀必须与 role 类型一致：C 只能是电容类角色；L/FB 只能是 power-path-inductor/other/unknown；Q 只能是 power-switch/protection-device/other/unknown；X/Y 只能是 timing-device/other/unknown。',
+				'constraint.target 必须严格从输入中的 allowedConstraintTargets 数组中选择；禁止拼接 VDD-GND、U1.VDD 之类的新字符串。',
+				'allowedRoles 已由确定性规则层根据器件类型生成；不要自行扩展角色集合。',
 				'如果证据不足：status=insufficient-evidence，role=unknown，只能输出 no-constraint。',
 				'缺少 Pin 语义或数据手册证据时，不要声称靠近某个具体 Pin。',
 				'不要输出百分比置信度。',
@@ -242,13 +262,14 @@ async function inferWithDeepSeek(request) {
 		{
 			role: 'user',
 			content: JSON.stringify({
-				task: '请判断这个歧义 PCB 器件最可能的电路角色，并给出保守的布局约束。只返回 JSON。',
+				task: validationFeedback.length
+					? '上一次输出被 Validator 拒绝。请根据 validationFeedback 修正，并只返回新的合法 JSON。'
+					: '请判断这个歧义 PCB 器件最可能的电路角色，并给出保守的布局约束。只返回 JSON。',
 				context: request.context,
 				evidenceCatalog: request.evidenceCatalog,
-				allowedConstraintTargets: [
-					...(request.context?.relatedCoreDesignators ?? []),
-					...((request.context?.connectedNets ?? []).map(net => net.netName)),
-				],
+				allowedRoles,
+				allowedConstraintTargets,
+				validationFeedback,
 			}),
 		},
 	];
@@ -311,6 +332,9 @@ async function inferWithOpenAI(request) {
 			'evidenceRefs 和 constraint.evidenceRefs 只能引用 evidenceCatalog 中存在的 id。',
 			'associatedCore 只能从 context.relatedCoreDesignators 中选择；不能确定时设为 null。',
 			'如果证据不足，status 必须为 insufficient-evidence，role 必须为 unknown，并且只能输出 no-constraint。',
+			'role 必须严格从输入 allowedRoles 中选择。',
+			'constraint.target 必须严格从输入 allowedConstraintTargets 中选择。',
+			'如果 validationFeedback 非空，必须优先修复其中指出的问题。',
 			'置信度只允许 low / medium / high，不要输出百分比。',
 			'布局建议应保守；缺少 Pin 语义时，不要声称靠近某个具体 Pin。',
 		].join('\n'),
@@ -318,6 +342,9 @@ async function inferWithOpenAI(request) {
 			task: 'Infer the likely circuit role and conservative layout constraints for this ambiguous PCB component. Return only the requested structured result.',
 			context: request.context,
 			evidenceCatalog: request.evidenceCatalog,
+			allowedRoles: request.allowedRoles,
+			allowedConstraintTargets: request.allowedConstraintTargets,
+			validationFeedback: request.validationFeedback ?? [],
 		}),
 		text: {
 			format: {
