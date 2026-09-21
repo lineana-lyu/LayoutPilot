@@ -1513,6 +1513,40 @@ async function collectSimpleBoardBoundary(): Promise<
   );
 }
 
+async function collectSimpleComponentKeepouts(): Promise<
+  | { ok: true; polygons: BoardPolygon[] }
+  | { ok: false; reason: string }
+> {
+  const regions = await eda.pcb_PrimitiveRegion.getAll();
+  const noComponentRegions = regions.filter(region =>
+    region.getState_RuleType().includes(
+      EPCB_PrimitiveRegionRuleType.NO_COMPONENTS,
+    ),
+  );
+
+  const polygons: BoardPolygon[] = [];
+  for (const region of noComponentRegions) {
+    const polygon = region.getState_ComplexPolygon();
+    if (!polygon) {
+      return {
+        ok: false,
+        reason: '检测到 NO_COMPONENTS keepout，但无法读取其 polygon。',
+      };
+    }
+
+    const parsed = parseSimpleBoardPolygon(polygon.getSource());
+    if (!parsed.ok) {
+      return {
+        ok: false,
+        reason: `NO_COMPONENTS keepout 无法安全解析：${parsed.reason}`,
+      };
+    }
+    polygons.push(parsed.polygon);
+  }
+
+  return { ok: true, polygons };
+}
+
 async function collectPhysicalComponents(
   routingInspectionComponentId?: string,
 ): Promise<PhysicalComponentSnapshot[]> {
@@ -1961,11 +1995,27 @@ export async function applyDemoPlacement(): Promise<void> {
       return;
     }
 
+    const componentKeepouts = await collectSimpleComponentKeepouts();
+    if (!componentKeepouts.ok) {
+      await eda.sys_Dialog.showInformationMessage(
+        [
+          '当前 PCB 的器件 keepout 不能被 v0.7 安全解析。',
+          '',
+          componentKeepouts.reason,
+          '',
+          '不能证明候选位置避开 NO_COMPONENTS 区域时，不执行移动。',
+        ].join('\n'),
+        'LayoutPilot · Keepout 校验未通过',
+      );
+      return;
+    }
+
     const readiness = planDecouplingPlacement({
       subject,
       owner,
       obstacles: physical,
       board: boardBoundary.polygon,
+      componentKeepouts: componentKeepouts.polygons,
       powerNet,
       groundNet,
     });
