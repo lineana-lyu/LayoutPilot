@@ -1,0 +1,15 @@
+/.git/
+/.vscode/
+/build/
+/config/
+/coverage/
+/node_modules/
+/src/
+/.gitignore
+/.npmrc
+/eslint.config.mjs
+/package-lock.json
+/package.json
+/tsconfig.json
+.eslintcache
+debug.log
