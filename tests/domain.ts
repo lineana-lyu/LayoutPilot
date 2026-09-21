@@ -44,6 +44,51 @@ function toyFixture(): CircuitComponentSnapshot[] {
 	];
 }
 
+function headerFalseCoreFixture(): CircuitComponentSnapshot[] {
+	return [
+		{
+			id: 'u1',
+			designator: 'U1',
+			padCount: 32,
+			pads: [
+				{ padNumber: '1', net: 'GND' },
+				{ padNumber: '2', net: '3V' },
+				{ padNumber: '3', net: 'NRST' },
+			],
+		},
+		{
+			id: 'h5',
+			designator: 'H5',
+			padCount: 16,
+			pads: [
+				{ padNumber: '1', net: 'GND' },
+				{ padNumber: '14', net: 'VDD' },
+				{ padNumber: '12', net: 'NRST' },
+				{ padNumber: '15', net: '3V' },
+				{ padNumber: '16', net: 'GND' },
+			],
+		},
+		{
+			id: 'r1',
+			designator: 'R1',
+			padCount: 2,
+			pads: [
+				{ padNumber: '1', net: 'NRST' },
+				{ padNumber: '2', net: '3V' },
+			],
+		},
+		{
+			id: 'x1',
+			designator: 'X1',
+			padCount: 2,
+			pads: [
+				{ padNumber: '1', net: 'OSC1' },
+				{ padNumber: '2', net: 'OSC2' },
+			],
+		},
+	];
+}
+
 function sharedRailFixture(): CircuitComponentSnapshot[] {
 	return [
 		{
@@ -140,3 +185,23 @@ function sharedRailFixture(): CircuitComponentSnapshot[] {
 }
 
 console.log('LayoutPilot domain regression tests passed.');
+
+
+{
+	const { graph, features } = featuresFor(headerFalseCoreFixture());
+	const result = buildCandidateGroups(graph, features);
+	const h5 = features.find(feature => feature.designator === 'H5');
+	const x1 = features.find(feature => feature.designator === 'X1');
+
+	assert.ok(h5);
+	assert.equal(h5.isBoundaryCandidate, true);
+	assert.equal(h5.isCoreEligible, false);
+	assert.ok(result.boundaryDesignators.includes('H5'));
+	assert.ok(!result.groups.some(group => group.coreDesignator === 'H5'));
+
+	assert.ok(x1);
+	assert.equal(x1.isPassiveCandidate, true);
+	assert.equal(x1.isCoreEligible, false);
+}
+
+console.log('Header false-core regression passed.');
