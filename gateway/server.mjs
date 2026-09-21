@@ -237,10 +237,8 @@ async function inferWithOpenAI(request) {
 			'associatedCore 只能从 context.relatedCoreDesignators 中选择；不能确定时设为 null。',
 			'如果证据不足，status 必须为 insufficient-evidence，role 必须为 unknown。',
 			'role 必须严格从输入 allowedRoles 中选择。',
-			'constraint.target 必须严格从输入 allowedConstraintTargets 中选择。',
 			'如果 validationFeedback 非空，必须优先修复其中指出的问题。',
 			'置信度只允许 low / medium / high，不要输出百分比。',
-			'布局建议应保守；缺少 Pin 语义时，不要声称靠近某个具体 Pin。',
 		].join('\n'),
 		input: JSON.stringify({
 			task: 'Infer the likely circuit role and associated core for this ambiguous PCB component. Return only the requested structured result.',
