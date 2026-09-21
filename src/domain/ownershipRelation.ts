@@ -7,7 +7,7 @@ export type OwnershipRelationType =
 	| 'explicit-owner'
 	| 'single-core'
 	| 'bridge'
-	| 'shared-bus'
+	| 'shared-signal'
 	| 'rail-domain'
 	| 'unknown';
 
@@ -35,7 +35,7 @@ export interface OwnershipRelationResult {
 	relation: OwnershipRelationType;
 	ownerDesignator?: string;
 	hostDesignators: string[];
-	sharedBusNets: string[];
+	sharedSignalNets: string[];
 	railNets: string[];
 	evidence: OwnershipRelationEvidence[];
 	explanation: string;
@@ -125,7 +125,7 @@ export function resolveOwnershipRelation(
 			relation: 'explicit-owner',
 			ownerDesignator: owner.designator,
 			hostDesignators: [owner.designator],
-			sharedBusNets: [],
+			sharedSignalNets: [],
 			railNets: [],
 			evidence: [
 				{
@@ -216,13 +216,13 @@ export function resolveOwnershipRelation(
 		return {
 			componentId,
 			designator: node.designator,
-			relation: 'shared-bus',
+			relation: 'shared-signal',
 			hostDesignators: hosts,
-			sharedBusNets: sharedSignalNets.map(net => net.netName),
+			sharedSignalNets: sharedSignalNets.map(net => net.netName),
 			railNets: power.map(net => net.netName),
 			evidence,
 			explanation:
-				'至少一个非电源信号网同时连接多个候选核心，因此按共享总线/共享信号关系处理，不分配唯一 owner。',
+				'至少一个非电源信号网同时连接多个候选核心，因此按共享信号关系处理，不分配唯一 owner。',
 		};
 	}
 
@@ -236,7 +236,7 @@ export function resolveOwnershipRelation(
 			designator: node.designator,
 			relation: 'bridge',
 			hostDesignators: exclusiveHosts,
-			sharedBusNets: [],
+			sharedSignalNets: [],
 			railNets: power.map(net => net.netName),
 			evidence,
 			explanation:
@@ -251,7 +251,7 @@ export function resolveOwnershipRelation(
 			relation: 'single-core',
 			ownerDesignator: exclusiveHosts[0],
 			hostDesignators: exclusiveHosts,
-			sharedBusNets: [],
+			sharedSignalNets: [],
 			railNets: power.map(net => net.netName),
 			evidence,
 			explanation:
@@ -269,7 +269,7 @@ export function resolveOwnershipRelation(
 			designator: node.designator,
 			relation: 'rail-domain',
 			hostDesignators: railHosts,
-			sharedBusNets: [],
+			sharedSignalNets: [],
 			railNets: power.map(net => net.netName),
 			evidence,
 			explanation:
@@ -282,7 +282,7 @@ export function resolveOwnershipRelation(
 		designator: node.designator,
 		relation: 'unknown',
 		hostDesignators: [],
-		sharedBusNets: [],
+		sharedSignalNets: [],
 		railNets: [],
 		evidence,
 		explanation:
