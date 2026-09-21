@@ -456,6 +456,7 @@ export async function inspectStructuralFeatures(): Promise<void> {
       nets: feature.connectedNetCount,
       maxNetSize: feature.maxComponentsOnSharedNet,
       passive: feature.isPassiveCandidate,
+      peripheral: feature.isPeripheralCandidate,
       boundary: feature.isBoundaryCandidate,
       coreScore: feature.coreScore,
       coreLevel: feature.coreLevel,
@@ -468,7 +469,7 @@ export async function inspectStructuralFeatures(): Promise<void> {
 
       const role = feature.isBoundaryCandidate
         ? '边界器件候选'
-        : feature.isPassiveCandidate
+        : feature.isPeripheralCandidate
           ? '外围器件候选'
           : `核心候选=${coreLevelZh(feature.coreLevel)}（${feature.coreScore}/10）`;
 
