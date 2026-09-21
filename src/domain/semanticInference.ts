@@ -48,6 +48,77 @@ export interface SemanticInferenceValidation {
 	errors: string[];
 }
 
+export function allowedSemanticRolesForPrefix(prefix: string): SemanticRole[] {
+	const normalized = prefix.trim().toUpperCase();
+
+	if (normalized === 'C') {
+		return [
+			'decoupling-capacitor',
+			'bulk-capacitor',
+			'filter-capacitor',
+			'other',
+			'unknown',
+		];
+	}
+
+	if (normalized === 'L' || normalized === 'FB') {
+		return [
+			'power-path-inductor',
+			'other',
+			'unknown',
+		];
+	}
+
+	if (normalized === 'Q') {
+		return [
+			'power-switch',
+			'protection-device',
+			'other',
+			'unknown',
+		];
+	}
+
+	if (normalized === 'D') {
+		return [
+			'protection-device',
+			'other',
+			'unknown',
+		];
+	}
+
+	if (normalized === 'SW') {
+		return [
+			'reset-network',
+			'other',
+			'unknown',
+		];
+	}
+
+	if (normalized === 'X' || normalized === 'Y') {
+		return [
+			'timing-device',
+			'other',
+			'unknown',
+		];
+	}
+
+	if (['J', 'P', 'CN', 'H'].includes(normalized)) {
+		return [
+			'connector-interface',
+			'other',
+			'unknown',
+		];
+	}
+
+	return [
+		'reset-network',
+		'power-switch',
+		'protection-device',
+		'other',
+		'unknown',
+	];
+}
+
 function netClassificationLabel(value: string): string {
 	switch (value) {
 		case 'global-ground':
@@ -136,6 +207,9 @@ export function validateSemanticInference(
 		...context.relatedCoreDesignators,
 		...context.connectedNets.map(net => net.netName),
 	]);
+	const allowedRoles = new Set(
+		allowedSemanticRolesForPrefix(context.referencePrefix),
+	);
 
 	if (inference.status === 'insufficient-evidence') {
 		if (inference.role !== 'unknown') {
@@ -148,6 +222,12 @@ export function validateSemanticInference(
 
 	if (inference.status === 'inferred' && inference.evidenceRefs.length === 0) {
 		errors.push('语义推断必须引用至少一条确定性证据。');
+	}
+
+	if (!allowedRoles.has(inference.role)) {
+		errors.push(
+			`语义角色 ${inference.role} 与器件位号前缀 ${context.referencePrefix} 不兼容。`,
+		);
 	}
 
 	if (
