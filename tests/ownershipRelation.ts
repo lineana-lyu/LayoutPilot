@@ -119,8 +119,8 @@ function analyze(components: CircuitComponentSnapshot[]) {
 		'part',
 	);
 
-	assert.equal(result.relation, 'shared-bus');
-	assert.deepEqual(result.sharedBusNets, ['BUS_SHARED']);
+	assert.equal(result.relation, 'shared-signal');
+	assert.deepEqual(result.sharedSignalNets, ['BUS_SHARED']);
 	assert.deepEqual(
 		new Set(result.hostDesignators),
 		new Set(['U_A', 'U_B', 'U_C']),
