@@ -1,4 +1,4 @@
-import { boxInsideBoard, type BoardPolygon } from './boardBoundary';
+import { boxInsideBoard, boxIntersectsPolygon, type BoardPolygon } from './boardBoundary';
 
 export interface PhysicalPadSnapshot {
 	componentId: string;
@@ -220,6 +220,7 @@ export function planDecouplingPlacement(input: {
 	owner: PhysicalComponentSnapshot;
 	obstacles: PhysicalComponentSnapshot[];
 	board: BoardPolygon;
+	componentKeepouts: BoardPolygon[];
 	powerNet: string;
 	groundNet: string;
 	clearanceMil?: number;
@@ -229,6 +230,7 @@ export function planDecouplingPlacement(input: {
 		owner,
 		obstacles,
 		board,
+		componentKeepouts,
 		powerNet,
 		groundNet,
 	} = input;
@@ -357,6 +359,12 @@ export function planDecouplingPlacement(input: {
 				continue;
 			}
 
+			if (componentKeepouts.some(keepout =>
+				boxIntersectsPolygon(translated, keepout),
+			)) {
+				continue;
+			}
+
 			return {
 				ready: true,
 				reasons: [],
@@ -382,7 +390,7 @@ export function planDecouplingPlacement(input: {
 	return {
 		ready: false,
 		reasons: [
-			`未找到同时满足板框内、${clearanceMil} mil 近似器件避让条件的候选位置`,
+			`未找到同时满足板框、器件 keepout 与 ${clearanceMil} mil 近似器件避让条件的候选位置`,
 		],
 	};
 }
