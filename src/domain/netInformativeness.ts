@@ -3,6 +3,7 @@ import type { CircuitGraph, CircuitNet } from './circuitGraph';
 export type NetGroupingClass =
 	| 'global-ground'
 	| 'global-power'
+	| 'named-signal'
 	| 'high-fanout'
 	| 'local';
 
@@ -37,6 +38,19 @@ function matchesAny(name: string, patterns: RegExp[]): boolean {
 	return patterns.some(pattern => pattern.test(name));
 }
 
+function isGeneratedNetName(name: string): boolean {
+	return (
+		/^\$/i.test(name)
+		|| /^N\$/i.test(name)
+		|| /^NET[-_(]/i.test(name)
+		|| /^NETC/i.test(name)
+	);
+}
+
+function isHumanReadableSignalName(name: string): boolean {
+	return Boolean(name) && !isGeneratedNetName(name);
+}
+
 export function classifyNetForGrouping(
 	net: CircuitNet,
 	totalComponents: number,
@@ -58,6 +72,15 @@ export function classifyNetForGrouping(
 			classification: 'global-power',
 			groupingWeight: 0.15,
 			reasons: ['power-like rail'],
+		};
+	}
+
+	if (isHumanReadableSignalName(name)) {
+		return {
+			netName: net.name,
+			classification: 'named-signal',
+			groupingWeight: 1,
+			reasons: ['human-readable non-power signal net'],
 		};
 	}
 
