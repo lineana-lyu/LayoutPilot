@@ -190,6 +190,100 @@ function normalizeInference(inference) {
 	return normalized;
 }
 
+
+async function inferWithDeepSeek(request) {
+	const apiKey = process.env.DEEPSEEK_API_KEY;
+	const model = process.env.DEEPSEEK_MODEL || 'deepseek-flash';
+	const baseUrl = (process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com')
+		.replace(/\/+$/, '');
+
+	if (!apiKey) {
+		throw new Error('缺少 DEEPSEEK_API_KEY。');
+	}
+
+	const outputExample = {
+		status: 'inferred',
+		role: 'decoupling-capacitor',
+		associatedCore: 'U1',
+		confidence: 'medium',
+		evidenceRefs: ['component:value', 'net:VDD', 'net:GND', 'core:U1'],
+		explanation: '示例说明。',
+		constraints: [
+			{
+				type: 'near',
+				target: 'U1',
+				evidenceRefs: ['net:VDD', 'net:GND', 'core:U1'],
+			},
+		],
+	};
+
+	const messages = [
+		{
+			role: 'system',
+			content: [
+				'你是 LayoutPilot 的 PCB 语义分析器。',
+				'你只能根据输入 JSON 中的 context 和 evidenceCatalog 推理，禁止创造新的 PCB 事实。',
+				'你的最终回答必须是一个 JSON object，不要输出 Markdown、代码块或额外文本。',
+				'evidenceRefs 和 constraints[*].evidenceRefs 只能引用 evidenceCatalog 中存在的 id。',
+				'associatedCore 只能从 context.relatedCoreDesignators 中选择；不能确定时使用 null。',
+				'status 只允许 inferred 或 insufficient-evidence。',
+				'role 只允许：decoupling-capacitor, bulk-capacitor, filter-capacitor, power-path-inductor, power-switch, protection-device, reset-network, timing-device, connector-interface, other, unknown。',
+				'confidence 只允许 low, medium, high。',
+				'constraint.type 只允许 near, group-with, keep-short, edge, keepout, no-constraint。',
+				'如果证据不足：status=insufficient-evidence，role=unknown，只能输出 no-constraint。',
+				'缺少 Pin 语义或数据手册证据时，不要声称靠近某个具体 Pin。',
+				'不要输出百分比置信度。',
+				'JSON 格式示例：',
+				JSON.stringify(outputExample),
+			].join('\n'),
+		},
+		{
+			role: 'user',
+			content: JSON.stringify({
+				task: '请判断这个歧义 PCB 器件最可能的电路角色，并给出保守的布局约束。只返回 JSON。',
+				context: request.context,
+				evidenceCatalog: request.evidenceCatalog,
+			}),
+		},
+	];
+
+	const response = await fetch(`${baseUrl}/chat/completions`, {
+		method: 'POST',
+		headers: {
+			authorization: `Bearer ${apiKey}`,
+			'content-type': 'application/json',
+		},
+		body: JSON.stringify({
+			model,
+			messages,
+			thinking: { type: 'disabled' },
+			stream: false,
+			max_tokens: 2000,
+			response_format: { type: 'json_object' },
+		}),
+	});
+
+	const raw = await response.text();
+	if (!response.ok) {
+		throw new Error(`DeepSeek API ${response.status}: ${raw.slice(0, 500)}`);
+	}
+
+	const data = JSON.parse(raw);
+	const content = data?.choices?.[0]?.message?.content;
+
+	if (typeof content !== 'string' || !content.trim()) {
+		throw new Error('DeepSeek 返回了空的 message.content。');
+	}
+
+	const inference = JSON.parse(content);
+
+	return {
+		inference: normalizeInference(inference),
+		provider: 'deepseek',
+		model,
+	};
+}
+
 async function inferWithOpenAI(request) {
 	const apiKey = process.env.OPENAI_API_KEY;
 	const model = process.env.OPENAI_MODEL;
@@ -268,6 +362,10 @@ async function handleSemanticInfer(request) {
 
 	if (mode === 'openai') {
 		return inferWithOpenAI(request);
+	}
+
+	if (mode === 'deepseek') {
+		return inferWithDeepSeek(request);
 	}
 
 	throw new Error(`未知 LAYOUTPILOT_GATEWAY_MODE: ${mode}`);
