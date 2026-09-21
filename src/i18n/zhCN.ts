@@ -57,5 +57,9 @@ export function groupEvidenceZh(evidence: GroupEvidence): string {
 			return `${evidence.component ?? '该器件'} 更像接口/连接器，暂不并入核心模块`;
 		case 'ISOLATED_UNGROUPED':
 			return `${evidence.component ?? '该器件'} 当前没有网络连接，暂不归组`;
+		case 'ONLY_LOW_INFORMATION_NETS':
+			return `${evidence.component ?? '该器件'} 目前只通过全局电源/地等低信息网络关联到核心器件（${(evidence.cores ?? []).join('、') || '未知'}），暂不强行归组`;
+		case 'MULTIPLE_CORE_CANDIDATES':
+			return `${evidence.component ?? '该器件'} 同时与多个核心器件存在有效结构关联（${(evidence.cores ?? []).join('、') || '未知'}），归属存在歧义`;
 	}
 }
