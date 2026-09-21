@@ -393,7 +393,7 @@ export async function inspectCircuitGraph(): Promise<void> {
         `孤立器件：${isolated.length}${isolated.length ? `（${isolated.join(', ')}）` : ''}`,
         `已命名网络：${graph.nets.length}`,
         '',
-        netPreview || 'No named networks found.',
+        netPreview || '未发现已命名网络。',
         '',
         '如需查看节点表和网络表，请打开开发者控制台。',
       ].join('\n'),
@@ -553,16 +553,26 @@ export async function inspectCandidateGroups(): Promise<void> {
       ? grouping.boundaryDesignators.join('、')
       : '无';
 
+    const ambiguousText = grouping.ambiguousDesignators.length
+      ? grouping.ambiguousDesignators.join('、')
+      : '无';
+
+    const ambiguityEvidenceText = grouping.ambiguityEvidence.length
+      ? grouping.ambiguityEvidence.map(groupEvidenceZh).join('；')
+      : '无';
+
     await eda.sys_Dialog.showInformationMessage(
       [
         'LayoutPilot 候选功能块分析完成。',
         '',
         groupText,
         '',
+        `存在歧义的器件：${ambiguousText}`,
+        `歧义原因：${ambiguityEvidenceText}`,
         `未归组器件：${ungroupedText}`,
         `边界器件候选：${boundaryText}`,
         '',
-        '说明：当前分组仅依据结构规则，不代表最终电路功能语义。',
+        '说明：全局电源/地等低信息网络不会被当作强分组依据；存在歧义时系统会保留不确定性，而不是强行归组。',
       ].join('\n'),
       'LayoutPilot · 候选功能块',
     );
