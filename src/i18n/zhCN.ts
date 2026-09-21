@@ -176,8 +176,8 @@ export function ownershipRelationZh(value: OwnershipRelationType): string {
 			return '单核心归属';
 		case 'bridge':
 			return '跨核心桥接';
-		case 'shared-bus':
-			return '共享总线/共享信号';
+		case 'shared-signal':
+			return '共享信号/多 Host';
 		case 'rail-domain':
 			return '电源域关系';
 		default:
