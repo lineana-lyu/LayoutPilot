@@ -39,6 +39,7 @@ export interface ConstraintSkip {
 	reason: ConstraintSkipReason;
 	confidence: SemanticConfidence;
 	role: SemanticRole;
+	diagnostics: import('./layoutConstraintPolicy').ConstraintPolicyDiagnostic[];
 }
 
 export interface ConstraintPreviewResult {
@@ -81,6 +82,7 @@ export function buildConstraintPreview(
 					reason: derived.skipReason ?? 'no-derived-constraint',
 					confidence: inference.confidence,
 					role: inference.role,
+					diagnostics: derived.diagnostics,
 				},
 			],
 			advisoryCount: 0,
