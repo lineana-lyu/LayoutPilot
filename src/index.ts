@@ -768,25 +768,80 @@ export function configureAiGateway(): void {
   );
 }
 
+async function getConfiguredGatewayBaseUrl(): Promise<string | null> {
+  const configured = eda.sys_Storage.getExtensionUserConfig(AI_GATEWAY_CONFIG_KEY);
+
+  if (typeof configured !== 'string' || !configured.trim()) {
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        '尚未配置 AI Gateway。',
+        '',
+        '请先运行“配置 AI Gateway”。',
+        `推荐本地地址：${DEFAULT_AI_GATEWAY_URL}`,
+        '',
+        '注意：模型厂商 API Key 不应存入嘉立创扩展。',
+      ].join('\n'),
+      'LayoutPilot · AI 语义分析',
+    );
+    return null;
+  }
+
+  return normalizeGatewayBaseUrl(configured);
+}
+
+async function requestSemanticInference(
+  context: SemanticComponentContext,
+  gatewayBaseUrl: string,
+) {
+  const evidenceCatalog = buildSemanticEvidenceCatalog(context);
+  const request = buildSemanticGatewayRequest(context, evidenceCatalog);
+
+  console.log('[LayoutPilot] AI semantic request', request);
+
+  const response = await eda.sys_ClientUrl.request(
+    `${gatewayBaseUrl}/semantic-infer`,
+    'POST',
+    JSON.stringify(request),
+    {
+      headers: {
+        'content-type': 'application/json',
+      },
+    },
+  );
+
+  const responseText = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `Gateway HTTP ${response.status}: ${responseText.slice(0, 500)}`,
+    );
+  }
+
+  const gatewayResponse = parseSemanticGatewayResponse(
+    JSON.parse(responseText),
+  );
+
+  const validation = validateSemanticInference(
+    context,
+    gatewayResponse.inference,
+  );
+
+  console.log('[LayoutPilot] AI semantic response', gatewayResponse);
+  console.log('[LayoutPilot] AI semantic validation', validation);
+
+  return {
+    evidenceCatalog,
+    gatewayResponse,
+    validation,
+  };
+}
+
 export async function analyzeC6WithAi(): Promise<void> {
   try {
-    const configured = eda.sys_Storage.getExtensionUserConfig(AI_GATEWAY_CONFIG_KEY);
-    if (typeof configured !== 'string' || !configured.trim()) {
-      await eda.sys_Dialog.showInformationMessage(
-        [
-          '尚未配置 AI Gateway。',
-          '',
-          '请先运行“配置 AI Gateway”。',
-          `推荐本地地址：${DEFAULT_AI_GATEWAY_URL}`,
-          '',
-          '注意：模型厂商 API Key 不应存入嘉立创扩展。',
-        ].join('\n'),
-        'LayoutPilot · AI 语义分析',
-      );
+    const gatewayBaseUrl = await getConfiguredGatewayBaseUrl();
+    if (!gatewayBaseUrl) {
       return;
     }
 
-    const gatewayBaseUrl = normalizeGatewayBaseUrl(configured);
     const contexts = await collectSemanticContexts();
     const context = contexts.find(
       item => item.designator.toUpperCase() === 'C6',
@@ -794,46 +849,17 @@ export async function analyzeC6WithAi(): Promise<void> {
 
     if (!context) {
       await eda.sys_Dialog.showInformationMessage(
-        '当前 PCB 的歧义器件中没有找到 C6。该命令暂时只用于第一条真实 AI 闭环验证。',
+        '当前 PCB 的歧义器件中没有找到 C6。该命令用于保留第一条真实 AI 闭环回归测试。',
         'LayoutPilot · AI 语义分析',
       );
       return;
     }
 
-    const evidenceCatalog = buildSemanticEvidenceCatalog(context);
-    const request = buildSemanticGatewayRequest(context, evidenceCatalog);
-
-    console.log('[LayoutPilot] AI semantic request', request);
-
-    const response = await eda.sys_ClientUrl.request(
-      `${gatewayBaseUrl}/semantic-infer`,
-      'POST',
-      JSON.stringify(request),
-      {
-        headers: {
-          'content-type': 'application/json',
-        },
-      },
-    );
-
-    const responseText = await response.text();
-    if (!response.ok) {
-      throw new Error(
-        `Gateway HTTP ${response.status}: ${responseText.slice(0, 500)}`,
-      );
-    }
-
-    const gatewayResponse = parseSemanticGatewayResponse(
-      JSON.parse(responseText),
-    );
-
-    const validation = validateSemanticInference(
-      context,
-      gatewayResponse.inference,
-    );
-
-    console.log('[LayoutPilot] AI semantic response', gatewayResponse);
-    console.log('[LayoutPilot] AI semantic validation', validation);
+    const {
+      evidenceCatalog,
+      gatewayResponse,
+      validation,
+    } = await requestSemanticInference(context, gatewayBaseUrl);
 
     if (!validation.valid) {
       await eda.sys_Dialog.showInformationMessage(
@@ -929,6 +955,116 @@ export async function analyzeC6WithAi(): Promise<void> {
         'PCB 未发生任何修改。',
       ].join('\n'),
       'LayoutPilot · AI 语义分析',
+    );
+  }
+}
+
+export async function analyzeAmbiguousWithAi(): Promise<void> {
+  const gatewayBaseUrl = await getConfiguredGatewayBaseUrl();
+  if (!gatewayBaseUrl) {
+    return;
+  }
+
+  try {
+    const contexts = await collectSemanticContexts();
+
+    if (!contexts.length) {
+      await eda.sys_Dialog.showInformationMessage(
+        '当前 PCB 没有需要 AI 补全语义的歧义器件。',
+        'LayoutPilot · AI 批量语义分析',
+      );
+      return;
+    }
+
+    const rows: string[] = [];
+    let passed = 0;
+    let blocked = 0;
+    let failed = 0;
+    let providerLabel = '';
+
+    for (const context of contexts) {
+      try {
+        const { gatewayResponse, validation } = await requestSemanticInference(
+          context,
+          gatewayBaseUrl,
+        );
+
+        const provider = gatewayResponse.provider ?? 'unknown';
+        const model = gatewayResponse.model ?? 'unknown';
+        providerLabel ||= `${provider} / ${model}`;
+
+        if (provider === 'mock') {
+          rows.push(`${context.designator}：仅完成 Mock 通路测试，不作为 AI 结论`);
+          continue;
+        }
+
+        if (!validation.valid) {
+          blocked += 1;
+          rows.push(
+            `${context.designator}：已拦截 · ${validation.errors.join('；')}`,
+          );
+          continue;
+        }
+
+        passed += 1;
+        const inference = gatewayResponse.inference;
+        const core = inference.associatedCore
+          ? ` · 关联 ${inference.associatedCore}`
+          : '';
+        const constraints = inference.constraints
+          .filter(item => item.type !== 'no-constraint')
+          .map(item => {
+            const target = item.target ? `→${item.target}` : '';
+            return `${layoutConstraintTypeZh(item.type)}${target}`;
+          });
+
+        rows.push(
+          [
+            `${context.designator}：${semanticRoleZh(inference.role)}`,
+            `置信=${semanticConfidenceZh(inference.confidence)}${core}`,
+            constraints.length ? `约束=${constraints.join('、')}` : '约束=暂不生成',
+          ].join(' · '),
+        );
+      }
+      catch (error) {
+        failed += 1;
+        console.error(
+          `[LayoutPilot] AI semantic analysis failed for ${context.designator}`,
+          error,
+        );
+        rows.push(`${context.designator}：调用失败 · ${String(error)}`);
+      }
+    }
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        'LayoutPilot 歧义器件 AI 语义分析完成。',
+        '',
+        `待分析器件：${contexts.length}`,
+        `通过校验：${passed}`,
+        `被 Validator 拦截：${blocked}`,
+        `调用失败：${failed}`,
+        `模型：${providerLabel || '未获得真实模型结果'}`,
+        '',
+        ...rows,
+        '',
+        '说明：当前只生成语义角色与布局约束建议，不会修改 PCB。',
+      ].join('\n'),
+      'LayoutPilot · AI 批量语义分析',
+    );
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Batch AI semantic analysis failed', error);
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        'AI 批量语义分析失败。',
+        '',
+        String(error),
+        '',
+        'PCB 未发生任何修改。',
+      ].join('\n'),
+      'LayoutPilot · AI 批量语义分析',
     );
   }
 }
