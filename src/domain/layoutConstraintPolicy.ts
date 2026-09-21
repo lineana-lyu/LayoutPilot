@@ -71,74 +71,71 @@ function findCoreRelatedNet(
 }
 
 /**
- * Policy: a decoupling capacitor should be kept close to the IC whose
- * power/ground domain it decouples.
+ * Policy: only when deterministic ownership says the component has one
+ * unique owner may a decoupling capacitor generate a "near owner" constraint.
  *
- * This is intentionally derived from deterministic context rather than an
- * LLM-proposed layout action. The policy requires:
- * - semantic role = decoupling-capacitor;
- * - a validated associated core;
- * - a power net related to that core;
- * - a ground net related to that core.
- *
- * No board-specific designators or net names are encoded here.
+ * Bridge/shared-signal/rail-domain/unknown relations are intentionally
+ * non-owning and must not be compressed into a synthetic core.
  */
 const decouplingNearCorePolicy: ConstraintPolicy = {
-	id: 'decoupling.near-associated-core.v1',
+	id: 'decoupling.near-deterministic-owner.v2',
 	role: 'decoupling-capacitor',
 	evaluate(context, inference) {
-		const core = inference.associatedCore;
-		const coreValid = Boolean(
-			core && context.relatedCoreDesignators.includes(core),
+		const relation = context.ownership.relation;
+		const core = context.ownership.ownerDesignator;
+		const ownerValid = Boolean(
+			core
+			&& (relation === 'single-core' || relation === 'explicit-owner')
+			&& context.relatedCoreDesignators.includes(core),
 		);
 
-		const powerNet = coreValid && core
+		const powerNet = ownerValid && core
 			? findCoreRelatedNet(context, core, 'global-power')
 			: undefined;
-		const groundNet = coreValid && core
+		const groundNet = ownerValid && core
 			? findCoreRelatedNet(context, core, 'global-ground')
 			: undefined;
 
 		const checks: ConstraintPolicyCheck[] = [
 			{
-				id: 'associated-core',
-				label: '已确定且有效的关联核心',
-				status: coreValid ? 'pass' : 'fail',
-				detail: coreValid && core
-					? `关联核心：${core}`
-					: '缺少有效 associatedCore，或该核心不在规则层候选集合中。',
+				id: 'deterministic-owner',
+				label: '确定性关系提供唯一 owner',
+				status: ownerValid ? 'pass' : 'fail',
+				detail: ownerValid && core
+					? `relation=${relation}，owner=${core}`
+					: `当前 relation=${relation}，不能强行生成唯一 owner。`,
 			},
 			{
-				id: 'core-related-power-net',
-				label: '存在与关联核心同网的全局电源网络',
-				status: !coreValid
+				id: 'owner-related-power-net',
+				label: '存在与 owner 同网的全局电源网络',
+				status: !ownerValid
 					? 'not-applicable'
 					: powerNet
 						? 'pass'
 						: 'fail',
 				detail: powerNet
 					? `电源网络：${powerNet.netName}`
-					: coreValid
-						? '未找到同时连接该器件与关联核心的 global-power 网络。'
-						: '需先确定有效关联核心。',
+					: ownerValid
+						? '未找到同时连接该器件与 owner 的 global-power 网络。'
+						: '需先有确定性唯一 owner。',
 			},
 			{
-				id: 'core-related-ground-net',
-				label: '存在与关联核心同网的全局地网络',
-				status: !coreValid
+				id: 'owner-related-ground-net',
+				label: '存在与 owner 同网的全局地网络',
+				status: !ownerValid
 					? 'not-applicable'
 					: groundNet
 						? 'pass'
 						: 'fail',
 				detail: groundNet
 					? `地网络：${groundNet.netName}`
-					: coreValid
-						? '未找到同时连接该器件与关联核心的 global-ground 网络。'
-						: '需先确定有效关联核心。',
+					: ownerValid
+						? '未找到同时连接该器件与 owner 的 global-ground 网络。'
+						: '需先有确定性唯一 owner。',
 			},
 		];
 
-		if (!coreValid || !core || !powerNet || !groundNet) {
+		if (!ownerValid || !core || !powerNet || !groundNet) {
 			return {
 				constraints: [],
 				checks,
@@ -146,7 +143,8 @@ const decouplingNearCorePolicy: ConstraintPolicy = {
 		}
 
 		const evidenceRefs = [
-			`core:${core}`,
+			`relation:${relation}`,
+			`owner:${core}`,
 			`net:${powerNet.netName}`,
 			`net:${groundNet.netName}`,
 		];
@@ -161,9 +159,9 @@ const decouplingNearCorePolicy: ConstraintPolicy = {
 					type: 'near',
 					target: core,
 					evidenceRefs,
-					policyId: 'decoupling.near-associated-core.v1',
+					policyId: 'decoupling.near-deterministic-owner.v2',
 					rationale:
-						'去耦器件与关联核心共享电源和地网络，因此生成“靠近关联核心”的布局约束。',
+						'确定性关系已给出唯一 owner，且该器件与 owner 共享电源和地，因此生成“靠近 owner”的布局约束。',
 				},
 			],
 			checks,
