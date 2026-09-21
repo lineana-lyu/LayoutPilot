@@ -25,6 +25,9 @@ jobs:
       - name: Run domain regression tests
         run: npm test
 
+      - name: Check AI Gateway syntax
+        run: node --check gateway/server.mjs
+
       - name: Build extension
         run: npm run build
 
