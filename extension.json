@@ -32,6 +32,47 @@
         "title": "LayoutPilot 智能布局助手",
         "menuItems": [
           {
+            "id": "configure-ai-gateway",
+            "title": "配置 AI Gateway",
+            "registerFn": "configureAiGateway"
+          },
+          {
+            "id": "analyze-ambiguous-ai",
+            "title": "分析当前 PCB（AI 语义）",
+            "registerFn": "analyzeAmbiguousWithAi"
+          },
+          {
+            "id": "confirm-ambiguous-ownership",
+            "title": "确认待决 Owner（人工）",
+            "registerFn": "confirmAmbiguousOwnership"
+          },
+          {
+            "id": "preview-layout-constraints",
+            "title": "查看布局建议",
+            "registerFn": "previewLayoutConstraints"
+          },
+          {
+            "id": "apply-demo-placement",
+            "title": "应用受控布局建议",
+            "registerFn": "applyDemoPlacement"
+          },
+          {
+            "id": "undo-demo-placement",
+            "title": "撤销上次受控布局",
+            "registerFn": "undoLastDemoPlacement"
+          },
+          {
+            "id": "about",
+            "title": "关于 LayoutPilot",
+            "registerFn": "about"
+          }
+        ]
+      },
+      {
+        "id": "layoutpilot-diagnostics",
+        "title": "LayoutPilot 高级诊断",
+        "menuItems": [
+          {
             "id": "inspect-pcb",
             "title": "检查当前 PCB",
             "registerFn": "inspectPcb"
@@ -75,41 +116,6 @@
             "id": "inspect-explicit-ownership-capability",
             "title": "检查显式归属能力（只读）",
             "registerFn": "inspectExplicitOwnershipCapability"
-          },
-          {
-            "id": "configure-ai-gateway",
-            "title": "配置 AI Gateway",
-            "registerFn": "configureAiGateway"
-          },
-          {
-            "id": "analyze-ambiguous-ai",
-            "title": "AI 分析全部歧义器件（只读）",
-            "registerFn": "analyzeAmbiguousWithAi"
-          },
-          {
-            "id": "confirm-ambiguous-ownership",
-            "title": "确认待决 Owner（人工）",
-            "registerFn": "confirmAmbiguousOwnership"
-          },
-          {
-            "id": "preview-layout-constraints",
-            "title": "生成布局约束预览（不移动）",
-            "registerFn": "previewLayoutConstraints"
-          },
-          {
-            "id": "apply-demo-placement",
-            "title": "应用受控布局建议",
-            "registerFn": "applyDemoPlacement"
-          },
-          {
-            "id": "undo-demo-placement",
-            "title": "撤销上次受控布局",
-            "registerFn": "undoLastDemoPlacement"
-          },
-          {
-            "id": "about",
-            "title": "关于 LayoutPilot",
-            "registerFn": "about"
           }
         ]
       }
