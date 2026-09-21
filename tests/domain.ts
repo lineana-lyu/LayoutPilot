@@ -7,7 +7,6 @@ import { buildNetGroupingProfiles } from '../src/domain/netInformativeness';
 import { buildSemanticContexts, resolveComponentDisplayName, type SemanticComponentContext } from '../src/domain/semanticContext';
 import { allowedSemanticRolesForPrefix, buildSemanticEvidenceCatalog, validateSemanticInference } from '../src/domain/semanticInference';
 import { buildSemanticGatewayRequest, normalizeGatewayBaseUrl, parseSemanticGatewayResponse } from '../src/ai/gatewayClient';
-import { buildConstraintPreviewForInference, mergeConstraintPreviewResults } from '../src/domain/layoutConstraintEngine';
 
 function featuresFor(components: CircuitComponentSnapshot[]) {
 	const graph = buildCircuitGraph(components);
@@ -318,12 +317,6 @@ console.log('Semantic metadata template resolution passed.');
 		confidence: 'low',
 		evidenceRefs: ['net:GND', 'net:3V3'],
 		explanation: '只有共享电源/地关系，无法确定具体归属。',
-		constraints: [
-			{
-				type: 'no-constraint',
-				evidenceRefs: ['net:GND', 'net:3V3'],
-			},
-		],
 	});
 	assert.equal(valid.valid, true);
 
@@ -334,13 +327,6 @@ console.log('Semantic metadata template resolution passed.');
 		confidence: 'high',
 		evidenceRefs: ['datasheet:invented'],
 		explanation: '错误示例',
-		constraints: [
-			{
-				type: 'near',
-				target: 'U99.VDD',
-				evidenceRefs: ['datasheet:invented'],
-			},
-		],
 	});
 	assert.equal(hallucinated.valid, false);
 	assert.ok(hallucinated.errors.some(error => error.includes('不存在于规则层')));
@@ -383,8 +369,6 @@ console.log('Semantic inference validator passed.');
 	assert.equal(request.version, '1');
 	assert.equal(request.context.designator, 'C1');
 	assert.ok(request.allowedRoles.includes('decoupling-capacitor'));
-	assert.ok(request.allowedConstraintTargets.includes('U1'));
-	assert.ok(request.allowedConstraintTargets.includes('GND'));
 
 	const parsed = parseSemanticGatewayResponse({
 		inference: {
@@ -393,12 +377,6 @@ console.log('Semantic inference validator passed.');
 			confidence: 'low',
 			evidenceRefs: ['net:GND', 'net:3V3'],
 			explanation: '证据不足。',
-			constraints: [
-				{
-					type: 'no-constraint',
-					evidenceRefs: ['net:GND', 'net:3V3'],
-				},
-			],
 		},
 		provider: 'mock',
 		model: 'fixture',
@@ -413,7 +391,6 @@ console.log('Semantic inference validator passed.');
 				confidence: 'high',
 				evidenceRefs: [],
 				explanation: 'bad',
-				constraints: [],
 			},
 		}),
 		/role/,
@@ -423,45 +400,6 @@ console.log('Semantic inference validator passed.');
 console.log('AI gateway contract regression passed.');
 
 
-{
-	const { graph, features } = featuresFor(sharedRailFixture());
-	const grouping = buildCandidateGroups(graph, features);
-	const context = buildSemanticContexts(
-		graph,
-		features,
-		grouping,
-		sharedRailFixture().map(component => ({
-			id: component.id,
-			designator: component.designator,
-			name: component.designator,
-		})),
-	).find(item => item.designator === 'C1');
-
-	assert.ok(context);
-	const catalog = buildSemanticEvidenceCatalog(context);
-	assert.ok(catalog.some(item => item.label.includes('全局地')));
-	assert.ok(catalog.some(item => item.label.includes('全局电源')));
-
-	const invalidTarget = validateSemanticInference(context, {
-		status: 'inferred',
-		role: 'decoupling-capacitor',
-		associatedCore: 'U1',
-		confidence: 'medium',
-		evidenceRefs: ['net:GND', 'net:3V3', 'core:U1'],
-		explanation: '测试无效约束目标。',
-		constraints: [
-			{
-				type: 'near',
-				target: 'U99',
-				evidenceRefs: ['core:U1'],
-			},
-		],
-	});
-	assert.equal(invalidTarget.valid, false);
-	assert.ok(invalidTarget.errors.some(error => error.includes('布局约束目标 U99')));
-}
-
-console.log('Constraint target validation passed.');
 
 
 {
@@ -506,13 +444,6 @@ console.log('Constraint target validation passed.');
 		confidence: 'medium',
 		evidenceRefs: ['net:3V', 'net:VDD', 'core:U1'],
 		explanation: '错误地把 L1 判断成电容。',
-		constraints: [
-			{
-				type: 'near',
-				target: 'U1',
-				evidenceRefs: ['core:U1'],
-			},
-		],
 	});
 
 	assert.equal(invalidRole.valid, false);
@@ -522,101 +453,3 @@ console.log('Constraint target validation passed.');
 console.log('Semantic role compatibility validation passed.');
 
 
-{
-	const low = buildConstraintPreviewForInference('C5', {
-		status: 'inferred',
-		role: 'decoupling-capacitor',
-		associatedCore: 'U1',
-		confidence: 'low',
-		evidenceRefs: ['component:value', 'core:U1'],
-		explanation: '低置信测试',
-		constraints: [
-			{ type: 'near', target: 'U1', evidenceRefs: ['core:U1'] },
-		],
-	});
-	assert.equal(low.proposals.length, 1);
-	assert.equal(low.proposals[0].strength, 'advisory');
-	assert.equal(low.proposals[0].execution, 'review-only');
-
-	const medium = buildConstraintPreviewForInference('C6', {
-		status: 'inferred',
-		role: 'decoupling-capacitor',
-		associatedCore: 'U1',
-		confidence: 'medium',
-		evidenceRefs: ['component:value', 'core:U1'],
-		explanation: '中置信测试',
-		constraints: [
-			{ type: 'near', target: 'U1', evidenceRefs: ['core:U1'] },
-		],
-	});
-	assert.equal(medium.proposals.length, 1);
-	assert.equal(medium.proposals[0].strength, 'soft');
-	assert.equal(medium.proposals[0].execution, 'preview-eligible');
-
-	const unknown = buildConstraintPreviewForInference('L1', {
-		status: 'insufficient-evidence',
-		role: 'unknown',
-		confidence: 'low',
-		evidenceRefs: [],
-		explanation: '证据不足',
-		constraints: [
-			{ type: 'no-constraint', evidenceRefs: [] },
-		],
-	});
-	assert.equal(unknown.proposals.length, 0);
-	assert.equal(unknown.skipped[0].reason, 'insufficient-semantic-evidence');
-
-	const unsupportedPowerSwitch = buildConstraintPreviewForInference('Q1', {
-		status: 'inferred',
-		role: 'power-switch',
-		associatedCore: 'U1',
-		confidence: 'medium',
-		evidenceRefs: ['net:3V', 'net:VBAT', 'core:U1'],
-		explanation: '角色可识别，但当前没有足够的 Pin/功能拓扑证据驱动布局。',
-		constraints: [
-			{ type: 'keep-short', target: '3V', evidenceRefs: ['net:3V'] },
-			{ type: 'keep-short', target: 'VBAT', evidenceRefs: ['net:VBAT'] },
-			{ type: 'near', target: 'U1', evidenceRefs: ['core:U1'] },
-		],
-	});
-	assert.equal(unsupportedPowerSwitch.proposals.length, 0);
-	assert.equal(
-		unsupportedPowerSwitch.skipped[0].reason,
-		'unsupported-role-constraint',
-	);
-
-	const noConstraint = buildConstraintPreviewForInference('Q2', {
-		status: 'inferred',
-		role: 'power-switch',
-		associatedCore: 'U1',
-		confidence: 'medium',
-		evidenceRefs: ['core:U1'],
-		explanation: '角色可识别但没有可靠布局动作',
-		constraints: [
-			{ type: 'no-constraint', evidenceRefs: ['core:U1'] },
-		],
-	});
-	assert.equal(noConstraint.proposals.length, 0);
-	assert.equal(noConstraint.skipped[0].reason, 'no-active-constraint');
-
-	const merged = mergeConstraintPreviewResults([
-		low,
-		medium,
-		unknown,
-		unsupportedPowerSwitch,
-		noConstraint,
-	]);
-	assert.equal(merged.proposals.length, 2);
-	assert.equal(merged.advisoryCount, 1);
-	assert.equal(merged.softCount, 1);
-	assert.equal(merged.previewEligibleCount, 1);
-	assert.equal(merged.reviewOnlyCount, 1);
-	assert.equal(merged.skipped.length, 3);
-
-	for (const proposal of merged.proposals) {
-		assert.notEqual(proposal.strength, 'hard');
-		assert.equal(proposal.requiresReview, true);
-	}
-}
-
-console.log('Phase 3 constraint engine regression passed.');
