@@ -40,67 +40,77 @@ function adapter(options?: {
 	};
 }
 
-const input = {
-	componentId: 'c1',
-	from: { x: 10, y: 20 },
-	to: { x: 30, y: 40 },
-};
 
-{
-	const fake = adapter({ postDrcPass: true });
-	const result = await executePlacementTransaction(input, fake.value);
-	assert.equal(result.ok, true);
-	assert.deepEqual(fake.moves, [{ x: 30, y: 40 }]);
-	assert.equal(fake.getDrcCalls(), 1);
-}
 
-{
-	const fake = adapter({
-		postDrcPass: false,
-		rollbackDrcPass: true,
-	});
-	const result = await executePlacementTransaction(input, fake.value);
-	assert.equal(result.ok, false);
-	if (!result.ok) {
-		assert.equal(result.rollbackAttempted, true);
-		assert.equal(result.rollbackVerified, true);
-		assert.equal(result.rollbackDrcPassed, true);
+async function main(): Promise<void> {
+	const input = {
+		componentId: 'c1',
+		from: { x: 10, y: 20 },
+		to: { x: 30, y: 40 },
+	};
+	
+	{
+		const fake = adapter({ postDrcPass: true });
+		const result = await executePlacementTransaction(input, fake.value);
+		assert.equal(result.ok, true);
+		assert.deepEqual(fake.moves, [{ x: 30, y: 40 }]);
+		assert.equal(fake.getDrcCalls(), 1);
 	}
-	assert.deepEqual(fake.moves, [
-		{ x: 30, y: 40 },
-		{ x: 10, y: 20 },
-	]);
-}
-
-{
-	const fake = adapter({
-		failMoveTo: true,
-		rollbackDrcPass: true,
-	});
-	const result = await executePlacementTransaction(input, fake.value);
-	assert.equal(result.ok, false);
-	if (!result.ok) {
-		assert.equal(result.rollbackAttempted, true);
-		assert.equal(result.rollbackVerified, true);
+	
+	{
+		const fake = adapter({
+			postDrcPass: false,
+			rollbackDrcPass: true,
+		});
+		const result = await executePlacementTransaction(input, fake.value);
+		assert.equal(result.ok, false);
+		if (!result.ok) {
+			assert.equal(result.rollbackAttempted, true);
+			assert.equal(result.rollbackVerified, true);
+			assert.equal(result.rollbackDrcPassed, true);
+		}
+		assert.deepEqual(fake.moves, [
+			{ x: 30, y: 40 },
+			{ x: 10, y: 20 },
+		]);
 	}
-	assert.deepEqual(fake.moves, [
-		{ x: 30, y: 40 },
-		{ x: 10, y: 20 },
-	]);
-}
-
-{
-	const fake = adapter({
-		postDrcPass: false,
-		failRollback: true,
-	});
-	const result = await executePlacementTransaction(input, fake.value);
-	assert.equal(result.ok, false);
-	if (!result.ok) {
-		assert.equal(result.rollbackAttempted, true);
-		assert.equal(result.rollbackVerified, false);
-		assert.match(result.error, /回滚失败/);
+	
+	{
+		const fake = adapter({
+			failMoveTo: true,
+			rollbackDrcPass: true,
+		});
+		const result = await executePlacementTransaction(input, fake.value);
+		assert.equal(result.ok, false);
+		if (!result.ok) {
+			assert.equal(result.rollbackAttempted, true);
+			assert.equal(result.rollbackVerified, true);
+		}
+		assert.deepEqual(fake.moves, [
+			{ x: 30, y: 40 },
+			{ x: 10, y: 20 },
+		]);
 	}
+	
+	{
+		const fake = adapter({
+			postDrcPass: false,
+			failRollback: true,
+		});
+		const result = await executePlacementTransaction(input, fake.value);
+		assert.equal(result.ok, false);
+		if (!result.ok) {
+			assert.equal(result.rollbackAttempted, true);
+			assert.equal(result.rollbackVerified, false);
+			assert.match(result.error, /回滚失败/);
+		}
+	}
+	
+	
+	console.log('Placement transaction tests passed.');
 }
 
-console.log('Placement transaction tests passed.');
+main().catch(error => {
+	console.error(error);
+	process.exitCode = 1;
+});
