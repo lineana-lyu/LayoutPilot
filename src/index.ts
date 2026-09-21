@@ -10,6 +10,7 @@ import { resolveAmbiguousCoreAssociations } from './domain/coreAssociation';
 import { resolveOwnershipRelations } from './domain/ownershipRelation';
 import { clearHumanOwnershipDecisions, createHumanOwnershipDecision, getHumanOwnershipDecisions, removeHumanOwnershipDecision, upsertHumanOwnershipDecision } from './domain/humanOwnershipDecision';
 import { buildSemanticBoardFingerprint, clearActiveSemanticSnapshot, createSemanticSnapshot, getActiveSemanticSnapshot, semanticSnapshotMatchesBoard, setActiveSemanticSnapshot, type SemanticSnapshotEntry } from './domain/semanticSnapshot';
+import { buildSimpleBoardPolygonFromSegments, parseSimpleBoardPolygon, type BoardPolygon } from './domain/boardBoundary';
 import { planDecouplingPlacement, type PhysicalComponentSnapshot } from './domain/physicalPlacement';
 import { createPlacementCommand, getLastPlacementCommand, markPlacementCommandApplied, markPlacementCommandUndone, setLastPlacementCommand } from './domain/placementCommand';
 import { filterOwnershipPropertyNames, findOwnershipFields, findOwnershipMemberNames } from './domain/ownershipCapabilityProbe';
@@ -1441,6 +1442,77 @@ function padDimensions(shape: unknown): { width: number; height: number } | unde
   return { width, height };
 }
 
+async function collectSimpleBoardBoundary(): Promise<
+  | { ok: true; polygon: BoardPolygon }
+  | { ok: false; reason: string }
+> {
+  const [polylines, lines, arcs] = await Promise.all([
+    eda.pcb_PrimitivePolyline.getAll(),
+    eda.pcb_PrimitiveLine.getAll(),
+    eda.pcb_PrimitiveArc.getAll(),
+  ]);
+
+  const outlinePolylines = polylines.filter(
+    primitive => primitive.getState_Layer() === EPCB_LayerId.BOARD_OUTLINE,
+  );
+  const outlineLines = lines.filter(
+    primitive => primitive.getState_Layer() === EPCB_LayerId.BOARD_OUTLINE,
+  );
+  const outlineArcs = arcs.filter(
+    primitive => primitive.getState_Layer() === EPCB_LayerId.BOARD_OUTLINE,
+  );
+
+  if (outlineArcs.length) {
+    return {
+      ok: false,
+      reason: '当前板框包含独立圆弧；v0.7 不对曲线板框执行自动移动。',
+    };
+  }
+
+  if (outlinePolylines.length > 1) {
+    return {
+      ok: false,
+      reason: '检测到多个 BOARD_OUTLINE polyline，无法证明不存在多环/镂空。',
+    };
+  }
+
+  if (outlinePolylines.length === 1) {
+    if (outlineLines.length) {
+      return {
+        ok: false,
+        reason: '板框同时存在 polyline 与独立 line，v0.7 不猜测它们的组合关系。',
+      };
+    }
+
+    const polygon = outlinePolylines[0].getState_Polygon();
+    if (!polygon) {
+      return { ok: false, reason: 'BOARD_OUTLINE polyline 缺少 polygon 数据。' };
+    }
+
+    return parseSimpleBoardPolygon(polygon.getSource());
+  }
+
+  if (!outlineLines.length) {
+    return {
+      ok: false,
+      reason: '没有找到可验证的 BOARD_OUTLINE。',
+    };
+  }
+
+  return buildSimpleBoardPolygonFromSegments(
+    outlineLines.map(line => ({
+      start: {
+        x: line.getState_StartX(),
+        y: line.getState_StartY(),
+      },
+      end: {
+        x: line.getState_EndX(),
+        y: line.getState_EndY(),
+      },
+    })),
+  );
+}
+
 async function collectPhysicalComponents(
   routingInspectionComponentId?: string,
 ): Promise<PhysicalComponentSnapshot[]> {
@@ -1874,10 +1946,26 @@ export async function applyDemoPlacement(): Promise<void> {
       throw new Error('缺少 owner 共享的电源/地物理网络，拒绝执行。');
     }
 
+    const boardBoundary = await collectSimpleBoardBoundary();
+    if (!boardBoundary.ok) {
+      await eda.sys_Dialog.showInformationMessage(
+        [
+          '当前 PCB 板框不能被 v0.7 安全解析。',
+          '',
+          boardBoundary.reason,
+          '',
+          '系统采用失败关闭策略：不能证明候选位置位于有效板内时，不执行移动。',
+        ].join('\n'),
+        'LayoutPilot · 板框校验未通过',
+      );
+      return;
+    }
+
     const readiness = planDecouplingPlacement({
       subject,
       owner,
       obstacles: physical,
+      board: boardBoundary.polygon,
       powerNet,
       groundNet,
     });
