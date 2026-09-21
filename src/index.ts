@@ -6,6 +6,7 @@ import { buildSemanticContexts, type SemanticComponentContext, type SemanticComp
 import { allowedSemanticRolesForPrefix, buildSemanticEvidenceCatalog, validateSemanticInference } from './domain/semanticInference';
 import { buildSemanticGatewayRequest, normalizeGatewayBaseUrl, parseSemanticGatewayResponse } from './ai/gatewayClient';
 import { buildConstraintEvaluation } from './application/constraintEvaluation';
+import { executePlacementTransaction } from './application/placementTransaction';
 import { resolveAmbiguousCoreAssociations } from './domain/coreAssociation';
 import { resolveOwnershipRelations } from './domain/ownershipRelation';
 import { clearHumanOwnershipDecisions, createHumanOwnershipDecision, getHumanOwnershipDecisions, removeHumanOwnershipDecision, upsertHumanOwnershipDecision } from './domain/humanOwnershipDecision';
@@ -1682,73 +1683,6 @@ async function moveComponentAndVerify(
   return actual;
 }
 
-async function executePlacementTransaction(input: {
-  componentId: string;
-  from: { x: number; y: number };
-  to: { x: number; y: number };
-}): Promise<
-  | { ok: true }
-  | {
-      ok: false;
-      error: string;
-      rollbackAttempted: boolean;
-      rollbackVerified: boolean;
-      rollbackDrcPassed?: boolean;
-    }
-> {
-  let mutationAttempted = false;
-
-  try {
-    mutationAttempted = true;
-    await moveComponentAndVerify(
-      input.componentId,
-      input.to.x,
-      input.to.y,
-    );
-
-    const postDrcPassed = await eda.pcb_Drc.check(true, false, false);
-    if (!postDrcPassed) {
-      throw new Error('移动后 DRC 未通过');
-    }
-
-    return { ok: true };
-  }
-  catch (error) {
-    if (!mutationAttempted) {
-      return {
-        ok: false,
-        error: String(error),
-        rollbackAttempted: false,
-        rollbackVerified: false,
-      };
-    }
-
-    try {
-      await moveComponentAndVerify(
-        input.componentId,
-        input.from.x,
-        input.from.y,
-      );
-      const rollbackDrcPassed = await eda.pcb_Drc.check(true, false, false);
-      return {
-        ok: false,
-        error: String(error),
-        rollbackAttempted: true,
-        rollbackVerified: true,
-        rollbackDrcPassed,
-      };
-    }
-    catch (rollbackError) {
-      return {
-        ok: false,
-        error: `${String(error)}；回滚失败：${String(rollbackError)}`,
-        rollbackAttempted: true,
-        rollbackVerified: false,
-      };
-    }
-  }
-}
-
 
 export async function previewLayoutConstraints(): Promise<void> {
   try {
@@ -2103,11 +2037,19 @@ export async function applyDemoPlacement(): Promise<void> {
       to: plan.to,
     });
 
-    const transaction = await executePlacementTransaction({
-      componentId: plan.subjectId,
-      from: plan.from,
-      to: plan.to,
-    });
+    const transaction = await executePlacementTransaction(
+      {
+        componentId: plan.subjectId,
+        from: plan.from,
+        to: plan.to,
+      },
+      {
+        moveAndVerify: async (componentId, point) => {
+          await moveComponentAndVerify(componentId, point.x, point.y);
+        },
+        checkDrc: () => eda.pcb_Drc.check(true, false, false),
+      },
+    );
 
     if (!transaction.ok) {
       setLastPlacementCommand(undefined);
