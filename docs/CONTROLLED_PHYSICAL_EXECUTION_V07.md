@@ -46,6 +46,9 @@ A placement action is blocked when any of the following is true:
 - the owner has no pad on the shared power net;
 - pad geometry is missing or invalid;
 - no collision-free candidate can be found using the current conservative approximation;
+- the board boundary cannot be parsed as one simple reliable outline;
+- the candidate would leave the board boundary;
+- a `NO_COMPONENTS` keepout cannot be parsed reliably or the candidate intersects it;
 - the board fails DRC before the move.
 
 These checks are fail-closed. Missing evidence does not become permission.
@@ -54,13 +57,14 @@ These checks are fail-closed. Missing evidence does not become permission.
 
 For a decoupling capacitor:
 
-1. find owner pads on the shared power net;
+1. find subject and owner pads on the shared power and ground nets;
 2. use each owner power pad as a candidate electrical anchor;
 3. search first in the outward direction from the owner body, then orthogonal alternatives;
 4. preserve the capacitor's current rotation;
 5. translate the capacitor so its power pad is adjacent to the owner power pad;
 6. maintain a conservative 20 mil pad-envelope clearance in the MVP;
-7. reject candidates that overlap another component's pad-derived envelope.
+7. reject candidates that overlap another component's pad-derived envelope, leave the verified board outline, or intersect a parseable `NO_COMPONENTS` keepout;
+8. rank remaining candidates by `power-pad distance + nearest ground-return distance`, with a small relocation penalty.
 
 The component envelope is estimated from member pad geometry. This is intentionally conservative but incomplete.
 
