@@ -17,7 +17,8 @@ export type ActiveLayoutConstraintType = Exclude<
 export type ConstraintSkipReason =
 	| 'insufficient-semantic-evidence'
 	| 'unknown-semantic-role'
-	| 'no-active-constraint';
+	| 'no-active-constraint'
+	| 'unsupported-role-constraint';
 
 export interface ConstraintProposal {
 	id: string;
@@ -106,7 +107,7 @@ export function buildConstraintPreviewForInference(
 		};
 	}
 
-	const activeConstraints = inference.constraints
+	const modelActiveConstraints = inference.constraints
 		.filter(
 			(
 				constraint,
@@ -115,13 +116,40 @@ export function buildConstraintPreviewForInference(
 			} => constraint.type !== 'no-constraint',
 		);
 
+	const activeConstraints = modelActiveConstraints.filter((constraint) => {
+		// Phase 3 v1 deliberately supports only one executable semantic pattern:
+		// a decoupling capacitor may be placed near its validated associated core.
+		//
+		// Recognizing a role such as "power-switch" does NOT by itself prove
+		// where that device should sit. Those roles need stronger evidence
+		// (pin semantics, datasheet/function topology) before they are allowed
+		// to emit placement-driving constraints.
+		if (inference.role !== 'decoupling-capacitor') {
+			return false;
+		}
+
+		if (
+			constraint.type !== 'near'
+			|| !constraint.target
+			|| !inference.associatedCore
+		) {
+			return false;
+		}
+
+		return constraint.target === inference.associatedCore;
+	});
+
 	if (!activeConstraints.length) {
+		const reason = modelActiveConstraints.length
+			? 'unsupported-role-constraint'
+			: 'no-active-constraint';
+
 		return {
 			proposals: [],
 			skipped: [
 				{
 					subject,
-					reason: 'no-active-constraint',
+					reason,
 					confidence: inference.confidence,
 					role: inference.role,
 				},
