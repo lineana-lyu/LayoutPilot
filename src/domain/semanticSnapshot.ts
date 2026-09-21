@@ -157,7 +157,7 @@ function freezeDeep<T>(value: T): T {
 		freezeDeep(child);
 	}
 
-	return Object.freeze(value);
+	return Object.freeze(value as object) as T;
 }
 
 export function createSemanticSnapshot(
