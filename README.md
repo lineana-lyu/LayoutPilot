@@ -86,9 +86,12 @@ v0.7 only executes a very narrow placement case:
 - subject has no existing routed primitives;
 - pad geometry is available;
 - an approximate collision-free candidate exists;
+- a simple, verifiable board boundary is available;
+- the candidate remains inside the board boundary;
+- the candidate avoids parseable `NO_COMPONENTS` keepout regions;
 - the PCB passes DRC before execution.
 
-The target is anchored to the owner's **shared power pad**, not the IC body centre.
+The target is anchored to the owner's **shared power pad**, not the IC body centre. Legal candidates are ranked by a geometric proxy for the decoupling loop: power-pad distance plus the nearest GND return distance. This is a placement heuristic, not an SI/PI proof.
 
 After moving one component, LayoutPilot reads coordinates back and runs DRC again. A post-move DRC failure triggers automatic rollback.
 
@@ -163,7 +166,8 @@ CI runs domain tests, gateway syntax validation, extension compilation, and pack
 - [x] Automatic rollback
 - [x] Undo with concurrent-edit protection
 - [ ] Production-grade footprint/courtyard collision
-- [ ] Board-edge / mechanical keepout model
+- [x] Simple board-boundary gate + parseable `NO_COMPONENTS` keepout gate
+- [ ] Curved / multi-ring board and richer mechanical keepout model
 - [ ] Return-path / via planning
 - [ ] Routed-board re-optimization
 - [ ] Multi-component placement optimization
