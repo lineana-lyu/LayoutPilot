@@ -1519,6 +1519,19 @@ async function collectSimpleComponentKeepouts(): Promise<
   | { ok: false; reason: string }
 > {
   const regions = await eda.pcb_PrimitiveRegion.getAll();
+  const unresolvedRuleRegions = regions.filter(region =>
+    region.getState_RuleType().includes(
+      EPCB_PrimitiveRegionRuleType.FOLLOW_REGION_RULE,
+    ),
+  );
+  if (unresolvedRuleRegions.length) {
+    return {
+      ok: false,
+      reason:
+        '检测到 FOLLOW_REGION_RULE 区域；v0.7 尚未解析其自定义规则，不能证明该区域允许放置器件。',
+    };
+  }
+
   const noComponentRegions = regions.filter(region =>
     region.getState_RuleType().includes(
       EPCB_PrimitiveRegionRuleType.NO_COMPONENTS,
