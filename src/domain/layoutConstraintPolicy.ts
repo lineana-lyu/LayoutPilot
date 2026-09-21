@@ -19,6 +19,21 @@ export interface DerivedLayoutConstraint {
 	rationale: string;
 }
 
+export type PolicyCheckStatus = 'pass' | 'fail' | 'not-applicable';
+
+export interface ConstraintPolicyCheck {
+	id: string;
+	label: string;
+	status: PolicyCheckStatus;
+	detail?: string;
+}
+
+export interface ConstraintPolicyDiagnostic {
+	policyId: string;
+	role: SemanticRole;
+	checks: ConstraintPolicyCheck[];
+}
+
 export type ConstraintPolicySkipReason =
 	| 'semantic-not-inferred'
 	| 'unknown-semantic-role'
@@ -28,15 +43,19 @@ export type ConstraintPolicySkipReason =
 export interface ConstraintPolicyResult {
 	constraints: DerivedLayoutConstraint[];
 	skipReason?: ConstraintPolicySkipReason;
+	diagnostics: ConstraintPolicyDiagnostic[];
 }
 
 interface ConstraintPolicy {
 	id: string;
 	role: SemanticRole;
-	derive: (
+	evaluate: (
 		context: SemanticComponentContext,
 		inference: SemanticInference,
-	) => DerivedLayoutConstraint[];
+	) => {
+		constraints: DerivedLayoutConstraint[];
+		checks: ConstraintPolicyCheck[];
+	};
 }
 
 function findCoreRelatedNet(
@@ -67,17 +86,63 @@ function findCoreRelatedNet(
 const decouplingNearCorePolicy: ConstraintPolicy = {
 	id: 'decoupling.near-associated-core.v1',
 	role: 'decoupling-capacitor',
-	derive(context, inference) {
+	evaluate(context, inference) {
 		const core = inference.associatedCore;
-		if (!core || !context.relatedCoreDesignators.includes(core)) {
-			return [];
-		}
+		const coreValid = Boolean(
+			core && context.relatedCoreDesignators.includes(core),
+		);
 
-		const powerNet = findCoreRelatedNet(context, core, 'global-power');
-		const groundNet = findCoreRelatedNet(context, core, 'global-ground');
+		const powerNet = coreValid && core
+			? findCoreRelatedNet(context, core, 'global-power')
+			: undefined;
+		const groundNet = coreValid && core
+			? findCoreRelatedNet(context, core, 'global-ground')
+			: undefined;
 
-		if (!powerNet || !groundNet) {
-			return [];
+		const checks: ConstraintPolicyCheck[] = [
+			{
+				id: 'associated-core',
+				label: '已确定且有效的关联核心',
+				status: coreValid ? 'pass' : 'fail',
+				detail: coreValid && core
+					? `关联核心：${core}`
+					: '缺少有效 associatedCore，或该核心不在规则层候选集合中。',
+			},
+			{
+				id: 'core-related-power-net',
+				label: '存在与关联核心同网的全局电源网络',
+				status: !coreValid
+					? 'not-applicable'
+					: powerNet
+						? 'pass'
+						: 'fail',
+				detail: powerNet
+					? `电源网络：${powerNet.netName}`
+					: coreValid
+						? '未找到同时连接该器件与关联核心的 global-power 网络。'
+						: '需先确定有效关联核心。',
+			},
+			{
+				id: 'core-related-ground-net',
+				label: '存在与关联核心同网的全局地网络',
+				status: !coreValid
+					? 'not-applicable'
+					: groundNet
+						? 'pass'
+						: 'fail',
+				detail: groundNet
+					? `地网络：${groundNet.netName}`
+					: coreValid
+						? '未找到同时连接该器件与关联核心的 global-ground 网络。'
+						: '需先确定有效关联核心。',
+			},
+		];
+
+		if (!coreValid || !core || !powerNet || !groundNet) {
+			return {
+				constraints: [],
+				checks,
+			};
 		}
 
 		const evidenceRefs = [
@@ -90,16 +155,19 @@ const decouplingNearCorePolicy: ConstraintPolicy = {
 			evidenceRefs.unshift('component:value');
 		}
 
-		return [
-			{
-				type: 'near',
-				target: core,
-				evidenceRefs,
-				policyId: 'decoupling.near-associated-core.v1',
-				rationale:
-					'去耦器件与关联核心共享电源和地网络，因此生成“靠近关联核心”的布局约束。',
-			},
-		];
+		return {
+			constraints: [
+				{
+					type: 'near',
+					target: core,
+					evidenceRefs,
+					policyId: 'decoupling.near-associated-core.v1',
+					rationale:
+						'去耦器件与关联核心共享电源和地网络，因此生成“靠近关联核心”的布局约束。',
+				},
+			],
+			checks,
+		};
 	},
 };
 
@@ -115,6 +183,7 @@ export function deriveLayoutConstraints(
 		return {
 			constraints: [],
 			skipReason: 'semantic-not-inferred',
+			diagnostics: [],
 		};
 	}
 
@@ -122,6 +191,7 @@ export function deriveLayoutConstraints(
 		return {
 			constraints: [],
 			skipReason: 'unknown-semantic-role',
+			diagnostics: [],
 		};
 	}
 
@@ -133,19 +203,35 @@ export function deriveLayoutConstraints(
 		return {
 			constraints: [],
 			skipReason: 'no-policy-for-role',
+			diagnostics: [],
 		};
 	}
 
-	const constraints = matchingPolicies.flatMap(
-		policy => policy.derive(context, inference),
-	);
+	const evaluations = matchingPolicies.map(policy => {
+		const result = policy.evaluate(context, inference);
+		return {
+			policy,
+			...result,
+		};
+	});
+
+	const constraints = evaluations.flatMap(item => item.constraints);
+	const diagnostics: ConstraintPolicyDiagnostic[] = evaluations.map(item => ({
+		policyId: item.policy.id,
+		role: item.policy.role,
+		checks: item.checks,
+	}));
 
 	if (!constraints.length) {
 		return {
 			constraints: [],
 			skipReason: 'policy-evidence-insufficient',
+			diagnostics,
 		};
 	}
 
-	return { constraints };
+	return {
+		constraints,
+		diagnostics,
+	};
 }
