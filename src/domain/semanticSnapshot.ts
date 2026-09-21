@@ -123,6 +123,43 @@ export function buildSemanticBoardFingerprint(
 	return `sem-v1-${hashText(canonical)}`;
 }
 
+function cloneSnapshotContext(
+	context: SemanticComponentContext,
+): SemanticComponentContext {
+	return {
+		...context,
+		otherProperty: undefined,
+		connectedNets: context.connectedNets.map(net => ({
+			...net,
+			selfPads: [...net.selfPads],
+			peerEndpoints: net.peerEndpoints.map(peer => ({ ...peer })),
+			coreDesignators: [...net.coreDesignators],
+		})),
+		relatedCoreDesignators: [...context.relatedCoreDesignators],
+		ownership: {
+			...context.ownership,
+			hostDesignators: [...context.ownership.hostDesignators],
+			sharedSignalNets: [...context.ownership.sharedSignalNets],
+			railNets: [...context.ownership.railNets],
+		},
+		informativeSignalNets: [...context.informativeSignalNets],
+		lowInformationNets: [...context.lowInformationNets],
+		missingEvidence: [...context.missingEvidence],
+	};
+}
+
+function freezeDeep<T>(value: T): T {
+	if (!value || typeof value !== 'object' || Object.isFrozen(value)) {
+		return value;
+	}
+
+	for (const child of Object.values(value as Record<string, unknown>)) {
+		freezeDeep(child);
+	}
+
+	return Object.freeze(value);
+}
+
 export function createSemanticSnapshot(
 	boardFingerprint: string,
 	entries: SemanticSnapshotEntry[],
@@ -139,13 +176,25 @@ export function createSemanticSnapshot(
 		.join('|');
 	const suffix = hashText(`${boardFingerprint}|${createdAt}|${entryIdentity}`);
 
-	return {
+	const snapshot: SemanticSnapshot = {
 		schemaVersion: 1,
 		id: `semantic-${suffix}`,
 		boardFingerprint,
 		createdAt,
-		entries: [...entries],
+		entries: entries.map(entry => ({
+			...entry,
+			context: cloneSnapshotContext(entry.context),
+			inference: entry.inference
+				? {
+					...entry.inference,
+					evidenceRefs: [...entry.inference.evidenceRefs],
+				}
+				: undefined,
+			validationErrors: [...entry.validationErrors],
+		})),
 	};
+
+	return freezeDeep(snapshot);
 }
 
 export function setActiveSemanticSnapshot(snapshot: SemanticSnapshot): void {
