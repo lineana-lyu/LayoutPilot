@@ -856,7 +856,30 @@ export async function previewLayoutConstraints(): Promise<void> {
                 : reason === 'policy-evidence-insufficient'
                   ? '已有布局策略，但当前 PCB 事实证据不足'
                   : '没有可推导的布局约束';
-          rows.push(`${context.designator}：跳过 · ${reasonText}`);
+
+          const diagnosticLines = (result.skipped[0]?.diagnostics ?? [])
+            .flatMap(diagnostic => {
+              const checks = diagnostic.checks.map(check => {
+                const status = check.status === 'pass'
+                  ? '✓'
+                  : check.status === 'fail'
+                    ? '✗'
+                    : '·';
+                const detail = check.detail ? `：${check.detail}` : '';
+                return `    ${status} ${check.label}${detail}`;
+              });
+              return [
+                `  Policy：${diagnostic.policyId}`,
+                ...checks,
+              ];
+            });
+
+          rows.push(
+            [
+              `${context.designator}：跳过 · ${reasonText}`,
+              ...diagnosticLines,
+            ].join('\n'),
+          );
         }
       }
       catch (error) {
