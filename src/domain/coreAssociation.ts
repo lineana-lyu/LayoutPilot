@@ -47,7 +47,7 @@ export interface CoreAssociationResult {
 const MIN_RESOLVED_SCORE = 0.5;
 const MIN_RESOLVED_MARGIN = 0.2;
 
-function candidatePool(features: StructuralFeature[]): StructuralFeature[] {
+export function getCoreAssociationCandidates(features: StructuralFeature[]): StructuralFeature[] {
 	return features.filter(
 		feature =>
 			feature.isCoreEligible
@@ -121,7 +121,7 @@ export function resolveCoreAssociation(
 	}
 
 	const featureById = new Map(features.map(feature => [feature.id, feature]));
-	const coreCandidates = candidatePool(features);
+	const coreCandidates = getCoreAssociationCandidates(features);
 	const candidateById = new Map(
 		coreCandidates.map(feature => [feature.id, feature]),
 	);
