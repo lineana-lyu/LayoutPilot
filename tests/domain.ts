@@ -5,6 +5,7 @@ import { buildCircuitGraph, type CircuitComponentSnapshot } from '../src/domain/
 import { extractStructuralFeatures, type ComponentMetadata } from '../src/domain/componentFeatures';
 import { buildNetGroupingProfiles } from '../src/domain/netInformativeness';
 import { buildSemanticContexts, resolveComponentDisplayName } from '../src/domain/semanticContext';
+import { buildSemanticEvidenceCatalog, validateSemanticInference } from '../src/domain/semanticInference';
 
 function featuresFor(components: CircuitComponentSnapshot[]) {
 	const graph = buildCircuitGraph(components);
@@ -284,3 +285,64 @@ console.log('Semantic context regression passed.');
 }
 
 console.log('Semantic metadata template resolution passed.');
+
+
+{
+	const { graph, features } = featuresFor(sharedRailFixture());
+	const grouping = buildCandidateGroups(graph, features);
+	const contexts = buildSemanticContexts(
+		graph,
+		features,
+		grouping,
+		sharedRailFixture().map(component => ({
+			id: component.id,
+			designator: component.designator,
+			name: component.designator,
+		})),
+	);
+
+	const c1 = contexts.find(context => context.designator === 'C1');
+	assert.ok(c1);
+
+	const catalog = buildSemanticEvidenceCatalog(c1);
+	assert.ok(catalog.some(item => item.id === 'net:GND'));
+	assert.ok(catalog.some(item => item.id === 'net:3V3'));
+	assert.ok(catalog.some(item => item.id === 'core:U1'));
+	assert.ok(catalog.some(item => item.id === 'core:U2'));
+
+	const valid = validateSemanticInference(c1, {
+		status: 'insufficient-evidence',
+		role: 'unknown',
+		confidence: 'low',
+		evidenceRefs: ['net:GND', 'net:3V3'],
+		explanation: '只有共享电源/地关系，无法确定具体归属。',
+		constraints: [
+			{
+				type: 'no-constraint',
+				evidenceRefs: ['net:GND', 'net:3V3'],
+			},
+		],
+	});
+	assert.equal(valid.valid, true);
+
+	const hallucinated = validateSemanticInference(c1, {
+		status: 'inferred',
+		role: 'decoupling-capacitor',
+		associatedCore: 'U99',
+		confidence: 'high',
+		evidenceRefs: ['datasheet:invented'],
+		explanation: '错误示例',
+		constraints: [
+			{
+				type: 'near',
+				target: 'U99.VDD',
+				evidenceRefs: ['datasheet:invented'],
+			},
+		],
+	});
+	assert.equal(hallucinated.valid, false);
+	assert.ok(hallucinated.errors.some(error => error.includes('不存在于规则层')));
+	assert.ok(hallucinated.errors.some(error => error.includes('不存在的证据')));
+}
+
+console.log('Semantic inference validator passed.');
