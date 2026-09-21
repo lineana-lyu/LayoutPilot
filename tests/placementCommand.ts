@@ -4,6 +4,7 @@ import {
 	createPlacementCommand,
 	getLastPlacementCommand,
 	markPlacementCommandApplied,
+	markPlacementCommandSuperseded,
 	markPlacementCommandUndone,
 	setLastPlacementCommand,
 } from '../src/domain/placementCommand';
@@ -38,5 +39,9 @@ assert.equal(getLastPlacementCommand()?.id, applied.id);
 const undone = markPlacementCommandUndone(applied);
 setLastPlacementCommand(undone);
 assert.equal(getLastPlacementCommand()?.status, 'undone');
+
+const superseded = markPlacementCommandSuperseded(applied);
+setLastPlacementCommand(superseded);
+assert.equal(getLastPlacementCommand()?.status, 'superseded');
 
 console.log('Placement command tests passed.');
