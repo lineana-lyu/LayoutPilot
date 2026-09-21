@@ -13,7 +13,7 @@ import { clearHumanOwnershipDecisions, createHumanOwnershipDecision, getHumanOwn
 import { buildSemanticBoardFingerprint, clearActiveSemanticSnapshot, createSemanticSnapshot, getActiveSemanticSnapshot, semanticSnapshotMatchesBoard, setActiveSemanticSnapshot, type SemanticSnapshotEntry } from './domain/semanticSnapshot';
 import { buildSimpleBoardPolygonFromSegments, parseSimpleBoardPolygon, type BoardPolygon } from './domain/boardBoundary';
 import { planDecouplingPlacement, type PhysicalComponentSnapshot } from './domain/physicalPlacement';
-import { createPlacementCommand, getLastPlacementCommand, markPlacementCommandApplied, markPlacementCommandUndone, setLastPlacementCommand } from './domain/placementCommand';
+import { createPlacementCommand, getLastPlacementCommand, markPlacementCommandApplied, markPlacementCommandSuperseded, markPlacementCommandUndone, setLastPlacementCommand } from './domain/placementCommand';
 import { filterOwnershipPropertyNames, findOwnershipFields, findOwnershipMemberNames } from './domain/ownershipCapabilityProbe';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
@@ -1846,6 +1846,49 @@ export async function previewLayoutConstraints(): Promise<void> {
 
 export async function applyDemoPlacement(): Promise<void> {
   try {
+    const outstanding = getLastPlacementCommand();
+    if (outstanding?.status === 'applied') {
+      const component = await eda.pcb_PrimitiveComponent.get(outstanding.componentId);
+      if (!component) {
+        await eda.sys_Dialog.showInformationMessage(
+          [
+            `上一次 LayoutPilot Command ${outstanding.id} 仍标记为 applied，`,
+            `但当前 PCB 已找不到 ${outstanding.componentDesignator}。`,
+            '',
+            '无法证明上一事务的最终状态，本次拒绝继续执行新的布局动作。',
+          ].join('\n'),
+          'LayoutPilot · 上一事务状态未知',
+        );
+        return;
+      }
+
+      const stillAtCommandTarget =
+        closeEnough(component.getState_X(), outstanding.to.x)
+        && closeEnough(component.getState_Y(), outstanding.to.y);
+
+      if (stillAtCommandTarget) {
+        await eda.sys_Dialog.showInformationMessage(
+          [
+            `仍有一条未关闭的受控布局 Command：${outstanding.id}`,
+            `${outstanding.componentDesignator} 仍位于该 Command 的目标位置。`,
+            '',
+            'v0.7 只维护一个 outstanding command。',
+            '请先“撤销上次受控布局”，再执行下一条建议。',
+          ].join('\n'),
+          'LayoutPilot · 请先关闭上一事务',
+        );
+        return;
+      }
+
+      setLastPlacementCommand(
+        markPlacementCommandSuperseded(outstanding),
+      );
+      console.warn('[LayoutPilot] previous placement command superseded by later PCB edit', {
+        commandId: outstanding.id,
+        componentId: outstanding.componentId,
+      });
+    }
+
     const current = await collectCurrentConstraintSession();
     if (!current.ok) {
       await eda.sys_Dialog.showInformationMessage(
@@ -2141,6 +2184,9 @@ export async function undoLastDemoPlacement(): Promise<void> {
       !closeEnough(current.x, command.to.x)
       || !closeEnough(current.y, command.to.y)
     ) {
+      setLastPlacementCommand(
+        markPlacementCommandSuperseded(command),
+      );
       await eda.sys_Dialog.showInformationMessage(
         [
           `${command.componentDesignator} 在 LayoutPilot 执行后又被移动过。`,
@@ -2149,6 +2195,7 @@ export async function undoLastDemoPlacement(): Promise<void> {
           `当前位置：(${current.x.toFixed(2)}, ${current.y.toFixed(2)}) mil`,
           '',
           '为避免覆盖用户的新修改，本次拒绝自动 Undo。',
+          '旧 Command 已标记为 superseded，不会继续阻塞后续受控布局。',
         ].join('\n'),
         'LayoutPilot · 撤销被阻止',
       );
