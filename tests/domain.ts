@@ -6,6 +6,7 @@ import { extractStructuralFeatures, type ComponentMetadata } from '../src/domain
 import { buildNetGroupingProfiles } from '../src/domain/netInformativeness';
 import { buildSemanticContexts, resolveComponentDisplayName } from '../src/domain/semanticContext';
 import { buildSemanticEvidenceCatalog, validateSemanticInference } from '../src/domain/semanticInference';
+import { buildSemanticGatewayRequest, normalizeGatewayBaseUrl, parseSemanticGatewayResponse } from '../src/ai/gatewayClient';
 
 function featuresFor(components: CircuitComponentSnapshot[]) {
 	const graph = buildCircuitGraph(components);
@@ -346,3 +347,69 @@ console.log('Semantic metadata template resolution passed.');
 }
 
 console.log('Semantic inference validator passed.');
+
+
+{
+	assert.equal(
+		normalizeGatewayBaseUrl('http://127.0.0.1:8787/'),
+		'http://127.0.0.1:8787',
+	);
+	assert.throws(
+		() => normalizeGatewayBaseUrl('127.0.0.1:8787'),
+		/http:\/\/|https:\/\//,
+	);
+
+	const { graph, features } = featuresFor(sharedRailFixture());
+	const grouping = buildCandidateGroups(graph, features);
+	const context = buildSemanticContexts(
+		graph,
+		features,
+		grouping,
+		sharedRailFixture().map(component => ({
+			id: component.id,
+			designator: component.designator,
+			name: component.designator,
+		})),
+	).find(item => item.designator === 'C1');
+
+	assert.ok(context);
+	const catalog = buildSemanticEvidenceCatalog(context);
+	const request = buildSemanticGatewayRequest(context, catalog);
+	assert.equal(request.version, '1');
+	assert.equal(request.context.designator, 'C1');
+
+	const parsed = parseSemanticGatewayResponse({
+		inference: {
+			status: 'insufficient-evidence',
+			role: 'unknown',
+			confidence: 'low',
+			evidenceRefs: ['net:GND', 'net:3V3'],
+			explanation: '证据不足。',
+			constraints: [
+				{
+					type: 'no-constraint',
+					evidenceRefs: ['net:GND', 'net:3V3'],
+				},
+			],
+		},
+		provider: 'mock',
+		model: 'fixture',
+	});
+	assert.equal(parsed.provider, 'mock');
+
+	assert.throws(
+		() => parseSemanticGatewayResponse({
+			inference: {
+				status: 'inferred',
+				role: 'invented-role',
+				confidence: 'high',
+				evidenceRefs: [],
+				explanation: 'bad',
+				constraints: [],
+			},
+		}),
+		/role/,
+	);
+}
+
+console.log('AI gateway contract regression passed.');
