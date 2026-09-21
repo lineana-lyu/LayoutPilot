@@ -4,6 +4,7 @@ import type { StructuralFeature } from './componentFeatures';
 import { getCoreAssociationCandidates } from './coreAssociation';
 import {
 	resolveOwnershipRelation,
+	type ExplicitOwnershipHint,
 	type OwnershipRelationType,
 } from './ownershipRelation';
 import {
@@ -129,6 +130,7 @@ export function buildSemanticContexts(
 	features: StructuralFeature[],
 	grouping: CandidateGroupingResult,
 	metadata: SemanticComponentMetadata[],
+	explicitOwnershipHints: ExplicitOwnershipHint[] = [],
 ): SemanticComponentContext[] {
 	const featureById = new Map(features.map(feature => [feature.id, feature]));
 	const metadataById = new Map(metadata.map(item => [item.id, item]));
@@ -158,6 +160,7 @@ export function buildSemanticContexts(
 			graph,
 			features,
 			componentId,
+			explicitOwnershipHints,
 		);
 
 		const connectedNets: SemanticNetContext[] = graph.nets
