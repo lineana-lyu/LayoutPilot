@@ -98,6 +98,8 @@ export function semanticMissingEvidenceZh(code: string): string {
 			return '缺少可用于功能判断的明确控制/信号网络';
 		case 'direct-core-relation':
 			return '缺少直接核心器件关联';
+		case 'ownership-relation':
+			return '缺少可确定的归属关系';
 		default:
 			return code;
 	}
