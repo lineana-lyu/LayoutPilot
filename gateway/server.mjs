@@ -230,6 +230,8 @@ async function inferWithDeepSeek(request) {
 				'role 只允许：decoupling-capacitor, bulk-capacitor, filter-capacitor, power-path-inductor, power-switch, protection-device, reset-network, timing-device, connector-interface, other, unknown。',
 				'confidence 只允许 low, medium, high。',
 				'constraint.type 只允许 near, group-with, keep-short, edge, keepout, no-constraint。',
+				'constraint.target 只能精确使用 context.relatedCoreDesignators 中的一个器件位号，或 context.connectedNets 中的一个 netName；禁止拼接 VDD-GND、U1.VDD 之类的新字符串。',
+				'器件位号前缀必须与 role 类型一致：C 只能是电容类角色；L/FB 只能是 power-path-inductor/other/unknown；Q 只能是 power-switch/protection-device/other/unknown；X/Y 只能是 timing-device/other/unknown。',
 				'如果证据不足：status=insufficient-evidence，role=unknown，只能输出 no-constraint。',
 				'缺少 Pin 语义或数据手册证据时，不要声称靠近某个具体 Pin。',
 				'不要输出百分比置信度。',
@@ -243,6 +245,10 @@ async function inferWithDeepSeek(request) {
 				task: '请判断这个歧义 PCB 器件最可能的电路角色，并给出保守的布局约束。只返回 JSON。',
 				context: request.context,
 				evidenceCatalog: request.evidenceCatalog,
+				allowedConstraintTargets: [
+					...(request.context?.relatedCoreDesignators ?? []),
+					...((request.context?.connectedNets ?? []).map(net => net.netName)),
+				],
 			}),
 		},
 	];
