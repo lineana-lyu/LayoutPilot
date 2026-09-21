@@ -4,6 +4,7 @@ import { buildCandidateGroups } from '../src/domain/candidateGrouping';
 import { buildCircuitGraph, type CircuitComponentSnapshot } from '../src/domain/circuitGraph';
 import { extractStructuralFeatures, type ComponentMetadata } from '../src/domain/componentFeatures';
 import { buildNetGroupingProfiles } from '../src/domain/netInformativeness';
+import { buildSemanticContexts } from '../src/domain/semanticContext';
 
 function featuresFor(components: CircuitComponentSnapshot[]) {
 	const graph = buildCircuitGraph(components);
@@ -238,3 +239,28 @@ console.log('LayoutPilot domain regression tests passed.');
 }
 
 console.log('Header false-core regression passed.');
+
+
+{
+	const { graph, features } = featuresFor(sharedRailFixture());
+	const grouping = buildCandidateGroups(graph, features);
+	const contexts = buildSemanticContexts(
+		graph,
+		features,
+		grouping,
+		sharedRailFixture().map(component => ({
+			id: component.id,
+			designator: component.designator,
+			name: component.designator,
+		})),
+	);
+
+	const c1 = contexts.find(context => context.designator === 'C1');
+	assert.ok(c1);
+	assert.deepEqual(new Set(c1.relatedCoreDesignators), new Set(['U1', 'U2']));
+	assert.deepEqual(new Set(c1.lowInformationNets), new Set(['GND', '3V3']));
+	assert.equal(c1.informativeSignalNets.length, 0);
+	assert.ok(c1.missingEvidence.includes('informative-signal-net'));
+}
+
+console.log('Semantic context regression passed.');
