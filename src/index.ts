@@ -657,7 +657,7 @@ export async function inspectOwnershipRelations(): Promise<void> {
       relation: result.relation,
       owner: result.ownerDesignator ?? '',
       hosts: result.hostDesignators.join(', '),
-      buses: result.sharedBusNets.join(', '),
+      sharedSignals: result.sharedSignalNets.join(', '),
       rails: result.railNets.join(', '),
     })));
 
@@ -676,8 +676,8 @@ export async function inspectOwnershipRelations(): Promise<void> {
       const hosts = result.hostDesignators.length
         ? ` · hosts=${result.hostDesignators.join('、')}`
         : '';
-      const buses = result.sharedBusNets.length
-        ? ` · bus=${result.sharedBusNets.join('、')}`
+      const buses = result.sharedSignalNets.length
+        ? ` · shared=${result.sharedSignalNets.join('、')}`
         : '';
       const rails = result.railNets.length
         ? ` · rail=${result.railNets.join('、')}`
@@ -701,7 +701,7 @@ export async function inspectOwnershipRelations(): Promise<void> {
         `显式归属：${counts.get('explicit-owner') ?? 0}`,
         `单核心归属：${counts.get('single-core') ?? 0}`,
         `跨核心桥接：${counts.get('bridge') ?? 0}`,
-        `共享总线/共享信号：${counts.get('shared-bus') ?? 0}`,
+        `共享信号/多 Host：${counts.get('shared-signal') ?? 0}`,
         `电源域关系：${counts.get('rail-domain') ?? 0}`,
         `未知关系：${counts.get('unknown') ?? 0}`,
         '',
@@ -709,7 +709,7 @@ export async function inspectOwnershipRelations(): Promise<void> {
         '',
         '说明：',
         '• 先判断关系类型，再决定是否存在唯一 owner；',
-        '• 共享总线、桥接、电源域不会被强行压成单核心归属；',
+        '• 共享信号、桥接、电源域不会被强行压成单核心归属；',
         '• 显式归属接口已预留，但当前尚未从嘉立创工程读取复用模块/分组元数据；',
         '• 当前结果只用于诊断，不会改写 Semantic Context、Constraint Policy 或 PCB。',
       ].join('\n'),
