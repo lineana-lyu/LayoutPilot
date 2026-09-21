@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
 	clearHumanOwnershipDecisions,
 	createHumanOwnershipDecision,
+	removeHumanOwnershipDecision,
 	getHumanOwnershipDecisions,
 	toExplicitOwnershipHints,
 	upsertHumanOwnershipDecision,
@@ -70,6 +71,9 @@ clearHumanOwnershipDecisions();
 	clearHumanOwnershipDecisions('semantic-a');
 	assert.equal(getHumanOwnershipDecisions('semantic-a').length, 0);
 	assert.equal(getHumanOwnershipDecisions('semantic-b').length, 1);
+
+	removeHumanOwnershipDecision('semantic-b', 'c14');
+	assert.equal(getHumanOwnershipDecisions('semantic-b').length, 0);
 }
 
 console.log('Human ownership decision tests passed.');
