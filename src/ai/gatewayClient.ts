@@ -9,7 +9,6 @@ export interface SemanticGatewayRequest {
 	context: SemanticComponentContext;
 	evidenceCatalog: SemanticEvidenceItem[];
 	allowedRoles: SemanticInference['role'][];
-	allowedConstraintTargets: string[];
 	validationFeedback?: string[];
 }
 
@@ -35,15 +34,6 @@ const SEMANTIC_ROLES = new Set([
 
 const CONFIDENCE_LEVELS = new Set(['low', 'medium', 'high']);
 const STATUSES = new Set(['inferred', 'insufficient-evidence']);
-const CONSTRAINT_TYPES = new Set([
-	'near',
-	'group-with',
-	'keep-short',
-	'edge',
-	'keepout',
-	'no-constraint',
-]);
-
 function isStringArray(value: unknown): value is string[] {
 	return Array.isArray(value) && value.every(item => typeof item === 'string');
 }
@@ -83,40 +73,6 @@ export function parseSemanticGatewayResponse(value: unknown): SemanticGatewayRes
 	) {
 		throw new Error('AI Gateway 的 associatedCore 格式错误。');
 	}
-	if (!Array.isArray(inference.constraints)) {
-		throw new Error('AI Gateway 的 constraints 必须是数组。');
-	}
-
-	const constraints = inference.constraints.map((rawConstraint) => {
-		if (
-			!rawConstraint
-			|| typeof rawConstraint !== 'object'
-			|| Array.isArray(rawConstraint)
-		) {
-			throw new Error('AI Gateway 包含格式错误的布局约束。');
-		}
-
-		const constraint = rawConstraint as Record<string, unknown>;
-		if (!CONSTRAINT_TYPES.has(String(constraint.type))) {
-			throw new Error('AI Gateway 返回了未知布局约束类型。');
-		}
-		if (!isStringArray(constraint.evidenceRefs)) {
-			throw new Error('AI Gateway 布局约束缺少 evidenceRefs。');
-		}
-		if (
-			constraint.target !== undefined
-			&& typeof constraint.target !== 'string'
-		) {
-			throw new Error('AI Gateway 布局约束 target 格式错误。');
-		}
-
-		return {
-			type: constraint.type as SemanticInference['constraints'][number]['type'],
-			target: constraint.target as string | undefined,
-			evidenceRefs: constraint.evidenceRefs,
-		};
-	});
-
 	return {
 		inference: {
 			status: inference.status as SemanticInference['status'],
@@ -125,7 +81,6 @@ export function parseSemanticGatewayResponse(value: unknown): SemanticGatewayRes
 			confidence: inference.confidence as SemanticInference['confidence'],
 			evidenceRefs: inference.evidenceRefs,
 			explanation: inference.explanation,
-			constraints,
 		},
 		provider: typeof response.provider === 'string' ? response.provider : undefined,
 		model: typeof response.model === 'string' ? response.model : undefined,
@@ -151,10 +106,6 @@ export function buildSemanticGatewayRequest(
 		context,
 		evidenceCatalog,
 		allowedRoles,
-		allowedConstraintTargets: [
-			...context.relatedCoreDesignators,
-			...context.connectedNets.map(net => net.netName),
-		],
 		validationFeedback,
 	};
 }

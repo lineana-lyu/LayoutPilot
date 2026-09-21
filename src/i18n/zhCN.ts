@@ -104,8 +104,8 @@ export function semanticMissingEvidenceZh(code: string): string {
 }
 
 
+import type { LayoutConstraintType } from '../domain/layoutConstraintPolicy';
 import type {
-	LayoutConstraintType,
 	SemanticConfidence,
 	SemanticRole,
 } from '../domain/semanticInference';

@@ -15,14 +15,6 @@ export type SemanticRole =
 
 export type SemanticConfidence = 'low' | 'medium' | 'high';
 
-export type LayoutConstraintType =
-	| 'near'
-	| 'group-with'
-	| 'keep-short'
-	| 'edge'
-	| 'keepout'
-	| 'no-constraint';
-
 export interface SemanticEvidenceItem {
 	id: string;
 	label: string;
@@ -36,11 +28,6 @@ export interface SemanticInference {
 	confidence: SemanticConfidence;
 	evidenceRefs: string[];
 	explanation: string;
-	constraints: Array<{
-		type: LayoutConstraintType;
-		target?: string;
-		evidenceRefs: string[];
-	}>;
 }
 
 export interface SemanticInferenceValidation {
@@ -203,21 +190,12 @@ export function validateSemanticInference(
 	const catalog = buildSemanticEvidenceCatalog(context);
 	const allowedEvidenceIds = new Set(catalog.map(item => item.id));
 	const allowedCores = new Set(context.relatedCoreDesignators);
-	const allowedConstraintTargets = new Set([
-		...context.relatedCoreDesignators,
-		...context.connectedNets.map(net => net.netName),
-	]);
 	const allowedRoles = new Set(
 		allowedSemanticRolesForPrefix(context.referencePrefix),
 	);
 
-	if (inference.status === 'insufficient-evidence') {
-		if (inference.role !== 'unknown') {
-			errors.push('证据不足时，role 必须为 unknown。');
-		}
-		if (inference.constraints.some(item => item.type !== 'no-constraint')) {
-			errors.push('证据不足时，不允许输出主动布局约束。');
-		}
+	if (inference.status === 'insufficient-evidence' && inference.role !== 'unknown') {
+		errors.push('证据不足时，role 必须为 unknown。');
 	}
 
 	if (inference.status === 'inferred' && inference.evidenceRefs.length === 0) {
@@ -237,31 +215,9 @@ export function validateSemanticInference(
 		errors.push(`关联核心 ${inference.associatedCore} 不存在于规则层提供的候选核心中。`);
 	}
 
-	const allEvidenceRefs = [
-		...inference.evidenceRefs,
-		...inference.constraints.flatMap(item => item.evidenceRefs),
-	];
-
-	for (const ref of allEvidenceRefs) {
+	for (const ref of inference.evidenceRefs) {
 		if (!allowedEvidenceIds.has(ref)) {
 			errors.push(`AI 引用了不存在的证据：${ref}`);
-		}
-	}
-
-	for (const constraint of inference.constraints) {
-		if (constraint.type === 'no-constraint' && constraint.target) {
-			errors.push('no-constraint 不应包含 target。');
-		}
-		if (constraint.type !== 'no-constraint' && constraint.evidenceRefs.length === 0) {
-			errors.push(`布局约束 ${constraint.type} 必须引用证据。`);
-		}
-		if (
-			constraint.target
-			&& !allowedConstraintTargets.has(constraint.target)
-		) {
-			errors.push(
-				`布局约束目标 ${constraint.target} 不存在于当前器件的候选核心或已连接网络中。`,
-			);
 		}
 	}
 

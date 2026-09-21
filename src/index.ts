@@ -5,6 +5,7 @@ import { buildCandidateGroups } from './domain/candidateGrouping';
 import { buildSemanticContexts, type SemanticComponentContext, type SemanticComponentMetadata } from './domain/semanticContext';
 import { allowedSemanticRolesForPrefix, buildSemanticEvidenceCatalog, validateSemanticInference } from './domain/semanticInference';
 import { buildSemanticGatewayRequest, normalizeGatewayBaseUrl, parseSemanticGatewayResponse } from './ai/gatewayClient';
+import { buildConstraintPreview, mergeConstraintPreviewResults } from './domain/layoutConstraintEngine';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
 export function activate(status?: 'onStartupFinished', arg?: string): void {
@@ -53,203 +54,6 @@ export async function inspectPcb(): Promise<void> {
     );
   }
 }
-
-export async function inspectTestComponent(): Promise<void> {
-  try {
-    const target = await getTestComponent();
-
-    if (!target) {
-      await eda.sys_Dialog.showInformationMessage(
-        '当前 PCB 中没有找到 U1。该测试命令需要使用 LayoutPilot 测试板。',
-        'LayoutPilot · 检查 U1',
-      );
-      return;
-    }
-
-    const primitiveId = target.getState_PrimitiveId();
-    const pads = await eda.pcb_PrimitiveComponent.getAllPinsByPrimitiveId(primitiveId);
-    const propertyNames = await eda.pcb_PrimitiveComponent.getAllPropertyNames();
-
-    const padSummary = (pads ?? []).slice(0, 16).map((pad) => ({
-      padNumber: pad.getState_PadNumber(),
-      net: pad.getState_Net(),
-    }));
-
-    const details = {
-      primitiveId,
-      designator: target.getState_Designator(),
-      name: target.getState_Name(),
-      x: target.getState_X(),
-      y: target.getState_Y(),
-      rotation: target.getState_Rotation(),
-      locked: target.getState_PrimitiveLock(),
-      layer: target.getState_Layer(),
-      manufacturer: target.getState_Manufacturer(),
-      manufacturerId: target.getState_ManufacturerId(),
-      supplier: target.getState_Supplier(),
-      supplierId: target.getState_SupplierId(),
-      footprint: target.getState_Footprint(),
-      component: target.getState_Component(),
-      otherProperty: target.getState_OtherProperty(),
-      padCount: pads?.length ?? 0,
-      propertyNameCount: propertyNames.length,
-    };
-
-    console.log('[LayoutPilot] U1 details', details);
-    console.table(padSummary);
-    console.log('[LayoutPilot] available component property names', propertyNames);
-
-    const nets = Array.from(
-      new Set(
-        (pads ?? [])
-          .map((pad) => pad.getState_Net())
-          .filter((net): net is string => Boolean(net)),
-      ),
-    );
-
-    await eda.sys_Dialog.showInformationMessage(
-      [
-        'LayoutPilot 已成功读取 U1。',
-        '',
-        `位置：X=${details.x}, Y=${details.y}`,
-        `旋转角度：${details.rotation}°`,
-        `锁定状态：${lockedZh(details.locked)}`,
-        `焊盘数量：${details.padCount}`,
-        `已命名网络：${nets.length}`,
-        '',
-        '如需查看完整属性和焊盘详情，请打开开发者控制台。',
-      ].join('\n'),
-      'LayoutPilot · 检查 U1',
-    );
-  }
-  catch (error) {
-    console.error('[LayoutPilot] Inspect U1 failed', error);
-
-    await eda.sys_Dialog.showInformationMessage(
-      `读取 U1 失败。\n\n${String(error)}`,
-      'LayoutPilot · API 可行性验证',
-    );
-  }
-}
-
-export async function moveTestComponent(): Promise<void> {
-  try {
-    const target = await getTestComponent();
-
-    if (!target) {
-      await eda.sys_Dialog.showInformationMessage(
-        '当前 PCB 中没有找到 U1。',
-        'LayoutPilot · 移动 U1',
-      );
-      return;
-    }
-
-    if (target.getState_PrimitiveLock()) {
-      await eda.sys_Dialog.showInformationMessage(
-        'U1 当前已锁定。请先解锁，再执行移动测试。',
-        'LayoutPilot · 移动 U1',
-      );
-      return;
-    }
-
-    const primitiveId = target.getState_PrimitiveId();
-    const beforeX = target.getState_X();
-    const beforeY = target.getState_Y();
-    const requestedX = beforeX + 100;
-
-    await eda.pcb_PrimitiveComponent.modify(primitiveId, { x: requestedX });
-
-    const readBack = await eda.pcb_PrimitiveComponent.get(primitiveId);
-    if (!readBack) {
-      throw new Error('移动后无法重新读取 U1 状态。');
-    }
-
-    const afterX = readBack.getState_X();
-    const afterY = readBack.getState_Y();
-    const passed = afterX === requestedX && afterY === beforeY;
-
-    console.log('[LayoutPilot] U1 move test', {
-      before: { x: beforeX, y: beforeY },
-      requested: { x: requestedX, y: beforeY },
-      after: { x: afterX, y: afterY },
-      passed,
-    });
-
-    await eda.sys_Dialog.showInformationMessage(
-      [
-        passed ? '通过：U1 移动并回读验证成功。' : '警告：U1 已移动，但回读坐标与目标坐标不一致。',
-        '',
-        `移动前：X=${beforeX}, Y=${beforeY}`,
-        `目标位置：X=${requestedX}, Y=${beforeY}`,
-        `回读位置：X=${afterX}, Y=${afterY}`,
-      ].join('\n'),
-      'LayoutPilot · 移动 U1',
-    );
-  }
-  catch (error) {
-    console.error('[LayoutPilot] Move U1 failed', error);
-
-    await eda.sys_Dialog.showInformationMessage(
-      `移动 U1 失败。\n\n${String(error)}`,
-      'LayoutPilot · API 可行性验证',
-    );
-  }
-}
-
-export async function toggleTestComponentLock(): Promise<void> {
-  try {
-    const target = await getTestComponent();
-
-    if (!target) {
-      await eda.sys_Dialog.showInformationMessage(
-        '当前 PCB 中没有找到 U1。',
-        'LayoutPilot · 切换 U1 锁定状态',
-      );
-      return;
-    }
-
-    const primitiveId = target.getState_PrimitiveId();
-    const before = target.getState_PrimitiveLock();
-    const requested = !before;
-
-    await eda.pcb_PrimitiveComponent.modify(primitiveId, { primitiveLock: requested });
-
-    const readBack = await eda.pcb_PrimitiveComponent.get(primitiveId);
-    if (!readBack) {
-      throw new Error('修改锁定状态后无法重新读取 U1。');
-    }
-
-    const after = readBack.getState_PrimitiveLock();
-    const passed = after === requested;
-
-    console.log('[LayoutPilot] U1 lock test', {
-      before,
-      requested,
-      after,
-      passed,
-    });
-
-    await eda.sys_Dialog.showInformationMessage(
-      [
-        passed ? '通过：U1 锁定状态修改并回读验证成功。' : '警告：U1 锁定状态回读结果与目标状态不一致。',
-        '',
-        `修改前：${lockedZh(before)}`,
-        `目标状态：${lockedZh(requested)}`,
-        `回读状态：${lockedZh(after)}`,
-      ].join('\n'),
-      'LayoutPilot · 切换 U1 锁定状态',
-    );
-  }
-  catch (error) {
-    console.error('[LayoutPilot] Toggle U1 lock failed', error);
-
-    await eda.sys_Dialog.showInformationMessage(
-      `切换 U1 锁定状态失败。\n\n${String(error)}`,
-      'LayoutPilot · API 可行性验证',
-    );
-  }
-}
-
 
 export async function inspectConnectivity(): Promise<void> {
   try {
@@ -880,130 +684,6 @@ async function requestSemanticInference(
   };
 }
 
-export async function analyzeC6WithAi(): Promise<void> {
-  try {
-    const gatewayBaseUrl = await getConfiguredGatewayBaseUrl();
-    if (!gatewayBaseUrl) {
-      return;
-    }
-
-    const contexts = await collectSemanticContexts();
-    const context = contexts.find(
-      item => item.designator.toUpperCase() === 'C6',
-    );
-
-    if (!context) {
-      await eda.sys_Dialog.showInformationMessage(
-        '当前 PCB 的歧义器件中没有找到 C6。该命令用于保留第一条真实 AI 闭环回归测试。',
-        'LayoutPilot · AI 语义分析',
-      );
-      return;
-    }
-
-    const {
-      evidenceCatalog,
-      gatewayResponse,
-      validation,
-    } = await requestSemanticInference(context, gatewayBaseUrl);
-
-    if (!validation.valid) {
-      await eda.sys_Dialog.showInformationMessage(
-        [
-          'AI 返回结果已被 LayoutPilot 拦截。',
-          '',
-          ...validation.errors.map(error => `• ${error}`),
-          '',
-          'PCB 未发生任何修改。',
-        ].join('\n'),
-        'LayoutPilot · AI 结果校验失败',
-      );
-      return;
-    }
-
-    const inference = gatewayResponse.inference;
-    const evidenceById = new Map(
-      evidenceCatalog.map(item => [item.id, item.label]),
-    );
-
-    const evidenceText = inference.evidenceRefs.length
-      ? inference.evidenceRefs
-          .map(ref => `• ${evidenceById.get(ref) ?? ref}`)
-          .join('\n')
-      : '• 无';
-
-    const constraintText = inference.constraints.length
-      ? inference.constraints.map((constraint) => {
-          const target = constraint.target ? ` → ${constraint.target}` : '';
-          return `• ${layoutConstraintTypeZh(constraint.type)}${target}`;
-        }).join('\n')
-      : '• 无';
-
-    const provider = gatewayResponse.provider ?? 'unknown';
-    const model = gatewayResponse.model ?? 'unknown';
-
-    if (provider === 'mock') {
-      await eda.sys_Dialog.showInformationMessage(
-        [
-          'AI Gateway 通路测试通过。',
-          '',
-          '当前 provider=mock，这不是 AI 判断结果，只用于验证：',
-          '扩展 → Gateway → 结构化返回 → Validator。',
-          '',
-          `测试角色：${semanticRoleZh(inference.role)}`,
-          `测试置信状态：${semanticConfidenceZh(inference.confidence)}`,
-          '',
-          'PCB 未发生任何修改。',
-        ].join('\n'),
-        'LayoutPilot · Gateway 通路测试',
-      );
-      return;
-    }
-
-    await eda.sys_Dialog.showInformationMessage(
-      [
-        'LayoutPilot AI 语义分析完成，并通过证据校验。',
-        '',
-        `目标器件：${context.designator}`,
-        `语义角色：${semanticRoleZh(inference.role)}`,
-        `关联核心：${inference.associatedCore ?? '未确定'}`,
-        `置信状态：${semanticConfidenceZh(inference.confidence)}`,
-        `模型：${provider} / ${model}`,
-        '',
-        '证据：',
-        evidenceText,
-        '',
-        `解释：${inference.explanation}`,
-        '',
-        '建议布局约束：',
-        constraintText,
-        '',
-        '说明：当前仅生成建议，不会修改 PCB。',
-      ].join('\n'),
-      'LayoutPilot · AI 语义分析 C6',
-    );
-  }
-  catch (error) {
-    console.error('[LayoutPilot] AI semantic analysis failed', error);
-
-    await eda.sys_Dialog.showInformationMessage(
-      [
-        'AI 语义分析失败。',
-        '',
-        String(error),
-        '',
-        '请确认：',
-        '1. 本机 AI Gateway 已启动；',
-        '2. 已在扩展设置中配置正确地址；',
-        '3. 已允许该扩展进行外部交互；',
-        '4. Gateway 的模型配置/API Key 有效。',
-        '',
-        'PCB 未发生任何修改。',
-      ].join('\n'),
-      'LayoutPilot · AI 语义分析',
-    );
-  }
-}
-
 export async function analyzeAmbiguousWithAi(): Promise<void> {
   const gatewayBaseUrl = await getConfiguredGatewayBaseUrl();
   if (!gatewayBaseUrl) {
@@ -1056,18 +736,11 @@ export async function analyzeAmbiguousWithAi(): Promise<void> {
         const core = inference.associatedCore
           ? ` · 关联 ${inference.associatedCore}`
           : '';
-        const constraints = inference.constraints
-          .filter(item => item.type !== 'no-constraint')
-          .map(item => {
-            const target = item.target ? `→${item.target}` : '';
-            return `${layoutConstraintTypeZh(item.type)}${target}`;
-          });
-
         rows.push(
           [
             `${context.designator}：${semanticRoleZh(inference.role)}`,
             `置信=${semanticConfidenceZh(inference.confidence)}${core}`,
-            constraints.length ? `约束=${constraints.join('、')}` : '约束=暂不生成',
+            '布局动作=由 Constraint Policy 单独推导',
           ].join(' · '),
         );
       }
@@ -1093,7 +766,7 @@ export async function analyzeAmbiguousWithAi(): Promise<void> {
         '',
         ...rows,
         '',
-        '说明：当前只生成语义角色与布局约束建议，不会修改 PCB。',
+        '说明：当前只生成语义角色与证据结论；不会直接生成或执行布局动作。',
       ].join('\n'),
       'LayoutPilot · AI 批量语义分析',
     );
@@ -1114,9 +787,150 @@ export async function analyzeAmbiguousWithAi(): Promise<void> {
   }
 }
 
+
+export async function previewLayoutConstraints(): Promise<void> {
+  const gatewayBaseUrl = await getConfiguredGatewayBaseUrl();
+  if (!gatewayBaseUrl) return;
+
+  try {
+    const contexts = await collectSemanticContexts();
+    const previewResults = [];
+    const rows: string[] = [];
+    let blocked = 0;
+    let failed = 0;
+    let providerLabel = '';
+
+    for (const context of contexts) {
+      try {
+        const { gatewayResponse, validation } = await requestSemanticInference(
+          context,
+          gatewayBaseUrl,
+        );
+
+        const provider = gatewayResponse.provider ?? 'unknown';
+        const model = gatewayResponse.model ?? 'unknown';
+        providerLabel ||= `${provider} / ${model}`;
+
+        if (provider === 'mock') {
+          rows.push(`${context.designator}：Mock 模式不生成真实布局约束`);
+          continue;
+        }
+
+        if (!validation.valid) {
+          blocked += 1;
+          const reason = validation.errors.length
+            ? validation.errors.join('；')
+            : '未返回具体校验原因';
+          rows.push(
+            `${context.designator}：AI 结果被 Validator 拦截 · ${reason}`,
+          );
+          continue;
+        }
+
+        const result = buildConstraintPreview(
+          context,
+          gatewayResponse.inference,
+        );
+        previewResults.push(result);
+
+        if (result.proposals.length) {
+          for (const proposal of result.proposals) {
+            const level = proposal.strength === 'advisory' ? '提示级' : '软约束';
+            const execution = proposal.execution === 'review-only'
+              ? '仅人工复核，不参与布局计算'
+              : '可进入后续布局方案计算';
+            const target = proposal.target ? ` → ${proposal.target}` : '';
+            rows.push(
+              `${proposal.subject}：[${level}] ${layoutConstraintTypeZh(proposal.type)}${target} · 置信=${semanticConfidenceZh(proposal.confidence)} · ${execution}`,
+            );
+          }
+        }
+        else {
+          const reason = result.skipped[0]?.reason;
+          const reasonText = reason === 'semantic-not-inferred'
+            ? '语义证据不足'
+            : reason === 'unknown-semantic-role'
+              ? '语义角色未知'
+              : reason === 'no-policy-for-role'
+                ? '当前语义角色尚未建立可执行布局策略'
+                : reason === 'policy-evidence-insufficient'
+                  ? '已有布局策略，但当前 PCB 事实证据不足'
+                  : '没有可推导的布局约束';
+
+          const diagnosticLines = (result.skipped[0]?.diagnostics ?? [])
+            .flatMap(diagnostic => {
+              const checks = diagnostic.checks.map(check => {
+                const status = check.status === 'pass'
+                  ? '✓'
+                  : check.status === 'fail'
+                    ? '✗'
+                    : '·';
+                const detail = check.detail ? `：${check.detail}` : '';
+                return `    ${status} ${check.label}${detail}`;
+              });
+              return [
+                `  Policy：${diagnostic.policyId}`,
+                ...checks,
+              ];
+            });
+
+          rows.push(
+            [
+              `${context.designator}：跳过 · ${reasonText}`,
+              ...diagnosticLines,
+            ].join('\n'),
+          );
+        }
+      }
+      catch (error) {
+        failed += 1;
+        console.error(
+          `[LayoutPilot] Constraint preview failed for ${context.designator}`,
+          error,
+        );
+        rows.push(`${context.designator}：生成失败 · ${String(error)}`);
+      }
+    }
+
+    const merged = mergeConstraintPreviewResults(previewResults);
+    console.log('[LayoutPilot] constraint preview', merged);
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        'LayoutPilot 布局约束预览已生成。',
+        '',
+        `语义上下文器件：${contexts.length}`,
+        `生成约束：${merged.proposals.length}`,
+        `软约束：${merged.softCount}`,
+        `提示级约束：${merged.advisoryCount}`,
+        `可进入后续布局方案：${merged.previewEligibleCount}`,
+        `仅人工复核：${merged.reviewOnlyCount}`,
+        `AI 结果被拦截：${blocked}`,
+        `调用失败：${failed}`,
+        `模型：${providerLabel || '未获得真实模型结果'}`,
+        '',
+        ...rows,
+        '',
+        '安全边界：',
+        '• AI 生成的约束不会成为硬约束；',
+        '• 低置信结果不会参与布局计算；',
+        '• 当前仅预览约束，不会移动任何 PCB 器件。',
+      ].join('\n'),
+      'LayoutPilot · 布局约束预览',
+    );
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Layout constraint preview failed', error);
+    await eda.sys_Dialog.showInformationMessage(
+      `生成布局约束预览失败。\n\n${String(error)}\n\nPCB 未发生任何修改。`,
+      'LayoutPilot · 第 3 阶段',
+    );
+  }
+}
+
 export async function about(): Promise<void> {
   await eda.sys_Dialog.showInformationMessage(
-    `LayoutPilot v${extensionConfig.version}\n\n第 2 阶段：为规则层无法确定的器件构建语义上下文，并逐步引入 AI 语义补全。\n当前不会自动修改 PCB。`,
+    `LayoutPilot v${extensionConfig.version}\n\n第 3 阶段：把已校验的语义结果转换为可解释、分级的布局约束。\n当前只生成约束预览，不会自动修改 PCB。`,
     '关于 LayoutPilot',
   );
 }

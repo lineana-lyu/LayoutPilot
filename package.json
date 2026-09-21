@@ -11,7 +11,9 @@
     "lint": "eslint",
     "fix": "eslint --fix",
     "build": "npm run compile && ts-node ./build/packaged.ts",
-    "test": "ts-node ./tests/domain.ts"
+    "test": "npm run test:domain && npm run test:constraint-policy",
+    "test:domain": "ts-node ./tests/domain.ts",
+    "test:constraint-policy": "ts-node ./tests/constraintPolicy.ts"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^5.4.1",

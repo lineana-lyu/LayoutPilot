@@ -41,34 +41,6 @@ const semanticSchema = {
 		explanation: {
 			type: 'string',
 		},
-		constraints: {
-			type: 'array',
-			items: {
-				type: 'object',
-				additionalProperties: false,
-				properties: {
-					type: {
-						type: 'string',
-						enum: [
-							'near',
-							'group-with',
-							'keep-short',
-							'edge',
-							'keepout',
-							'no-constraint',
-						],
-					},
-					target: {
-						type: ['string', 'null'],
-					},
-					evidenceRefs: {
-						type: 'array',
-						items: { type: 'string' },
-					},
-				},
-				required: ['type', 'target', 'evidenceRefs'],
-			},
-		},
 	},
 	required: [
 		'status',
@@ -77,7 +49,6 @@ const semanticSchema = {
 		'confidence',
 		'evidenceRefs',
 		'explanation',
-		'constraints',
 	],
 };
 
@@ -109,55 +80,16 @@ function evidenceIds(request) {
 }
 
 function buildMockInference(request) {
-	const context = request.context ?? {};
 	const ids = evidenceIds(request);
-
-	const refs = [
-		'component:value',
-		'net:VDD',
-		'net:GND',
-		'core:U1',
-	].filter(id => ids.has(id));
-
-	if (
-		context.designator === 'C6'
-		&& String(context.value ?? '').toLowerCase() === '100nf'
-		&& ids.has('net:VDD')
-		&& ids.has('net:GND')
-		&& ids.has('core:U1')
-	) {
-		return {
-			status: 'inferred',
-			role: 'decoupling-capacitor',
-			associatedCore: 'U1',
-			confidence: 'medium',
-			evidenceRefs: refs,
-			explanation: 'C6 为 100nF 电容，跨接 VDD 与 GND，并与候选核心 U1 共享电源域；这些证据支持“去耦电容”候选，但缺少芯片引脚语义/数据手册证据，因此不提升为高置信。',
-			constraints: [
-				{
-					type: 'near',
-					target: 'U1',
-					evidenceRefs: refs,
-				},
-			],
-		};
-	}
-
 	const fallbackRefs = Array.from(ids).slice(0, 4);
+
 	return {
 		status: 'insufficient-evidence',
 		role: 'unknown',
 		associatedCore: null,
 		confidence: 'low',
 		evidenceRefs: fallbackRefs,
-		explanation: '当前证据不足以形成可靠语义判断。',
-		constraints: [
-			{
-				type: 'no-constraint',
-				target: null,
-				evidenceRefs: fallbackRefs,
-			},
-		],
+		explanation: 'Mock 模式只验证传输、解析和校验链路，不模拟真实语义判断。',
 	};
 }
 
@@ -182,11 +114,6 @@ function normalizeInference(inference) {
 	if (normalized.associatedCore === null) {
 		delete normalized.associatedCore;
 	}
-	for (const constraint of normalized.constraints ?? []) {
-		if (constraint.target === null) {
-			delete constraint.target;
-		}
-	}
 	return normalized;
 }
 
@@ -204,15 +131,11 @@ async function inferWithDeepSeek(request) {
 	const allowedRoles = Array.isArray(request.allowedRoles)
 		? request.allowedRoles
 		: ['unknown'];
-	const allowedConstraintTargets = Array.isArray(request.allowedConstraintTargets)
-		? request.allowedConstraintTargets
-		: [];
 	const validationFeedback = Array.isArray(request.validationFeedback)
 		? request.validationFeedback
 		: [];
 
 	const exampleRole = allowedRoles.find(role => role !== 'unknown') || 'unknown';
-	const exampleTarget = allowedConstraintTargets[0] ?? null;
 	const outputExample = {
 		status: exampleRole === 'unknown' ? 'insufficient-evidence' : 'inferred',
 		role: exampleRole,
@@ -220,21 +143,6 @@ async function inferWithDeepSeek(request) {
 		confidence: 'medium',
 		evidenceRefs: [],
 		explanation: '示例说明。',
-		constraints: exampleTarget
-			? [
-				{
-					type: 'near',
-					target: exampleTarget,
-					evidenceRefs: [],
-				},
-			]
-			: [
-				{
-					type: 'no-constraint',
-					target: null,
-					evidenceRefs: [],
-				},
-			],
 	};
 
 	const messages = [
@@ -244,16 +152,13 @@ async function inferWithDeepSeek(request) {
 				'你是 LayoutPilot 的 PCB 语义分析器。',
 				'你只能根据输入 JSON 中的 context 和 evidenceCatalog 推理，禁止创造新的 PCB 事实。',
 				'你的最终回答必须是一个 JSON object，不要输出 Markdown、代码块或额外文本。',
-				'evidenceRefs 和 constraints[*].evidenceRefs 只能引用 evidenceCatalog 中存在的 id。',
+				'evidenceRefs 只能引用 evidenceCatalog 中存在的 id。',
 				'associatedCore 只能从 context.relatedCoreDesignators 中选择；不能确定时使用 null。',
 				'status 只允许 inferred 或 insufficient-evidence。',
 				'role 必须严格从输入中的 allowedRoles 数组中选择，禁止输出 allowedRoles 之外的角色。',
 				'confidence 只允许 low, medium, high。',
-				'constraint.type 只允许 near, group-with, keep-short, edge, keepout, no-constraint。',
-				'constraint.target 必须严格从输入中的 allowedConstraintTargets 数组中选择；禁止拼接 VDD-GND、U1.VDD 之类的新字符串。',
 				'allowedRoles 已由确定性规则层根据器件类型生成；不要自行扩展角色集合。',
-				'如果证据不足：status=insufficient-evidence，role=unknown，只能输出 no-constraint。',
-				'缺少 Pin 语义或数据手册证据时，不要声称靠近某个具体 Pin。',
+				'如果证据不足：status=insufficient-evidence，role=unknown。',
 				'不要输出百分比置信度。',
 				'JSON 格式示例：',
 				JSON.stringify(outputExample),
@@ -264,11 +169,10 @@ async function inferWithDeepSeek(request) {
 			content: JSON.stringify({
 				task: validationFeedback.length
 					? '上一次输出被 Validator 拒绝。请根据 validationFeedback 修正，并只返回新的合法 JSON。'
-					: '请判断这个歧义 PCB 器件最可能的电路角色，并给出保守的布局约束。只返回 JSON。',
+					: '请判断这个歧义 PCB 器件最可能的电路角色和关联核心。只返回 JSON。',
 				context: request.context,
 				evidenceCatalog: request.evidenceCatalog,
 				allowedRoles,
-				allowedConstraintTargets,
 				validationFeedback,
 			}),
 		},
@@ -329,21 +233,18 @@ async function inferWithOpenAI(request) {
 		instructions: [
 			'你是 LayoutPilot 的 PCB 语义分析器。',
 			'你只能根据输入中的 context 和 evidenceCatalog 推理，禁止创造新的 PCB 事实。',
-			'evidenceRefs 和 constraint.evidenceRefs 只能引用 evidenceCatalog 中存在的 id。',
+			'evidenceRefs 只能引用 evidenceCatalog 中存在的 id。',
 			'associatedCore 只能从 context.relatedCoreDesignators 中选择；不能确定时设为 null。',
-			'如果证据不足，status 必须为 insufficient-evidence，role 必须为 unknown，并且只能输出 no-constraint。',
+			'如果证据不足，status 必须为 insufficient-evidence，role 必须为 unknown。',
 			'role 必须严格从输入 allowedRoles 中选择。',
-			'constraint.target 必须严格从输入 allowedConstraintTargets 中选择。',
 			'如果 validationFeedback 非空，必须优先修复其中指出的问题。',
 			'置信度只允许 low / medium / high，不要输出百分比。',
-			'布局建议应保守；缺少 Pin 语义时，不要声称靠近某个具体 Pin。',
 		].join('\n'),
 		input: JSON.stringify({
-			task: 'Infer the likely circuit role and conservative layout constraints for this ambiguous PCB component. Return only the requested structured result.',
+			task: 'Infer the likely circuit role and associated core for this ambiguous PCB component. Return only the requested structured result.',
 			context: request.context,
 			evidenceCatalog: request.evidenceCatalog,
 			allowedRoles: request.allowedRoles,
-			allowedConstraintTargets: request.allowedConstraintTargets,
 			validationFeedback: request.validationFeedback ?? [],
 		}),
 		text: {
@@ -389,7 +290,7 @@ async function handleSemanticInfer(request) {
 		return {
 			inference: normalizeInference(buildMockInference(request)),
 			provider: 'mock',
-			model: 'deterministic-c6-demo',
+			model: 'deterministic-contract-mock',
 		};
 	}
 

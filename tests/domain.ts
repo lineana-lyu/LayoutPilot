@@ -317,12 +317,6 @@ console.log('Semantic metadata template resolution passed.');
 		confidence: 'low',
 		evidenceRefs: ['net:GND', 'net:3V3'],
 		explanation: '只有共享电源/地关系，无法确定具体归属。',
-		constraints: [
-			{
-				type: 'no-constraint',
-				evidenceRefs: ['net:GND', 'net:3V3'],
-			},
-		],
 	});
 	assert.equal(valid.valid, true);
 
@@ -333,13 +327,6 @@ console.log('Semantic metadata template resolution passed.');
 		confidence: 'high',
 		evidenceRefs: ['datasheet:invented'],
 		explanation: '错误示例',
-		constraints: [
-			{
-				type: 'near',
-				target: 'U99.VDD',
-				evidenceRefs: ['datasheet:invented'],
-			},
-		],
 	});
 	assert.equal(hallucinated.valid, false);
 	assert.ok(hallucinated.errors.some(error => error.includes('不存在于规则层')));
@@ -382,8 +369,6 @@ console.log('Semantic inference validator passed.');
 	assert.equal(request.version, '1');
 	assert.equal(request.context.designator, 'C1');
 	assert.ok(request.allowedRoles.includes('decoupling-capacitor'));
-	assert.ok(request.allowedConstraintTargets.includes('U1'));
-	assert.ok(request.allowedConstraintTargets.includes('GND'));
 
 	const parsed = parseSemanticGatewayResponse({
 		inference: {
@@ -392,12 +377,6 @@ console.log('Semantic inference validator passed.');
 			confidence: 'low',
 			evidenceRefs: ['net:GND', 'net:3V3'],
 			explanation: '证据不足。',
-			constraints: [
-				{
-					type: 'no-constraint',
-					evidenceRefs: ['net:GND', 'net:3V3'],
-				},
-			],
 		},
 		provider: 'mock',
 		model: 'fixture',
@@ -412,7 +391,6 @@ console.log('Semantic inference validator passed.');
 				confidence: 'high',
 				evidenceRefs: [],
 				explanation: 'bad',
-				constraints: [],
 			},
 		}),
 		/role/,
@@ -422,45 +400,6 @@ console.log('Semantic inference validator passed.');
 console.log('AI gateway contract regression passed.');
 
 
-{
-	const { graph, features } = featuresFor(sharedRailFixture());
-	const grouping = buildCandidateGroups(graph, features);
-	const context = buildSemanticContexts(
-		graph,
-		features,
-		grouping,
-		sharedRailFixture().map(component => ({
-			id: component.id,
-			designator: component.designator,
-			name: component.designator,
-		})),
-	).find(item => item.designator === 'C1');
-
-	assert.ok(context);
-	const catalog = buildSemanticEvidenceCatalog(context);
-	assert.ok(catalog.some(item => item.label.includes('全局地')));
-	assert.ok(catalog.some(item => item.label.includes('全局电源')));
-
-	const invalidTarget = validateSemanticInference(context, {
-		status: 'inferred',
-		role: 'decoupling-capacitor',
-		associatedCore: 'U1',
-		confidence: 'medium',
-		evidenceRefs: ['net:GND', 'net:3V3', 'core:U1'],
-		explanation: '测试无效约束目标。',
-		constraints: [
-			{
-				type: 'near',
-				target: 'U99',
-				evidenceRefs: ['core:U1'],
-			},
-		],
-	});
-	assert.equal(invalidTarget.valid, false);
-	assert.ok(invalidTarget.errors.some(error => error.includes('布局约束目标 U99')));
-}
-
-console.log('Constraint target validation passed.');
 
 
 {
@@ -505,13 +444,6 @@ console.log('Constraint target validation passed.');
 		confidence: 'medium',
 		evidenceRefs: ['net:3V', 'net:VDD', 'core:U1'],
 		explanation: '错误地把 L1 判断成电容。',
-		constraints: [
-			{
-				type: 'near',
-				target: 'U1',
-				evidenceRefs: ['core:U1'],
-			},
-		],
 	});
 
 	assert.equal(invalidRole.valid, false);
@@ -519,3 +451,5 @@ console.log('Constraint target validation passed.');
 }
 
 console.log('Semantic role compatibility validation passed.');
+
+

@@ -3,13 +3,23 @@
   "uuid": "1a2b3c4d5e6f77889900aabbccddeeff",
   "displayName": "LayoutPilot",
   "description": "面向 PCB 布局阶段的 AI 协作插件：理解电路结构、提取布局约束并辅助生成可确认的布局方案。",
-  "version": "0.3.3",
+  "version": "0.4.3",
   "publisher": "lineana-lyu",
-  "engines": { "eda": "^3.2.0" },
+  "engines": {
+    "eda": "^3.2.0"
+  },
   "license": "Apache-2.0",
-  "repository": { "type": "extension-store", "url": "" },
+  "repository": {
+    "type": "extension-store",
+    "url": ""
+  },
   "categories": "PCB",
-  "keywords": ["PCB", "Layout", "AI", "Placement"],
+  "keywords": [
+    "PCB",
+    "Layout",
+    "AI",
+    "Placement"
+  ],
   "homepage": "https://github.com/lineana-lyu/LayoutPilot",
   "bugs": "https://github.com/lineana-lyu/LayoutPilot/issues",
   "activationEvents": {},
@@ -25,21 +35,6 @@
             "id": "inspect-pcb",
             "title": "检查当前 PCB",
             "registerFn": "inspectPcb"
-          },
-          {
-            "id": "inspect-u1",
-            "title": "检查测试器件 U1",
-            "registerFn": "inspectTestComponent"
-          },
-          {
-            "id": "move-u1",
-            "title": "测试：U1 向 X 正方向移动 100",
-            "registerFn": "moveTestComponent"
-          },
-          {
-            "id": "toggle-lock-u1",
-            "title": "测试：切换 U1 锁定状态",
-            "registerFn": "toggleTestComponentLock"
           },
           {
             "id": "inspect-connectivity",
@@ -72,14 +67,14 @@
             "registerFn": "configureAiGateway"
           },
           {
-            "id": "analyze-c6-ai",
-            "title": "AI 分析 C6（回归测试）",
-            "registerFn": "analyzeC6WithAi"
-          },
-          {
             "id": "analyze-ambiguous-ai",
             "title": "AI 分析全部歧义器件（只读）",
             "registerFn": "analyzeAmbiguousWithAi"
+          },
+          {
+            "id": "preview-layout-constraints",
+            "title": "生成布局约束预览（不移动）",
+            "registerFn": "previewLayoutConstraints"
           },
           {
             "id": "about",
