@@ -1,7 +1,7 @@
 import type { CircuitGraph } from './circuitGraph';
 import type { StructuralFeature } from './componentFeatures';
 import { getCoreAssociationCandidates } from './coreAssociation';
-import { buildNetGroupingProfiles } from './netInformativeness';
+import { buildNetGroupingProfiles, type NetGroupingClass } from './netInformativeness';
 
 export type OwnershipRelationType =
 	| 'explicit-owner'
@@ -43,11 +43,7 @@ export interface OwnershipRelationResult {
 
 interface NetHostContext {
 	netName: string;
-	classification: ReturnType<typeof buildNetGroupingProfiles> extends Map<string, infer T>
-		? T extends { classification: infer C }
-			? C
-			: never
-		: never;
+	classification: NetGroupingClass;
 	hostIds: string[];
 	hostDesignators: string[];
 	componentCount: number;
