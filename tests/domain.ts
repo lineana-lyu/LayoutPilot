@@ -273,6 +273,37 @@ console.log('Semantic context regression passed.');
 
 
 {
+	const { graph, features } = featuresFor(sharedRailFixture());
+	const grouping = buildCandidateGroups(graph, features);
+	const contexts = buildSemanticContexts(
+		graph,
+		features,
+		grouping,
+		sharedRailFixture().map(component => ({
+			id: component.id,
+			designator: component.designator,
+			name: component.designator,
+		})),
+		[
+			{
+				componentId: 'c1',
+				ownerComponentId: 'u1',
+				source: 'user-confirmed-owner-v1',
+			},
+		],
+	);
+
+	const c1 = contexts.find(context => context.designator === 'C1');
+	assert.ok(c1);
+	assert.equal(c1.ownership.relation, 'explicit-owner');
+	assert.equal(c1.ownership.ownerDesignator, 'U1');
+	assert.deepEqual(c1.ownership.hostDesignators, ['U1']);
+}
+
+console.log('Semantic context explicit ownership override passed.');
+
+
+{
 	assert.equal(
 		resolveComponentDisplayName('={Value}', { Value: '100nF' }),
 		'100nF',
