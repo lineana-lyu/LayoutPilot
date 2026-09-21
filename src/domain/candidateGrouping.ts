@@ -4,7 +4,7 @@ import { buildNetGroupingProfiles } from './netInformativeness';
 
 export type GroupEvidenceCode =
 	| 'CORE_SELECTED'
-	| 'PASSIVE_SINGLE_CORE_NEIGHBOR'
+	| 'PERIPHERAL_SINGLE_CORE_NEIGHBOR'
 	| 'BOUNDARY_KEPT_SEPARATE'
 	| 'ISOLATED_UNGROUPED'
 	| 'ONLY_LOW_INFORMATION_NETS'
@@ -81,7 +81,7 @@ export function buildCandidateGroups(
 			continue;
 		}
 
-		if (feature.isPassiveCandidate) {
+		if (feature.isPeripheralCandidate) {
 			const informativeCoreIds = new Set<string>();
 			const lowInformationCoreIds = new Set<string>();
 
@@ -116,7 +116,7 @@ export function buildCandidateGroups(
 					group.satelliteComponentIds.push(node.id);
 					group.satelliteDesignators.push(node.designator);
 					group.evidence.push({
-						code: 'PASSIVE_SINGLE_CORE_NEIGHBOR',
+						code: 'PERIPHERAL_SINGLE_CORE_NEIGHBOR',
 						component: node.designator,
 						core: group.coreDesignator,
 					});
