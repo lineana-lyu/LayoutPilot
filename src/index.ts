@@ -1,6 +1,7 @@
 import { buildCircuitGraph, type CircuitComponentSnapshot } from './domain/circuitGraph';
 import { extractStructuralFeatures, type ComponentMetadata } from './domain/componentFeatures';
-import { coreLevelZh, lockedZh, structuralEvidenceZh } from './i18n/zhCN';
+import { coreLevelZh, groupEvidenceZh, lockedZh, structuralEvidenceZh } from './i18n/zhCN';
+import { buildCandidateGroups } from './domain/candidateGrouping';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
 export function activate(status?: 'onStartupFinished', arg?: string): void {
@@ -485,6 +486,92 @@ export async function inspectStructuralFeatures(): Promise<void> {
 
     await eda.sys_Dialog.showInformationMessage(
       `提取结构特征失败。\n\n${String(error)}`,
+      'LayoutPilot · 第 1 阶段',
+    );
+  }
+}
+
+
+export async function inspectCandidateGroups(): Promise<void> {
+  try {
+    const components = await eda.pcb_PrimitiveComponent.getAll();
+    const snapshots: CircuitComponentSnapshot[] = [];
+    const metadata: ComponentMetadata[] = [];
+
+    for (const component of components) {
+      const primitiveId = component.getState_PrimitiveId();
+      const designator = component.getState_Designator() ?? component.getState_Name() ?? primitiveId;
+      const pads = await eda.pcb_PrimitiveComponent.getAllPinsByPrimitiveId(primitiveId);
+      const footprint = component.getState_Footprint();
+
+      snapshots.push({
+        id: primitiveId,
+        designator,
+        name: component.getState_Name(),
+        padCount: pads?.length ?? 0,
+        pads: (pads ?? []).map((pad) => ({
+          padNumber: String(pad.getState_PadNumber() ?? '?'),
+          net: pad.getState_Net(),
+        })),
+      });
+
+      metadata.push({
+        id: primitiveId,
+        designator,
+        manufacturer: component.getState_Manufacturer(),
+        supplier: component.getState_Supplier(),
+        footprintName: footprint?.name,
+      });
+    }
+
+    const graph = buildCircuitGraph(snapshots);
+    const features = extractStructuralFeatures(graph, metadata);
+    const grouping = buildCandidateGroups(graph, features);
+
+    console.log('[LayoutPilot] candidate groups', grouping);
+
+    const groupText = grouping.groups.length
+      ? grouping.groups.map((group, index) => {
+          const members = group.satelliteDesignators.length
+            ? group.satelliteDesignators.join('、')
+            : '暂无外围器件';
+          const evidence = group.evidence.map(groupEvidenceZh).join('；');
+          return [
+            `候选功能块 ${index + 1}`,
+            `核心器件：${group.coreDesignator}`,
+            `外围器件：${members}`,
+            `判断依据：${evidence}`,
+          ].join('\n');
+        }).join('\n\n')
+      : '当前没有识别出候选功能块。';
+
+    const ungroupedText = grouping.ungroupedDesignators.length
+      ? grouping.ungroupedDesignators.join('、')
+      : '无';
+
+    const boundaryText = grouping.boundaryDesignators.length
+      ? grouping.boundaryDesignators.join('、')
+      : '无';
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        'LayoutPilot 候选功能块分析完成。',
+        '',
+        groupText,
+        '',
+        `未归组器件：${ungroupedText}`,
+        `边界器件候选：${boundaryText}`,
+        '',
+        '说明：当前分组仅依据结构规则，不代表最终电路功能语义。',
+      ].join('\n'),
+      'LayoutPilot · 候选功能块',
+    );
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Candidate Grouping failed', error);
+
+    await eda.sys_Dialog.showInformationMessage(
+      `候选功能块分析失败。\n\n${String(error)}`,
       'LayoutPilot · 第 1 阶段',
     );
   }
