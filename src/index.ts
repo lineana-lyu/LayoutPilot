@@ -464,8 +464,15 @@ export async function inspectStructuralFeatures(): Promise<void> {
     const preview = features.slice(0, 8).map((feature) => {
       const evidence = feature.coreEvidence.length
         ? feature.coreEvidence.map(structuralEvidenceZh).join('；')
-        : '暂无核心器件正向证据';
-      return `${feature.designator}：核心候选=${coreLevelZh(feature.coreLevel)}（${feature.coreScore}/10），相邻器件=${feature.degree}，焊盘=${feature.padCount}\n  判断依据：${evidence}`;
+        : '暂无结构判断依据';
+
+      const role = feature.isBoundaryCandidate
+        ? '边界器件候选'
+        : feature.isPassiveCandidate
+          ? '外围器件候选'
+          : `核心候选=${coreLevelZh(feature.coreLevel)}（${feature.coreScore}/10）`;
+
+      return `${feature.designator}：${role}，相邻器件=${feature.degree}，焊盘=${feature.padCount}\n  判断依据：${evidence}`;
     }).join('\n');
 
     await eda.sys_Dialog.showInformationMessage(
