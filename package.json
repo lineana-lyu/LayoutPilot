@@ -11,8 +11,9 @@
     "lint": "eslint",
     "fix": "eslint --fix",
     "build": "npm run compile && ts-node ./build/packaged.ts",
-    "test": "npm run test:domain && npm run test:constraint-policy && npm run test:core-association && npm run test:ownership-relation",
+    "test": "npm run test:domain && npm run test:net-informativeness && npm run test:constraint-policy && npm run test:core-association && npm run test:ownership-relation",
     "test:domain": "ts-node ./tests/domain.ts",
+    "test:net-informativeness": "ts-node ./tests/netInformativeness.ts",
     "test:constraint-policy": "ts-node ./tests/constraintPolicy.ts",
     "test:core-association": "ts-node ./tests/coreAssociation.ts",
     "test:ownership-relation": "ts-node ./tests/ownershipRelation.ts"
