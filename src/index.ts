@@ -5,6 +5,7 @@ import { buildCandidateGroups } from './domain/candidateGrouping';
 import { buildSemanticContexts, type SemanticComponentContext, type SemanticComponentMetadata } from './domain/semanticContext';
 import { allowedSemanticRolesForPrefix, buildSemanticEvidenceCatalog, validateSemanticInference } from './domain/semanticInference';
 import { buildSemanticGatewayRequest, normalizeGatewayBaseUrl, parseSemanticGatewayResponse } from './ai/gatewayClient';
+import { buildConstraintPreviewForInference, mergeConstraintPreviewResults } from './domain/layoutConstraintEngine';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
 export function activate(status?: 'onStartupFinished', arg?: string): void {
@@ -1114,9 +1115,118 @@ export async function analyzeAmbiguousWithAi(): Promise<void> {
   }
 }
 
+
+export async function previewLayoutConstraints(): Promise<void> {
+  const gatewayBaseUrl = await getConfiguredGatewayBaseUrl();
+  if (!gatewayBaseUrl) return;
+
+  try {
+    const contexts = await collectSemanticContexts();
+    const previewResults = [];
+    const rows: string[] = [];
+    let blocked = 0;
+    let failed = 0;
+    let providerLabel = '';
+
+    for (const context of contexts) {
+      try {
+        const { gatewayResponse, validation } = await requestSemanticInference(
+          context,
+          gatewayBaseUrl,
+        );
+
+        const provider = gatewayResponse.provider ?? 'unknown';
+        const model = gatewayResponse.model ?? 'unknown';
+        providerLabel ||= `${provider} / ${model}`;
+
+        if (provider === 'mock') {
+          rows.push(`${context.designator}：Mock 模式不生成真实布局约束`);
+          continue;
+        }
+
+        if (!validation.valid) {
+          blocked += 1;
+          rows.push(`${context.designator}：AI 结果被 Validator 拦截`);
+          continue;
+        }
+
+        const result = buildConstraintPreviewForInference(
+          context.designator,
+          gatewayResponse.inference,
+        );
+        previewResults.push(result);
+
+        if (result.proposals.length) {
+          for (const proposal of result.proposals) {
+            const level = proposal.strength === 'advisory' ? '提示级' : '软约束';
+            const execution = proposal.execution === 'review-only'
+              ? '仅人工复核，不参与布局计算'
+              : '可进入后续布局方案计算';
+            const target = proposal.target ? ` → ${proposal.target}` : '';
+            rows.push(
+              `${proposal.subject}：[${level}] ${layoutConstraintTypeZh(proposal.type)}${target} · 置信=${semanticConfidenceZh(proposal.confidence)} · ${execution}`,
+            );
+          }
+        }
+        else {
+          const reason = result.skipped[0]?.reason;
+          const reasonText = reason === 'insufficient-semantic-evidence'
+            ? '语义证据不足'
+            : reason === 'unknown-semantic-role'
+              ? '语义角色未知'
+              : '没有可靠的主动布局约束';
+          rows.push(`${context.designator}：跳过 · ${reasonText}`);
+        }
+      }
+      catch (error) {
+        failed += 1;
+        console.error(
+          `[LayoutPilot] Constraint preview failed for ${context.designator}`,
+          error,
+        );
+        rows.push(`${context.designator}：生成失败 · ${String(error)}`);
+      }
+    }
+
+    const merged = mergeConstraintPreviewResults(previewResults);
+    console.log('[LayoutPilot] constraint preview', merged);
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        'LayoutPilot 布局约束预览已生成。',
+        '',
+        `语义上下文器件：${contexts.length}`,
+        `生成约束：${merged.proposals.length}`,
+        `软约束：${merged.softCount}`,
+        `提示级约束：${merged.advisoryCount}`,
+        `可进入后续布局方案：${merged.previewEligibleCount}`,
+        `仅人工复核：${merged.reviewOnlyCount}`,
+        `AI 结果被拦截：${blocked}`,
+        `调用失败：${failed}`,
+        `模型：${providerLabel || '未获得真实模型结果'}`,
+        '',
+        ...rows,
+        '',
+        '安全边界：',
+        '• AI 生成的约束不会成为硬约束；',
+        '• 低置信结果不会参与布局计算；',
+        '• 当前仅预览约束，不会移动任何 PCB 器件。',
+      ].join('\n'),
+      'LayoutPilot · 布局约束预览',
+    );
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Layout constraint preview failed', error);
+    await eda.sys_Dialog.showInformationMessage(
+      `生成布局约束预览失败。\n\n${String(error)}\n\nPCB 未发生任何修改。`,
+      'LayoutPilot · 第 3 阶段',
+    );
+  }
+}
+
 export async function about(): Promise<void> {
   await eda.sys_Dialog.showInformationMessage(
-    `LayoutPilot v${extensionConfig.version}\n\n第 2 阶段：为规则层无法确定的器件构建语义上下文，并逐步引入 AI 语义补全。\n当前不会自动修改 PCB。`,
+    `LayoutPilot v${extensionConfig.version}\n\n第 3 阶段：把已校验的语义结果转换为可解释、分级的布局约束。\n当前只生成约束预览，不会自动修改 PCB。`,
     '关于 LayoutPilot',
   );
 }
