@@ -288,11 +288,23 @@ export function planDecouplingPlacement(input: {
 		};
 	}
 
-	const obstacleBoxes = obstacles
-		.filter(component =>
-			component.id !== subject.id
-			&& component.layer === subject.layer
-		)
+	const relevantObstacles = obstacles.filter(component =>
+		component.id !== subject.id
+		&& component.layer === subject.layer
+	);
+	const invalidObstacle = relevantObstacles.find(
+		component => validateComponentGeometry(component).length > 0,
+	);
+	if (invalidObstacle) {
+		return {
+			ready: false,
+			reasons: [
+				`无法确认 ${invalidObstacle.designator} 的完整焊盘几何，不能证明候选位置无碰撞`,
+			],
+		};
+	}
+
+	const obstacleBoxes = relevantObstacles
 		.map(component => ({
 			component,
 			box: componentBox(component),
