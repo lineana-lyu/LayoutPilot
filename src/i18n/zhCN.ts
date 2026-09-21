@@ -43,3 +43,19 @@ export function structuralEvidenceZh(evidence: StructuralEvidence): string {
 			return '当前在电路关系图中没有与其他器件建立网络连接';
 	}
 }
+
+
+import type { GroupEvidence } from '../domain/candidateGrouping';
+
+export function groupEvidenceZh(evidence: GroupEvidence): string {
+	switch (evidence.code) {
+		case 'CORE_SELECTED':
+			return `${evidence.component ?? '该器件'} 被选为候选核心器件`;
+		case 'PASSIVE_SINGLE_CORE_NEIGHBOR':
+			return `${evidence.component ?? '该器件'} 是无源器件，且只与核心器件 ${evidence.core ?? ''} 直接相连，因此归为其外围器件候选`;
+		case 'BOUNDARY_KEPT_SEPARATE':
+			return `${evidence.component ?? '该器件'} 更像接口/连接器，暂不并入核心模块`;
+		case 'ISOLATED_UNGROUPED':
+			return `${evidence.component ?? '该器件'} 当前没有网络连接，暂不归组`;
+	}
+}
