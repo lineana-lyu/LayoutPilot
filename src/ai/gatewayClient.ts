@@ -8,6 +8,9 @@ export interface SemanticGatewayRequest {
 	version: '1';
 	context: SemanticComponentContext;
 	evidenceCatalog: SemanticEvidenceItem[];
+	allowedRoles: SemanticInference['role'][];
+	allowedConstraintTargets: string[];
+	validationFeedback?: string[];
 }
 
 export interface SemanticGatewayResponse {
@@ -140,10 +143,18 @@ export function normalizeGatewayBaseUrl(value: string): string {
 export function buildSemanticGatewayRequest(
 	context: SemanticComponentContext,
 	evidenceCatalog: SemanticEvidenceItem[],
+	allowedRoles: SemanticInference['role'][],
+	validationFeedback?: string[],
 ): SemanticGatewayRequest {
 	return {
 		version: '1',
 		context,
 		evidenceCatalog,
+		allowedRoles,
+		allowedConstraintTargets: [
+			...context.relatedCoreDesignators,
+			...context.connectedNets.map(net => net.netName),
+		],
+		validationFeedback,
 	};
 }
