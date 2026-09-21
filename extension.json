@@ -3,7 +3,7 @@
   "uuid": "1a2b3c4d5e6f77889900aabbccddeeff",
   "displayName": "LayoutPilot",
   "description": "面向 PCB 布局阶段的 AI 协作插件：理解电路结构、提取布局约束并辅助生成可确认的布局方案。",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "lineana-lyu",
   "engines": { "eda": "^3.2.0" },
   "license": "Apache-2.0",
@@ -19,46 +19,46 @@
     "pcb": [
       {
         "id": "layoutpilot",
-        "title": "LayoutPilot",
+        "title": "LayoutPilot 智能布局助手",
         "menuItems": [
           {
             "id": "inspect-pcb",
-            "title": "Inspect PCB",
+            "title": "检查当前 PCB",
             "registerFn": "inspectPcb"
           },
           {
             "id": "inspect-u1",
-            "title": "Inspect Test Component (U1)",
+            "title": "检查测试器件 U1",
             "registerFn": "inspectTestComponent"
           },
           {
             "id": "move-u1",
-            "title": "TEST: Move U1 +100 X",
+            "title": "测试：U1 向 X 正方向移动 100",
             "registerFn": "moveTestComponent"
           },
           {
             "id": "toggle-lock-u1",
-            "title": "TEST: Toggle U1 Lock",
+            "title": "测试：切换 U1 锁定状态",
             "registerFn": "toggleTestComponentLock"
           },
           {
             "id": "inspect-connectivity",
-            "title": "Inspect Connectivity",
+            "title": "检查网络连接",
             "registerFn": "inspectConnectivity"
           },
           {
             "id": "inspect-circuit-graph",
-            "title": "Inspect Circuit Graph",
+            "title": "检查电路关系图",
             "registerFn": "inspectCircuitGraph"
           },
           {
             "id": "inspect-features",
-            "title": "Inspect Structural Features",
+            "title": "检查结构特征",
             "registerFn": "inspectStructuralFeatures"
           },
           {
             "id": "about",
-            "title": "About LayoutPilot",
+            "title": "关于 LayoutPilot",
             "registerFn": "about"
           }
         ]
