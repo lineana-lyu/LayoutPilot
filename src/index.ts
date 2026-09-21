@@ -3,7 +3,7 @@ import { extractStructuralFeatures, type ComponentMetadata } from './domain/comp
 import { coreLevelZh, groupEvidenceZh, layoutConstraintTypeZh, lockedZh, netGroupingClassZh, semanticConfidenceZh, semanticMissingEvidenceZh, semanticRoleZh, structuralEvidenceZh } from './i18n/zhCN';
 import { buildCandidateGroups } from './domain/candidateGrouping';
 import { buildSemanticContexts, type SemanticComponentContext, type SemanticComponentMetadata } from './domain/semanticContext';
-import { buildSemanticEvidenceCatalog, validateSemanticInference } from './domain/semanticInference';
+import { allowedSemanticRolesForPrefix, buildSemanticEvidenceCatalog, validateSemanticInference } from './domain/semanticInference';
 import { buildSemanticGatewayRequest, normalizeGatewayBaseUrl, parseSemanticGatewayResponse } from './ai/gatewayClient';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
@@ -789,12 +789,18 @@ async function getConfiguredGatewayBaseUrl(): Promise<string | null> {
   return normalizeGatewayBaseUrl(configured);
 }
 
-async function requestSemanticInference(
+async function performSemanticGatewayRequest(
   context: SemanticComponentContext,
   gatewayBaseUrl: string,
+  validationFeedback?: string[],
 ) {
   const evidenceCatalog = buildSemanticEvidenceCatalog(context);
-  const request = buildSemanticGatewayRequest(context, evidenceCatalog);
+  const request = buildSemanticGatewayRequest(
+    context,
+    evidenceCatalog,
+    allowedSemanticRolesForPrefix(context.referencePrefix),
+    validationFeedback,
+  );
 
   console.log('[LayoutPilot] AI semantic request', request);
 
@@ -832,6 +838,45 @@ async function requestSemanticInference(
     evidenceCatalog,
     gatewayResponse,
     validation,
+  };
+}
+
+async function requestSemanticInference(
+  context: SemanticComponentContext,
+  gatewayBaseUrl: string,
+) {
+  const first = await performSemanticGatewayRequest(
+    context,
+    gatewayBaseUrl,
+  );
+
+  if (
+    first.validation.valid
+    || first.gatewayResponse.provider === 'mock'
+  ) {
+    return {
+      ...first,
+      repaired: false,
+    };
+  }
+
+  console.warn(
+    '[LayoutPilot] AI result rejected, retrying once with validator feedback',
+    {
+      designator: context.designator,
+      errors: first.validation.errors,
+    },
+  );
+
+  const second = await performSemanticGatewayRequest(
+    context,
+    gatewayBaseUrl,
+    first.validation.errors,
+  );
+
+  return {
+    ...second,
+    repaired: second.validation.valid,
   };
 }
 
