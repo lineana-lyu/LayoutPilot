@@ -38,13 +38,14 @@ export interface StructuralFeature {
 	footprintName?: string;
 	isPassiveCandidate: boolean;
 	isBoundaryCandidate: boolean;
+	isCoreEligible: boolean;
 	coreScore: number;
 	coreLevel: 'low' | 'medium' | 'high';
 	coreEvidence: StructuralEvidence[];
 }
 
-const PASSIVE_PREFIXES = new Set(['R', 'C', 'L', 'D', 'FB']);
-const BOUNDARY_PREFIXES = new Set(['J', 'P', 'CN']);
+const PASSIVE_PREFIXES = new Set(['R', 'C', 'L', 'D', 'FB', 'X', 'Y']);
+const BOUNDARY_PREFIXES = new Set(['J', 'P', 'CN', 'H']);
 
 export function getReferencePrefix(designator: string): string {
 	const match = designator.toUpperCase().match(/^[A-Z]+/);
@@ -64,6 +65,7 @@ export function extractStructuralFeatures(
 		const connectedNetCount = node.connectedNetCount;
 		const isPassiveCandidate = PASSIVE_PREFIXES.has(referencePrefix);
 		const isBoundaryCandidate = BOUNDARY_PREFIXES.has(referencePrefix);
+		const isCoreEligible = !isPassiveCandidate && !isBoundaryCandidate;
 
 		const sharedNetSizes = graph.nets
 			.filter(net => net.componentIds.includes(node.id))
@@ -113,7 +115,7 @@ export function extractStructuralFeatures(
 		}
 
 		if (isBoundaryCandidate) {
-			score -= 1;
+			score -= 4;
 			evidence.push({ code: 'BOUNDARY_PREFIX' });
 		}
 
@@ -138,6 +140,7 @@ export function extractStructuralFeatures(
 			footprintName: meta?.footprintName,
 			isPassiveCandidate,
 			isBoundaryCandidate,
+			isCoreEligible,
 			coreScore,
 			coreLevel,
 			coreEvidence: evidence,
