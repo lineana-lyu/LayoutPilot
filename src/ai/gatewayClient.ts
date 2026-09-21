@@ -67,6 +67,9 @@ export function parseSemanticGatewayResponse(value: unknown): SemanticGatewayRes
 	if (typeof inference.explanation !== 'string') {
 		throw new Error('AI Gateway 缺少 explanation。');
 	}
+	if ('associatedCore' in inference) {
+		throw new Error('AI Gateway v2 禁止 AI 输出 associatedCore；归属关系必须来自确定性 context.ownership。');
+	}
 	return {
 		inference: {
 			status: inference.status as SemanticInference['status'],
