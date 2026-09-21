@@ -65,3 +65,102 @@ export function groupEvidenceZh(evidence: GroupEvidence): string {
 			return `${evidence.component ?? '该器件'} 同时与多个核心器件存在有效结构关联（${(evidence.cores ?? []).join('、') || '未知'}），归属存在歧义`;
 	}
 }
+
+
+import type { NetGroupingClass } from '../domain/netInformativeness';
+
+export function netGroupingClassZh(value: NetGroupingClass): string {
+	switch (value) {
+		case 'global-ground':
+			return '全局地';
+		case 'global-power':
+			return '全局电源';
+		case 'named-signal':
+			return '明确命名信号';
+		case 'high-fanout':
+			return '高扇出网络';
+		default:
+			return '局部网络';
+	}
+}
+
+export function semanticMissingEvidenceZh(code: string): string {
+	switch (code) {
+		case 'component-name':
+			return '器件名称/数值';
+		case 'footprint':
+			return '封装信息';
+		case 'manufacturer':
+			return '制造商';
+		case 'value-or-extra-properties':
+			return '器件值或扩展属性';
+		case 'informative-signal-net':
+			return '缺少可用于功能判断的明确控制/信号网络';
+		case 'direct-core-relation':
+			return '缺少直接核心器件关联';
+		default:
+			return code;
+	}
+}
+
+
+import type {
+	LayoutConstraintType,
+	SemanticConfidence,
+	SemanticRole,
+} from '../domain/semanticInference';
+
+export function semanticRoleZh(role: SemanticRole): string {
+	switch (role) {
+		case 'decoupling-capacitor':
+			return '去耦电容';
+		case 'bulk-capacitor':
+			return '储能/大容量电容';
+		case 'filter-capacitor':
+			return '滤波电容';
+		case 'power-path-inductor':
+			return '电源路径电感/磁珠';
+		case 'power-switch':
+			return '电源开关器件';
+		case 'protection-device':
+			return '保护器件';
+		case 'reset-network':
+			return '复位网络器件';
+		case 'timing-device':
+			return '时钟/定时器件';
+		case 'connector-interface':
+			return '接口/连接器件';
+		case 'other':
+			return '其他';
+		default:
+			return '未知';
+	}
+}
+
+export function semanticConfidenceZh(value: SemanticConfidence): string {
+	switch (value) {
+		case 'high':
+			return '高';
+		case 'medium':
+			return '中';
+		default:
+			return '低';
+	}
+}
+
+export function layoutConstraintTypeZh(value: LayoutConstraintType): string {
+	switch (value) {
+		case 'near':
+			return '靠近';
+		case 'group-with':
+			return '同组放置';
+		case 'keep-short':
+			return '保持路径短';
+		case 'edge':
+			return '靠板边';
+		case 'keepout':
+			return '保持禁布/避让区';
+		default:
+			return '暂不生成布局约束';
+	}
+}

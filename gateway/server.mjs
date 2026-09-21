@@ -1,0 +1,442 @@
+import http from 'node:http';
+
+const port = Number(process.env.LAYOUTPILOT_GATEWAY_PORT || 8787);
+const mode = process.env.LAYOUTPILOT_GATEWAY_MODE || 'mock';
+
+const semanticSchema = {
+	type: 'object',
+	additionalProperties: false,
+	properties: {
+		status: {
+			type: 'string',
+			enum: ['inferred', 'insufficient-evidence'],
+		},
+		role: {
+			type: 'string',
+			enum: [
+				'decoupling-capacitor',
+				'bulk-capacitor',
+				'filter-capacitor',
+				'power-path-inductor',
+				'power-switch',
+				'protection-device',
+				'reset-network',
+				'timing-device',
+				'connector-interface',
+				'other',
+				'unknown',
+			],
+		},
+		associatedCore: {
+			type: ['string', 'null'],
+		},
+		confidence: {
+			type: 'string',
+			enum: ['low', 'medium', 'high'],
+		},
+		evidenceRefs: {
+			type: 'array',
+			items: { type: 'string' },
+		},
+		explanation: {
+			type: 'string',
+		},
+		constraints: {
+			type: 'array',
+			items: {
+				type: 'object',
+				additionalProperties: false,
+				properties: {
+					type: {
+						type: 'string',
+						enum: [
+							'near',
+							'group-with',
+							'keep-short',
+							'edge',
+							'keepout',
+							'no-constraint',
+						],
+					},
+					target: {
+						type: ['string', 'null'],
+					},
+					evidenceRefs: {
+						type: 'array',
+						items: { type: 'string' },
+					},
+				},
+				required: ['type', 'target', 'evidenceRefs'],
+			},
+		},
+	},
+	required: [
+		'status',
+		'role',
+		'associatedCore',
+		'confidence',
+		'evidenceRefs',
+		'explanation',
+		'constraints',
+	],
+};
+
+function json(res, status, body) {
+	res.writeHead(status, {
+		'content-type': 'application/json; charset=utf-8',
+		'access-control-allow-origin': '*',
+		'access-control-allow-headers': 'content-type',
+		'access-control-allow-methods': 'GET,POST,OPTIONS',
+	});
+	res.end(JSON.stringify(body));
+}
+
+async function readJson(req) {
+	const chunks = [];
+	for await (const chunk of req) {
+		chunks.push(chunk);
+	}
+	const raw = Buffer.concat(chunks).toString('utf8');
+	return raw ? JSON.parse(raw) : {};
+}
+
+function evidenceIds(request) {
+	return new Set(
+		Array.isArray(request.evidenceCatalog)
+			? request.evidenceCatalog.map(item => item.id).filter(Boolean)
+			: [],
+	);
+}
+
+function buildMockInference(request) {
+	const context = request.context ?? {};
+	const ids = evidenceIds(request);
+
+	const refs = [
+		'component:value',
+		'net:VDD',
+		'net:GND',
+		'core:U1',
+	].filter(id => ids.has(id));
+
+	if (
+		context.designator === 'C6'
+		&& String(context.value ?? '').toLowerCase() === '100nf'
+		&& ids.has('net:VDD')
+		&& ids.has('net:GND')
+		&& ids.has('core:U1')
+	) {
+		return {
+			status: 'inferred',
+			role: 'decoupling-capacitor',
+			associatedCore: 'U1',
+			confidence: 'medium',
+			evidenceRefs: refs,
+			explanation: 'C6 为 100nF 电容，跨接 VDD 与 GND，并与候选核心 U1 共享电源域；这些证据支持“去耦电容”候选，但缺少芯片引脚语义/数据手册证据，因此不提升为高置信。',
+			constraints: [
+				{
+					type: 'near',
+					target: 'U1',
+					evidenceRefs: refs,
+				},
+			],
+		};
+	}
+
+	const fallbackRefs = Array.from(ids).slice(0, 4);
+	return {
+		status: 'insufficient-evidence',
+		role: 'unknown',
+		associatedCore: null,
+		confidence: 'low',
+		evidenceRefs: fallbackRefs,
+		explanation: '当前证据不足以形成可靠语义判断。',
+		constraints: [
+			{
+				type: 'no-constraint',
+				target: null,
+				evidenceRefs: fallbackRefs,
+			},
+		],
+	};
+}
+
+function extractOutputText(response) {
+	if (typeof response.output_text === 'string' && response.output_text) {
+		return response.output_text;
+	}
+
+	for (const item of response.output ?? []) {
+		for (const content of item.content ?? []) {
+			if (content.type === 'output_text' && typeof content.text === 'string') {
+				return content.text;
+			}
+		}
+	}
+
+	throw new Error('模型响应中没有可解析的 output_text。');
+}
+
+function normalizeInference(inference) {
+	const normalized = structuredClone(inference);
+	if (normalized.associatedCore === null) {
+		delete normalized.associatedCore;
+	}
+	for (const constraint of normalized.constraints ?? []) {
+		if (constraint.target === null) {
+			delete constraint.target;
+		}
+	}
+	return normalized;
+}
+
+
+async function inferWithDeepSeek(request) {
+	const apiKey = process.env.DEEPSEEK_API_KEY;
+	const model = process.env.DEEPSEEK_MODEL || 'deepseek-flash';
+	const baseUrl = (process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com')
+		.replace(/\/+$/, '');
+
+	if (!apiKey) {
+		throw new Error('缺少 DEEPSEEK_API_KEY。');
+	}
+
+	const allowedRoles = Array.isArray(request.allowedRoles)
+		? request.allowedRoles
+		: ['unknown'];
+	const allowedConstraintTargets = Array.isArray(request.allowedConstraintTargets)
+		? request.allowedConstraintTargets
+		: [];
+	const validationFeedback = Array.isArray(request.validationFeedback)
+		? request.validationFeedback
+		: [];
+
+	const exampleRole = allowedRoles.find(role => role !== 'unknown') || 'unknown';
+	const exampleTarget = allowedConstraintTargets[0] ?? null;
+	const outputExample = {
+		status: exampleRole === 'unknown' ? 'insufficient-evidence' : 'inferred',
+		role: exampleRole,
+		associatedCore: request.context?.relatedCoreDesignators?.[0] ?? null,
+		confidence: 'medium',
+		evidenceRefs: [],
+		explanation: '示例说明。',
+		constraints: exampleTarget
+			? [
+				{
+					type: 'near',
+					target: exampleTarget,
+					evidenceRefs: [],
+				},
+			]
+			: [
+				{
+					type: 'no-constraint',
+					target: null,
+					evidenceRefs: [],
+				},
+			],
+	};
+
+	const messages = [
+		{
+			role: 'system',
+			content: [
+				'你是 LayoutPilot 的 PCB 语义分析器。',
+				'你只能根据输入 JSON 中的 context 和 evidenceCatalog 推理，禁止创造新的 PCB 事实。',
+				'你的最终回答必须是一个 JSON object，不要输出 Markdown、代码块或额外文本。',
+				'evidenceRefs 和 constraints[*].evidenceRefs 只能引用 evidenceCatalog 中存在的 id。',
+				'associatedCore 只能从 context.relatedCoreDesignators 中选择；不能确定时使用 null。',
+				'status 只允许 inferred 或 insufficient-evidence。',
+				'role 必须严格从输入中的 allowedRoles 数组中选择，禁止输出 allowedRoles 之外的角色。',
+				'confidence 只允许 low, medium, high。',
+				'constraint.type 只允许 near, group-with, keep-short, edge, keepout, no-constraint。',
+				'constraint.target 必须严格从输入中的 allowedConstraintTargets 数组中选择；禁止拼接 VDD-GND、U1.VDD 之类的新字符串。',
+				'allowedRoles 已由确定性规则层根据器件类型生成；不要自行扩展角色集合。',
+				'如果证据不足：status=insufficient-evidence，role=unknown，只能输出 no-constraint。',
+				'缺少 Pin 语义或数据手册证据时，不要声称靠近某个具体 Pin。',
+				'不要输出百分比置信度。',
+				'JSON 格式示例：',
+				JSON.stringify(outputExample),
+			].join('\n'),
+		},
+		{
+			role: 'user',
+			content: JSON.stringify({
+				task: validationFeedback.length
+					? '上一次输出被 Validator 拒绝。请根据 validationFeedback 修正，并只返回新的合法 JSON。'
+					: '请判断这个歧义 PCB 器件最可能的电路角色，并给出保守的布局约束。只返回 JSON。',
+				context: request.context,
+				evidenceCatalog: request.evidenceCatalog,
+				allowedRoles,
+				allowedConstraintTargets,
+				validationFeedback,
+			}),
+		},
+	];
+
+	const response = await fetch(`${baseUrl}/chat/completions`, {
+		method: 'POST',
+		headers: {
+			authorization: `Bearer ${apiKey}`,
+			'content-type': 'application/json',
+		},
+		body: JSON.stringify({
+			model,
+			messages,
+			thinking: { type: 'disabled' },
+			stream: false,
+			max_tokens: 2000,
+			response_format: { type: 'json_object' },
+		}),
+	});
+
+	const raw = await response.text();
+	if (!response.ok) {
+		throw new Error(`DeepSeek API ${response.status}: ${raw.slice(0, 500)}`);
+	}
+
+	const data = JSON.parse(raw);
+	const content = data?.choices?.[0]?.message?.content;
+
+	if (typeof content !== 'string' || !content.trim()) {
+		throw new Error('DeepSeek 返回了空的 message.content。');
+	}
+
+	const inference = JSON.parse(content);
+
+	return {
+		inference: normalizeInference(inference),
+		provider: 'deepseek',
+		model,
+	};
+}
+
+async function inferWithOpenAI(request) {
+	const apiKey = process.env.OPENAI_API_KEY;
+	const model = process.env.OPENAI_MODEL;
+	const baseUrl = (process.env.OPENAI_API_BASE || 'https://api.openai.com/v1')
+		.replace(/\/+$/, '');
+
+	if (!apiKey) {
+		throw new Error('缺少 OPENAI_API_KEY。');
+	}
+	if (!model) {
+		throw new Error('缺少 OPENAI_MODEL。');
+	}
+
+	const payload = {
+		model,
+		instructions: [
+			'你是 LayoutPilot 的 PCB 语义分析器。',
+			'你只能根据输入中的 context 和 evidenceCatalog 推理，禁止创造新的 PCB 事实。',
+			'evidenceRefs 和 constraint.evidenceRefs 只能引用 evidenceCatalog 中存在的 id。',
+			'associatedCore 只能从 context.relatedCoreDesignators 中选择；不能确定时设为 null。',
+			'如果证据不足，status 必须为 insufficient-evidence，role 必须为 unknown，并且只能输出 no-constraint。',
+			'role 必须严格从输入 allowedRoles 中选择。',
+			'constraint.target 必须严格从输入 allowedConstraintTargets 中选择。',
+			'如果 validationFeedback 非空，必须优先修复其中指出的问题。',
+			'置信度只允许 low / medium / high，不要输出百分比。',
+			'布局建议应保守；缺少 Pin 语义时，不要声称靠近某个具体 Pin。',
+		].join('\n'),
+		input: JSON.stringify({
+			task: 'Infer the likely circuit role and conservative layout constraints for this ambiguous PCB component. Return only the requested structured result.',
+			context: request.context,
+			evidenceCatalog: request.evidenceCatalog,
+			allowedRoles: request.allowedRoles,
+			allowedConstraintTargets: request.allowedConstraintTargets,
+			validationFeedback: request.validationFeedback ?? [],
+		}),
+		text: {
+			format: {
+				type: 'json_schema',
+				name: 'layoutpilot_semantic_inference',
+				strict: true,
+				schema: semanticSchema,
+			},
+		},
+	};
+
+	const response = await fetch(`${baseUrl}/responses`, {
+		method: 'POST',
+		headers: {
+			authorization: `Bearer ${apiKey}`,
+			'content-type': 'application/json',
+		},
+		body: JSON.stringify(payload),
+	});
+
+	const raw = await response.text();
+	if (!response.ok) {
+		throw new Error(`OpenAI API ${response.status}: ${raw.slice(0, 500)}`);
+	}
+
+	const data = JSON.parse(raw);
+	const inference = JSON.parse(extractOutputText(data));
+
+	return {
+		inference: normalizeInference(inference),
+		provider: 'openai',
+		model,
+	};
+}
+
+async function handleSemanticInfer(request) {
+	if (!request || request.version !== '1' || !request.context) {
+		throw new Error('请求格式错误。');
+	}
+
+	if (mode === 'mock') {
+		return {
+			inference: normalizeInference(buildMockInference(request)),
+			provider: 'mock',
+			model: 'deterministic-c6-demo',
+		};
+	}
+
+	if (mode === 'openai') {
+		return inferWithOpenAI(request);
+	}
+
+	if (mode === 'deepseek') {
+		return inferWithDeepSeek(request);
+	}
+
+	throw new Error(`未知 LAYOUTPILOT_GATEWAY_MODE: ${mode}`);
+}
+
+const server = http.createServer(async (req, res) => {
+	if (req.method === 'OPTIONS') {
+		json(res, 204, {});
+		return;
+	}
+
+	try {
+		if (req.method === 'GET' && req.url === '/health') {
+			json(res, 200, {
+				ok: true,
+				service: 'layoutpilot-ai-gateway',
+				mode,
+			});
+			return;
+		}
+
+		if (req.method === 'POST' && req.url === '/semantic-infer') {
+			const request = await readJson(req);
+			const result = await handleSemanticInfer(request);
+			json(res, 200, result);
+			return;
+		}
+
+		json(res, 404, { error: 'not-found' });
+	}
+	catch (error) {
+		json(res, 500, {
+			error: error instanceof Error ? error.message : String(error),
+		});
+	}
+});
+
+server.listen(port, '127.0.0.1', () => {
+	console.log(`LayoutPilot AI Gateway listening on http://127.0.0.1:${port}`);
+	console.log(`mode=${mode}`);
+});

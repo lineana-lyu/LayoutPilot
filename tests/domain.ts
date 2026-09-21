@@ -4,6 +4,9 @@ import { buildCandidateGroups } from '../src/domain/candidateGrouping';
 import { buildCircuitGraph, type CircuitComponentSnapshot } from '../src/domain/circuitGraph';
 import { extractStructuralFeatures, type ComponentMetadata } from '../src/domain/componentFeatures';
 import { buildNetGroupingProfiles } from '../src/domain/netInformativeness';
+import { buildSemanticContexts, resolveComponentDisplayName, type SemanticComponentContext } from '../src/domain/semanticContext';
+import { allowedSemanticRolesForPrefix, buildSemanticEvidenceCatalog, validateSemanticInference } from '../src/domain/semanticInference';
+import { buildSemanticGatewayRequest, normalizeGatewayBaseUrl, parseSemanticGatewayResponse } from '../src/ai/gatewayClient';
 
 function featuresFor(components: CircuitComponentSnapshot[]) {
 	const graph = buildCircuitGraph(components);
@@ -238,3 +241,281 @@ console.log('LayoutPilot domain regression tests passed.');
 }
 
 console.log('Header false-core regression passed.');
+
+
+{
+	const { graph, features } = featuresFor(sharedRailFixture());
+	const grouping = buildCandidateGroups(graph, features);
+	const contexts = buildSemanticContexts(
+		graph,
+		features,
+		grouping,
+		sharedRailFixture().map(component => ({
+			id: component.id,
+			designator: component.designator,
+			name: component.designator,
+		})),
+	);
+
+	const c1 = contexts.find(context => context.designator === 'C1');
+	assert.ok(c1);
+	assert.deepEqual(new Set(c1.relatedCoreDesignators), new Set(['U1', 'U2']));
+	assert.deepEqual(new Set(c1.lowInformationNets), new Set(['GND', '3V3']));
+	assert.equal(c1.informativeSignalNets.length, 0);
+	assert.ok(c1.missingEvidence.includes('informative-signal-net'));
+}
+
+console.log('Semantic context regression passed.');
+
+
+{
+	assert.equal(
+		resolveComponentDisplayName('={Value}', { Value: '100nF' }),
+		'100nF',
+	);
+	assert.equal(
+		resolveComponentDisplayName('={Manufacturer Part}', {
+			'Manufacturer Part': 'BLM21PG221SN1D',
+		}),
+		'BLM21PG221SN1D',
+	);
+	assert.equal(
+		resolveComponentDisplayName('STM32F103C8T6', { Value: 'ignored' }),
+		'STM32F103C8T6',
+	);
+}
+
+console.log('Semantic metadata template resolution passed.');
+
+
+{
+	const { graph, features } = featuresFor(sharedRailFixture());
+	const grouping = buildCandidateGroups(graph, features);
+	const contexts = buildSemanticContexts(
+		graph,
+		features,
+		grouping,
+		sharedRailFixture().map(component => ({
+			id: component.id,
+			designator: component.designator,
+			name: component.designator,
+		})),
+	);
+
+	const c1 = contexts.find(context => context.designator === 'C1');
+	assert.ok(c1);
+
+	const catalog = buildSemanticEvidenceCatalog(c1);
+	assert.ok(catalog.some(item => item.id === 'net:GND'));
+	assert.ok(catalog.some(item => item.id === 'net:3V3'));
+	assert.ok(catalog.some(item => item.id === 'core:U1'));
+	assert.ok(catalog.some(item => item.id === 'core:U2'));
+
+	const valid = validateSemanticInference(c1, {
+		status: 'insufficient-evidence',
+		role: 'unknown',
+		confidence: 'low',
+		evidenceRefs: ['net:GND', 'net:3V3'],
+		explanation: '只有共享电源/地关系，无法确定具体归属。',
+		constraints: [
+			{
+				type: 'no-constraint',
+				evidenceRefs: ['net:GND', 'net:3V3'],
+			},
+		],
+	});
+	assert.equal(valid.valid, true);
+
+	const hallucinated = validateSemanticInference(c1, {
+		status: 'inferred',
+		role: 'decoupling-capacitor',
+		associatedCore: 'U99',
+		confidence: 'high',
+		evidenceRefs: ['datasheet:invented'],
+		explanation: '错误示例',
+		constraints: [
+			{
+				type: 'near',
+				target: 'U99.VDD',
+				evidenceRefs: ['datasheet:invented'],
+			},
+		],
+	});
+	assert.equal(hallucinated.valid, false);
+	assert.ok(hallucinated.errors.some(error => error.includes('不存在于规则层')));
+	assert.ok(hallucinated.errors.some(error => error.includes('不存在的证据')));
+}
+
+console.log('Semantic inference validator passed.');
+
+
+{
+	assert.equal(
+		normalizeGatewayBaseUrl('http://127.0.0.1:8787/'),
+		'http://127.0.0.1:8787',
+	);
+	assert.throws(
+		() => normalizeGatewayBaseUrl('127.0.0.1:8787'),
+		/http:\/\/|https:\/\//,
+	);
+
+	const { graph, features } = featuresFor(sharedRailFixture());
+	const grouping = buildCandidateGroups(graph, features);
+	const context = buildSemanticContexts(
+		graph,
+		features,
+		grouping,
+		sharedRailFixture().map(component => ({
+			id: component.id,
+			designator: component.designator,
+			name: component.designator,
+		})),
+	).find(item => item.designator === 'C1');
+
+	assert.ok(context);
+	const catalog = buildSemanticEvidenceCatalog(context);
+	const request = buildSemanticGatewayRequest(
+		context,
+		catalog,
+		allowedSemanticRolesForPrefix(context.referencePrefix),
+	);
+	assert.equal(request.version, '1');
+	assert.equal(request.context.designator, 'C1');
+	assert.ok(request.allowedRoles.includes('decoupling-capacitor'));
+	assert.ok(request.allowedConstraintTargets.includes('U1'));
+	assert.ok(request.allowedConstraintTargets.includes('GND'));
+
+	const parsed = parseSemanticGatewayResponse({
+		inference: {
+			status: 'insufficient-evidence',
+			role: 'unknown',
+			confidence: 'low',
+			evidenceRefs: ['net:GND', 'net:3V3'],
+			explanation: '证据不足。',
+			constraints: [
+				{
+					type: 'no-constraint',
+					evidenceRefs: ['net:GND', 'net:3V3'],
+				},
+			],
+		},
+		provider: 'mock',
+		model: 'fixture',
+	});
+	assert.equal(parsed.provider, 'mock');
+
+	assert.throws(
+		() => parseSemanticGatewayResponse({
+			inference: {
+				status: 'inferred',
+				role: 'invented-role',
+				confidence: 'high',
+				evidenceRefs: [],
+				explanation: 'bad',
+				constraints: [],
+			},
+		}),
+		/role/,
+	);
+}
+
+console.log('AI gateway contract regression passed.');
+
+
+{
+	const { graph, features } = featuresFor(sharedRailFixture());
+	const grouping = buildCandidateGroups(graph, features);
+	const context = buildSemanticContexts(
+		graph,
+		features,
+		grouping,
+		sharedRailFixture().map(component => ({
+			id: component.id,
+			designator: component.designator,
+			name: component.designator,
+		})),
+	).find(item => item.designator === 'C1');
+
+	assert.ok(context);
+	const catalog = buildSemanticEvidenceCatalog(context);
+	assert.ok(catalog.some(item => item.label.includes('全局地')));
+	assert.ok(catalog.some(item => item.label.includes('全局电源')));
+
+	const invalidTarget = validateSemanticInference(context, {
+		status: 'inferred',
+		role: 'decoupling-capacitor',
+		associatedCore: 'U1',
+		confidence: 'medium',
+		evidenceRefs: ['net:GND', 'net:3V3', 'core:U1'],
+		explanation: '测试无效约束目标。',
+		constraints: [
+			{
+				type: 'near',
+				target: 'U99',
+				evidenceRefs: ['core:U1'],
+			},
+		],
+	});
+	assert.equal(invalidTarget.valid, false);
+	assert.ok(invalidTarget.errors.some(error => error.includes('布局约束目标 U99')));
+}
+
+console.log('Constraint target validation passed.');
+
+
+{
+	assert.ok(allowedSemanticRolesForPrefix('C').includes('decoupling-capacitor'));
+	assert.ok(!allowedSemanticRolesForPrefix('C').includes('power-path-inductor'));
+	assert.ok(allowedSemanticRolesForPrefix('L').includes('power-path-inductor'));
+	assert.ok(!allowedSemanticRolesForPrefix('L').includes('filter-capacitor'));
+
+	const context: SemanticComponentContext = {
+		componentId: 'l1',
+		designator: 'L1',
+		referencePrefix: 'L',
+		structuralRole: 'ambiguous',
+		connectedNets: [
+			{
+				netName: '3V',
+				classification: 'global-power',
+				groupingWeight: 0.1,
+				selfPads: ['2'],
+				peerEndpoints: [],
+				coreDesignators: ['U1'],
+			},
+			{
+				netName: 'VDD',
+				classification: 'global-power',
+				groupingWeight: 0.1,
+				selfPads: ['1'],
+				peerEndpoints: [],
+				coreDesignators: ['U1'],
+			},
+		],
+		relatedCoreDesignators: ['U1'],
+		informativeSignalNets: [],
+		lowInformationNets: ['3V', 'VDD'],
+		missingEvidence: [],
+	};
+
+	const invalidRole = validateSemanticInference(context, {
+		status: 'inferred',
+		role: 'filter-capacitor',
+		associatedCore: 'U1',
+		confidence: 'medium',
+		evidenceRefs: ['net:3V', 'net:VDD', 'core:U1'],
+		explanation: '错误地把 L1 判断成电容。',
+		constraints: [
+			{
+				type: 'near',
+				target: 'U1',
+				evidenceRefs: ['core:U1'],
+			},
+		],
+	});
+
+	assert.equal(invalidRole.valid, false);
+	assert.ok(invalidRole.errors.some(error => error.includes('与器件位号前缀 L 不兼容')));
+}
+
+console.log('Semantic role compatibility validation passed.');
