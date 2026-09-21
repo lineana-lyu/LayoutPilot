@@ -1,3 +1,4 @@
+import { buildCircuitGraph, type CircuitComponentSnapshot } from './domain/circuitGraph';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
 export function activate(status?: 'onStartupFinished', arg?: string): void {
@@ -321,9 +322,94 @@ export async function inspectConnectivity(): Promise<void> {
   }
 }
 
+
+export async function inspectCircuitGraph(): Promise<void> {
+  try {
+    const components = await eda.pcb_PrimitiveComponent.getAll();
+    const snapshots: CircuitComponentSnapshot[] = [];
+
+    for (const component of components) {
+      const primitiveId = component.getState_PrimitiveId();
+      const pads = await eda.pcb_PrimitiveComponent.getAllPinsByPrimitiveId(primitiveId);
+
+      snapshots.push({
+        id: primitiveId,
+        designator: component.getState_Designator() ?? component.getState_Name() ?? primitiveId,
+        name: component.getState_Name(),
+        padCount: pads?.length ?? 0,
+        pads: (pads ?? []).map((pad) => ({
+          padNumber: String(pad.getState_PadNumber() ?? '?'),
+          net: pad.getState_Net(),
+        })),
+      });
+    }
+
+    const graph = buildCircuitGraph(snapshots);
+    const idToDesignator = new Map(graph.nodes.map((node) => [node.id, node.designator]));
+
+    const nodeSummary = graph.nodes.map((node) => ({
+      component: node.designator,
+      pads: node.padCount,
+      nets: node.connectedNetCount,
+      neighbors: node.neighborComponentIds
+        .map((id) => idToDesignator.get(id) ?? id)
+        .join(', '),
+      isolated: node.isIsolated,
+    }));
+
+    const netSummary = graph.nets.map((net) => ({
+      net: net.name,
+      endpoints: net.endpoints
+        .map((endpoint) => `${endpoint.designator}.${endpoint.padNumber}`)
+        .join(' ↔ '),
+      components: net.componentIds.length,
+    }));
+
+    console.log('[LayoutPilot] circuit graph', graph);
+    console.table(nodeSummary);
+    console.table(netSummary);
+
+    const isolated = graph.nodes
+      .filter((node) => node.isIsolated)
+      .map((node) => node.designator);
+
+    const connected = graph.nodes.length - isolated.length;
+    const netPreview = graph.nets
+      .slice(0, 5)
+      .map((net) => `${net.name}: ${net.endpoints
+        .map((endpoint) => `${endpoint.designator}.${endpoint.padNumber}`)
+        .join(' ↔ ')}`)
+      .join('\n');
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        'LayoutPilot circuit graph built successfully.',
+        '',
+        `Components: ${graph.nodes.length}`,
+        `Connected components: ${connected}`,
+        `Isolated components: ${isolated.length}${isolated.length ? ` (${isolated.join(', ')})` : ''}`,
+        `Named nets: ${graph.nets.length}`,
+        '',
+        netPreview || 'No named networks found.',
+        '',
+        'Open the developer console for node and net tables.',
+      ].join('\n'),
+      'LayoutPilot · Circuit Graph',
+    );
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Circuit Graph failed', error);
+
+    await eda.sys_Dialog.showInformationMessage(
+      `Failed to build the circuit graph.\n\n${String(error)}`,
+      'LayoutPilot · Phase 1',
+    );
+  }
+}
+
 export async function about(): Promise<void> {
   await eda.sys_Dialog.showInformationMessage(
-    `LayoutPilot v${extensionConfig.version}\n\nPhase 0: JLCEDA Extension API feasibility PoC.\nWrite tests only run when explicitly selected from the LayoutPilot menu and target U1 only.`,
+    `LayoutPilot v${extensionConfig.version}\n\nPhase 1: deterministic circuit graph and functional-block candidate extraction.\nWrite tests only run when explicitly selected from the LayoutPilot menu and target U1 only.`,
     'About LayoutPilot',
   );
 }
