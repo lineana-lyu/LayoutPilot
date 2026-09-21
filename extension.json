@@ -97,6 +97,16 @@
             "registerFn": "previewLayoutConstraints"
           },
           {
+            "id": "apply-demo-placement",
+            "title": "应用受控布局建议",
+            "registerFn": "applyDemoPlacement"
+          },
+          {
+            "id": "undo-demo-placement",
+            "title": "撤销上次受控布局",
+            "registerFn": "undoLastDemoPlacement"
+          },
+          {
             "id": "about",
             "title": "关于 LayoutPilot",
             "registerFn": "about"
