@@ -8,6 +8,23 @@ export interface ComponentMetadata {
 	footprintName?: string;
 }
 
+export type StructuralEvidenceCode =
+	| 'IC_PREFIX'
+	| 'HIGH_PAD_COUNT'
+	| 'MULTI_PAD'
+	| 'HIGH_DEGREE'
+	| 'LOW_DEGREE'
+	| 'HIGH_NET_COUNT'
+	| 'LOW_NET_COUNT'
+	| 'PASSIVE_PREFIX'
+	| 'BOUNDARY_PREFIX'
+	| 'ISOLATED';
+
+export interface StructuralEvidence {
+	code: StructuralEvidenceCode;
+	value?: number;
+}
+
 export interface StructuralFeature {
 	id: string;
 	designator: string;
@@ -23,7 +40,7 @@ export interface StructuralFeature {
 	isBoundaryCandidate: boolean;
 	coreScore: number;
 	coreLevel: 'low' | 'medium' | 'high';
-	coreEvidence: string[];
+	coreEvidence: StructuralEvidence[];
 }
 
 const PASSIVE_PREFIXES = new Set(['R', 'C', 'L', 'D', 'FB']);
@@ -56,53 +73,53 @@ export function extractStructuralFeatures(
 			: 0;
 
 		let score = 0;
-		const evidence: string[] = [];
+		const evidence: StructuralEvidence[] = [];
 
 		if (referencePrefix === 'U') {
 			score += 3;
-			evidence.push('reference prefix U suggests an IC-class component');
+			evidence.push({ code: 'IC_PREFIX' });
 		}
 
 		if (node.padCount >= 16) {
 			score += 2;
-			evidence.push(`high pad count (${node.padCount})`);
+			evidence.push({ code: 'HIGH_PAD_COUNT', value: node.padCount });
 		}
 		else if (node.padCount >= 4) {
 			score += 1;
-			evidence.push(`multi-pad component (${node.padCount} pads)`);
+			evidence.push({ code: 'MULTI_PAD', value: node.padCount });
 		}
 
 		if (degree >= 3) {
 			score += 2;
-			evidence.push(`connected to ${degree} neighboring components`);
+			evidence.push({ code: 'HIGH_DEGREE', value: degree });
 		}
 		else if (degree >= 1) {
 			score += 1;
-			evidence.push(`connected to ${degree} neighboring component(s)`);
+			evidence.push({ code: 'LOW_DEGREE', value: degree });
 		}
 
 		if (connectedNetCount >= 3) {
 			score += 2;
-			evidence.push(`participates in ${connectedNetCount} named nets`);
+			evidence.push({ code: 'HIGH_NET_COUNT', value: connectedNetCount });
 		}
 		else if (connectedNetCount >= 1) {
 			score += 1;
-			evidence.push(`participates in ${connectedNetCount} named net(s)`);
+			evidence.push({ code: 'LOW_NET_COUNT', value: connectedNetCount });
 		}
 
 		if (isPassiveCandidate) {
 			score -= 3;
-			evidence.push('passive-style reference prefix lowers core candidacy');
+			evidence.push({ code: 'PASSIVE_PREFIX' });
 		}
 
 		if (isBoundaryCandidate) {
 			score -= 1;
-			evidence.push('connector-style reference prefix is treated as a boundary candidate');
+			evidence.push({ code: 'BOUNDARY_PREFIX' });
 		}
 
 		if (node.isIsolated) {
 			score -= 2;
-			evidence.push('currently isolated in the circuit graph');
+			evidence.push({ code: 'ISOLATED' });
 		}
 
 		const coreScore = Math.max(0, Math.min(10, score));
