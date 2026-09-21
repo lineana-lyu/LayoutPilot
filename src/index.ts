@@ -8,6 +8,7 @@ import { buildSemanticGatewayRequest, normalizeGatewayBaseUrl, parseSemanticGate
 import { buildConstraintPreview, mergeConstraintPreviewResults } from './domain/layoutConstraintEngine';
 import { resolveAmbiguousCoreAssociations } from './domain/coreAssociation';
 import { resolveOwnershipRelations } from './domain/ownershipRelation';
+import { clearHumanOwnershipDecisions, createHumanOwnershipDecision, getHumanOwnershipDecisions, removeHumanOwnershipDecision, toExplicitOwnershipHints, upsertHumanOwnershipDecision } from './domain/humanOwnershipDecision';
 import { buildSemanticBoardFingerprint, clearActiveSemanticSnapshot, createSemanticSnapshot, getActiveSemanticSnapshot, semanticSnapshotMatchesBoard, setActiveSemanticSnapshot, type SemanticSnapshotEntry } from './domain/semanticSnapshot';
 import { filterOwnershipPropertyNames, findOwnershipFields, findOwnershipMemberNames } from './domain/ownershipCapabilityProbe';
 import extensionConfig from '../extension.json' with { type: 'json' };
@@ -455,6 +456,7 @@ async function collectAnalysisState() {
     features,
     grouping,
     contexts,
+    semanticMetadata,
   };
 }
 
@@ -1031,6 +1033,7 @@ export async function analyzeAmbiguousWithAi(): Promise<void> {
 
     if (!contexts.length) {
       clearActiveSemanticSnapshot();
+      clearHumanOwnershipDecisions();
       await eda.sys_Dialog.showInformationMessage(
         '当前 PCB 没有需要 AI 补全语义的歧义器件。',
         'LayoutPilot · AI 批量语义分析',
@@ -1129,6 +1132,7 @@ export async function analyzeAmbiguousWithAi(): Promise<void> {
       boardFingerprint,
       snapshotEntries,
     );
+    clearHumanOwnershipDecisions();
     setActiveSemanticSnapshot(snapshot);
     console.log('[LayoutPilot] semantic snapshot frozen', snapshot);
 
@@ -1164,6 +1168,196 @@ export async function analyzeAmbiguousWithAi(): Promise<void> {
         'PCB 未发生任何修改。',
       ].join('\n'),
       'LayoutPilot · AI 批量语义分析',
+    );
+  }
+}
+
+
+function showSingleSelectDialog(
+  options: Array<{ value: string; displayContent: string }>,
+  beforeContent: string,
+  afterContent: string,
+  title: string,
+  defaultOption?: string,
+): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    eda.sys_Dialog.showSelectDialog(
+      options,
+      beforeContent,
+      afterContent,
+      title,
+      defaultOption,
+      false,
+      (value) => resolve(typeof value === 'string' ? value : undefined),
+    );
+  });
+}
+
+export async function confirmAmbiguousOwnership(): Promise<void> {
+  try {
+    const snapshot = getActiveSemanticSnapshot();
+    if (!snapshot) {
+      await eda.sys_Dialog.showInformationMessage(
+        [
+          '当前没有可复用的 Semantic Snapshot。',
+          '',
+          '请先运行“AI 分析全部歧义器件（只读）”。',
+        ].join('\n'),
+        'LayoutPilot · 人工确认 Owner',
+      );
+      return;
+    }
+
+    const analysisState = await collectAnalysisState();
+    const boardFingerprint = buildSemanticBoardFingerprint({
+      graph: analysisState.graph,
+      contexts: analysisState.contexts,
+    });
+
+    if (!semanticSnapshotMatchesBoard(snapshot, boardFingerprint)) {
+      await eda.sys_Dialog.showInformationMessage(
+        [
+          '当前 PCB 的语义输入已经变化，旧 Snapshot 已过期。',
+          '',
+          '请先重新运行 AI 语义分析，再进行人工确认。',
+        ].join('\n'),
+        'LayoutPilot · 人工确认 Owner',
+      );
+      return;
+    }
+
+    const nodeByDesignator = new Map(
+      analysisState.graph.nodes.map(node => [node.designator, node]),
+    );
+    const eligible = snapshot.entries.filter(entry =>
+      entry.status === 'valid'
+      && entry.inference?.role === 'decoupling-capacitor'
+      && entry.context.ownership.relation === 'rail-domain'
+      && entry.context.ownership.hostDesignators.length > 0
+    );
+
+    if (!eligible.length) {
+      await eda.sys_Dialog.showInformationMessage(
+        [
+          '当前 Snapshot 中没有需要人工确认 owner 的去耦电容。',
+          '',
+          '本步骤只处理：AI 已确认去耦角色，但确定性关系仍是 rail-domain 的器件。',
+        ].join('\n'),
+        'LayoutPilot · 人工确认 Owner',
+      );
+      return;
+    }
+
+    let confirmed = 0;
+    let cleared = 0;
+    let skipped = 0;
+
+    for (const entry of eligible) {
+      const existing = getHumanOwnershipDecisions(snapshot.id)
+        .find(item => item.componentId === entry.componentId);
+      const candidates = entry.context.ownership.hostDesignators
+        .map(designator => nodeByDesignator.get(designator))
+        .filter((node): node is NonNullable<typeof node> => Boolean(node));
+
+      if (!candidates.length) {
+        skipped += 1;
+        continue;
+      }
+
+      const clearValue = '__layoutpilot_unconfirmed__';
+      const options = [
+        ...candidates.map(node => ({
+          value: node.id,
+          displayContent: node.designator,
+        })),
+        {
+          value: clearValue,
+          displayContent: existing ? '清除已确认 owner' : '暂不处理',
+        },
+      ];
+      const rails = entry.context.ownership.railNets.length
+        ? entry.context.ownership.railNets.join('、')
+        : '未知';
+      const selected = await showSingleSelectDialog(
+        options,
+        [
+          `${entry.designator} · ${semanticRoleZh(entry.inference!.role)}`,
+          `AI 置信：${semanticConfidenceZh(entry.inference!.confidence)}`,
+          `确定性关系：${ownershipRelationZh(entry.context.ownership.relation)}`,
+          `电源域：${rails}`,
+          '',
+          'LayoutPilot 无法仅凭电源域安全确定唯一 owner。',
+          '请选择你确认的 Host；该选择会作为“人工证据”，不会改写 AI 结论。',
+        ].join('\n'),
+        '如果不确定，请选择“暂不处理”。',
+        `LayoutPilot · 确认 ${entry.designator} 的 Owner`,
+        existing?.ownerComponentId ?? candidates[0].id,
+      );
+
+      if (!selected) {
+        skipped += 1;
+        continue;
+      }
+
+      if (selected === clearValue) {
+        removeHumanOwnershipDecision(snapshot.id, entry.componentId);
+        if (existing) {
+          cleared += 1;
+        }
+        else {
+          skipped += 1;
+        }
+        continue;
+      }
+
+      const owner = candidates.find(candidate => candidate.id === selected);
+      if (!owner) {
+        skipped += 1;
+        continue;
+      }
+
+      upsertHumanOwnershipDecision(
+        createHumanOwnershipDecision({
+          snapshotId: snapshot.id,
+          componentId: entry.componentId,
+          componentDesignator: entry.designator,
+          ownerComponentId: owner.id,
+          ownerDesignator: owner.designator,
+        }),
+      );
+      confirmed += 1;
+    }
+
+    const current = getHumanOwnershipDecisions(snapshot.id);
+    const summary = current.length
+      ? current
+          .map(item => `${item.componentDesignator} → ${item.ownerDesignator}`)
+          .join('\n')
+      : '无';
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        '人工 Owner 确认完成。',
+        '',
+        `Semantic Snapshot：${snapshot.id}`,
+        `本次确认/更新：${confirmed}`,
+        `本次清除：${cleared}`,
+        `暂不处理：${skipped}`,
+        '',
+        '当前人工确认：',
+        summary,
+        '',
+        '这些选择会在 Constraint Preview 中转换为 ExplicitOwnershipHint，再交给原有确定性 Ownership Resolver。',
+        'AI Semantic Snapshot 本身没有被修改，也不会重新调用模型。',
+      ].join('\n'),
+      'LayoutPilot · 人工确认 Owner',
+    );
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Human ownership confirmation failed', error);
+    await eda.sys_Dialog.showInformationMessage(
+      `人工确认 owner 失败。\n\n${String(error)}\n\nPCB 未发生任何修改。`,
+      'LayoutPilot · 人工确认 Owner',
     );
   }
 }
@@ -1209,6 +1403,22 @@ export async function previewLayoutConstraints(): Promise<void> {
       return;
     }
 
+    const explicitOwnershipHints = toExplicitOwnershipHints(snapshot.id);
+    const effectiveContexts = buildSemanticContexts(
+      analysisState.graph,
+      analysisState.features,
+      analysisState.grouping,
+      analysisState.semanticMetadata,
+      explicitOwnershipHints,
+    );
+    const effectiveContextById = new Map(
+      effectiveContexts.map(context => [context.componentId, context]),
+    );
+    const humanDecisionByComponentId = new Map(
+      getHumanOwnershipDecisions(snapshot.id)
+        .map(decision => [decision.componentId, decision]),
+    );
+
     const previewResults = [];
     const rows: string[] = [];
     let blocked = 0;
@@ -1216,7 +1426,8 @@ export async function previewLayoutConstraints(): Promise<void> {
     let providerLabel = '';
 
     for (const entry of snapshot.entries) {
-      const context = entry.context;
+      const context = effectiveContextById.get(entry.componentId) ?? entry.context;
+      const humanDecision = humanDecisionByComponentId.get(entry.componentId);
       const provider = entry.provider ?? 'unknown';
       const model = entry.model ?? 'unknown';
       if (entry.provider || entry.model) {
@@ -1269,8 +1480,11 @@ export async function previewLayoutConstraints(): Promise<void> {
               ? '仅人工复核，不参与布局计算'
               : '可进入后续布局方案计算';
             const target = proposal.target ? ` → ${proposal.target}` : '';
+            const ownershipSource = humanDecision
+              ? ` · owner来源=人工确认(${humanDecision.ownerDesignator})`
+              : '';
             rows.push(
-              `${proposal.subject}：[${level}] ${layoutConstraintTypeZh(proposal.type)}${target} · 置信=${semanticConfidenceZh(proposal.confidence)} · ${execution}`,
+              `${proposal.subject}：[${level}] ${layoutConstraintTypeZh(proposal.type)}${target} · 置信=${semanticConfidenceZh(proposal.confidence)} · ${execution}${ownershipSource}`,
             );
           }
         }
@@ -1334,6 +1548,7 @@ export async function previewLayoutConstraints(): Promise<void> {
         `Semantic Snapshot：${snapshot.id}`,
         `PCB Fingerprint：${snapshot.boardFingerprint}`,
         '语义来源：复用已冻结 Snapshot（本步骤未调用 AI）',
+        `人工 Owner 确认：${explicitOwnershipHints.length}`,
         `语义上下文器件：${contexts.length}`,
         `生成约束：${merged.proposals.length}`,
         `软约束：${merged.softCount}`,
@@ -1348,6 +1563,7 @@ export async function previewLayoutConstraints(): Promise<void> {
         '',
         '安全边界：',
         '• Constraint Preview 只消费当前 Semantic Snapshot，不重新调用 AI；',
+        '• 人工 Owner 选择作为 ExplicitOwnershipHint 单独叠加，不改写 AI 角色；',
         '• PCB 语义输入变化后旧 Snapshot 自动失效；',
         '• AI 生成的约束不会成为硬约束；',
         '• 低置信结果不会参与布局计算；',
