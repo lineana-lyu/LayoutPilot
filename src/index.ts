@@ -8,6 +8,7 @@ import { buildSemanticGatewayRequest, normalizeGatewayBaseUrl, parseSemanticGate
 import { buildConstraintPreview, mergeConstraintPreviewResults } from './domain/layoutConstraintEngine';
 import { resolveAmbiguousCoreAssociations } from './domain/coreAssociation';
 import { resolveOwnershipRelations } from './domain/ownershipRelation';
+import { filterOwnershipPropertyNames, findOwnershipFields, findOwnershipMemberNames } from './domain/ownershipCapabilityProbe';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
 export function activate(status?: 'onStartupFinished', arg?: string): void {
@@ -722,6 +723,122 @@ export async function inspectOwnershipRelations(): Promise<void> {
     await eda.sys_Dialog.showInformationMessage(
       `归属关系诊断失败。\n\n${String(error)}\n\nPCB 未发生任何修改。`,
       'LayoutPilot · Phase 3A.2',
+    );
+  }
+}
+
+
+export async function inspectExplicitOwnershipCapability(): Promise<void> {
+  try {
+    const components = await eda.pcb_PrimitiveComponent.getAll();
+    const propertyNames = await eda.pcb_PrimitiveComponent.getAllPropertyNames();
+    const ownershipPropertyNames = filterOwnershipPropertyNames(
+      propertyNames ?? [],
+    );
+
+    const fieldHits = components.flatMap((component) => {
+      const designator = component.getState_Designator()
+        ?? component.getState_Name()
+        ?? component.getState_PrimitiveId();
+
+      return [
+        ...findOwnershipFields(
+          component.getState_OtherProperty(),
+          `${designator}.otherProperty`,
+        ),
+        ...findOwnershipFields(
+          component.getState_Footprint(),
+          `${designator}.footprint`,
+        ),
+      ];
+    });
+
+    const runtimeMemberHits = components.length
+      ? findOwnershipMemberNames(
+          components[0],
+          'PCB component runtime object',
+        )
+      : [];
+
+    console.log('[LayoutPilot] explicit ownership capability probe', {
+      ownershipPropertyNames,
+      fieldHits,
+      runtimeMemberHits,
+    });
+
+    const propertyText = ownershipPropertyNames.length
+      ? ownershipPropertyNames.join('、')
+      : '未发现';
+
+    const fieldText = fieldHits.length
+      ? fieldHits
+          .slice(0, 20)
+          .map(hit =>
+            `${hit.source} → ${hit.path}`
+            + (hit.valuePreview !== undefined
+              ? ` = ${hit.valuePreview}`
+              : ''),
+          )
+          .join('\n')
+      : '未发现';
+
+    const runtimeText = runtimeMemberHits.length
+      ? runtimeMemberHits.map(hit => hit.path).join('、')
+      : '未发现';
+
+    const conclusion = fieldHits.length
+      ? [
+          '发现了可读取的“显式归属候选字段”。',
+          '下一步只能先验证这些字段是否真的是稳定的分组/复用模块语义；',
+          '本版本不会自动把它们写入 owner。',
+        ].join('')
+      : ownershipPropertyNames.length
+        ? [
+            '官方属性目录中出现了疑似分组/复用相关名称，',
+            '但当前 PCB 器件的可读取扩展属性里还没有找到对应值。',
+          ].join('')
+        : runtimeMemberHits.length
+          ? [
+              '运行时对象中发现了疑似相关成员名，',
+              '但它们尚未被确认是公开、稳定的插件 API，因此不会使用。',
+            ].join('')
+          : [
+              '当前公开可读取的器件属性中没有发现可直接消费的显式归属信息。',
+              '这不代表工程文件里不存在 groupId/REUSE_BLOCK，只代表当前插件 API 路径没有直接暴露给我们。',
+            ].join('');
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        'LayoutPilot 显式归属能力探测完成。',
+        '',
+        `器件数量：${components.length}`,
+        '',
+        '① 官方器件属性名中的候选：',
+        propertyText,
+        '',
+        '② 当前器件扩展属性/封装中实际读到的候选字段：',
+        fieldText,
+        '',
+        '③ 运行时对象中疑似相关成员名（仅诊断，不作为正式 API）：',
+        runtimeText,
+        '',
+        '结论：',
+        conclusion,
+        '',
+        '安全边界：',
+        '• 只读取，不修改 PCB；',
+        '• 不会把疑似字段自动当成 owner；',
+        '• 不会改变 Semantic Context、Constraint Policy 或布局结果。',
+      ].join('\n'),
+      'LayoutPilot · 显式归属能力探测',
+    );
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Explicit ownership capability probe failed', error);
+
+    await eda.sys_Dialog.showInformationMessage(
+      `显式归属能力探测失败。\n\n${String(error)}\n\nPCB 未发生任何修改。`,
+      'LayoutPilot · Phase 3A.3',
     );
   }
 }
