@@ -148,4 +148,29 @@ function component(
 	assert.ok(result.reasons.some(reason => reason.includes('不在同一器件层')));
 }
 
+{
+	const subject = component('c1', 'C1', 300, 300, { routed: 0 });
+	const owner = component('u1', 'U1', 100, 100);
+	const unknownObstacle: PhysicalComponentSnapshot = {
+		id: 'x1',
+		designator: 'X1',
+		x: 220,
+		y: 100,
+		rotation: 0,
+		layer: 'TOP',
+		locked: false,
+		pads: [],
+	};
+	const result = planDecouplingPlacement({
+		subject,
+		owner,
+		obstacles: [subject, owner, unknownObstacle],
+		powerNet: '3V3',
+		groundNet: 'GND',
+	});
+
+	assert.equal(result.ready, false);
+	assert.ok(result.reasons.some(reason => reason.includes('不能证明候选位置无碰撞')));
+}
+
 console.log('Physical placement planner tests passed.');
