@@ -127,6 +127,40 @@ function contextFixture(netName = 'SIG'): SemanticComponentContext {
 	assert.equal(semanticSnapshotMatchesBoard(snapshot, fingerprint), true);
 	assert.equal(semanticSnapshotMatchesBoard(snapshot, 'sem-v1-stale'), false);
 	assert.doesNotThrow(() => JSON.stringify(snapshot), 'snapshot must stay serializable');
+	assert.equal(Object.isFrozen(snapshot), true);
+	assert.equal(Object.isFrozen(snapshot.entries), true);
+}
+
+{
+	const context = contextFixture();
+	const runtimeOnly: Record<string, unknown> = {};
+	runtimeOnly.self = runtimeOnly;
+	context.otherProperty = runtimeOnly;
+
+	const fingerprint = buildSemanticBoardFingerprint({
+		graph: graphFixture(),
+		contexts: [context],
+	});
+	const snapshot = createSemanticSnapshot(
+		fingerprint,
+		[
+			{
+				componentId: 'r1',
+				designator: 'R1',
+				context,
+				status: 'failed',
+				validationErrors: [],
+				error: 'fixture',
+			},
+		],
+		'2026-09-21T12:00:01.000Z',
+	);
+
+	assert.equal(snapshot.entries[0].context.otherProperty, undefined);
+	assert.doesNotThrow(
+		() => JSON.stringify(snapshot),
+		'runtime-only metadata must not leak into the serializable snapshot',
+	);
 }
 
 console.log('Semantic snapshot tests passed.');
