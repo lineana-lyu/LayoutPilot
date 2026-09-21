@@ -22,6 +22,8 @@ const command = createPlacementCommand({
 
 assert.equal(command.status, 'planned');
 assert.equal(Object.isFrozen(command), true);
+assert.equal(Object.isFrozen(command.from), true);
+assert.equal(Object.isFrozen(command.to), true);
 
 const applied = markPlacementCommandApplied(
 	command,
