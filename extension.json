@@ -3,7 +3,7 @@
   "uuid": "1a2b3c4d5e6f77889900aabbccddeeff",
   "displayName": "LayoutPilot",
   "description": "面向 PCB 布局阶段的 AI 协作插件：理解电路结构、提取布局约束并辅助生成可确认的布局方案。",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "lineana-lyu",
   "engines": { "eda": "^3.2.0" },
   "license": "Apache-2.0",
@@ -30,6 +30,16 @@
             "id": "inspect-u1",
             "title": "Inspect Test Component (U1)",
             "registerFn": "inspectTestComponent"
+          },
+          {
+            "id": "move-u1",
+            "title": "TEST: Move U1 +100 X",
+            "registerFn": "moveTestComponent"
+          },
+          {
+            "id": "toggle-lock-u1",
+            "title": "TEST: Toggle U1 Lock",
+            "registerFn": "toggleTestComponentLock"
           },
           {
             "id": "about",
