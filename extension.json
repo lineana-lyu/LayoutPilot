@@ -1,0 +1,58 @@
+{
+  "name": "layoutpilot",
+  "uuid": "1a2b3c4d5e6f77889900aabbccddeeff",
+  "displayName": "LayoutPilot",
+  "description": "面向 PCB 布局阶段的 AI 协作插件：理解电路结构、提取布局约束并辅助生成可确认的布局方案。",
+  "version": "0.0.4",
+  "publisher": "lineana-lyu",
+  "engines": { "eda": "^3.2.0" },
+  "license": "Apache-2.0",
+  "repository": { "type": "extension-store", "url": "" },
+  "categories": "PCB",
+  "keywords": ["PCB", "Layout", "AI", "Placement"],
+  "homepage": "https://github.com/lineana-lyu/LayoutPilot",
+  "bugs": "https://github.com/lineana-lyu/LayoutPilot/issues",
+  "activationEvents": {},
+  "entry": "./dist/index",
+  "dependentExtensions": {},
+  "headerMenus": {
+    "pcb": [
+      {
+        "id": "layoutpilot",
+        "title": "LayoutPilot",
+        "menuItems": [
+          {
+            "id": "inspect-pcb",
+            "title": "Inspect PCB",
+            "registerFn": "inspectPcb"
+          },
+          {
+            "id": "inspect-u1",
+            "title": "Inspect Test Component (U1)",
+            "registerFn": "inspectTestComponent"
+          },
+          {
+            "id": "move-u1",
+            "title": "TEST: Move U1 +100 X",
+            "registerFn": "moveTestComponent"
+          },
+          {
+            "id": "toggle-lock-u1",
+            "title": "TEST: Toggle U1 Lock",
+            "registerFn": "toggleTestComponentLock"
+          },
+          {
+            "id": "inspect-connectivity",
+            "title": "Inspect Connectivity",
+            "registerFn": "inspectConnectivity"
+          },
+          {
+            "id": "about",
+            "title": "About LayoutPilot",
+            "registerFn": "about"
+          }
+        ]
+      }
+    ]
+  }
+}
