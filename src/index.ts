@@ -2101,7 +2101,24 @@ export async function undoLastDemoPlacement(): Promise<void> {
 
 export async function about(): Promise<void> {
   await eda.sys_Dialog.showInformationMessage(
-    `LayoutPilot v${extensionConfig.version}\n\n第 3B 阶段：确定性关系负责 owner/bridge/shared-signal/rail-domain，AI 只判断器件角色，再由 Constraint Policy 生成可解释约束。\n当前仍不会自动修改 PCB。`,
+    [
+      `LayoutPilot v${extensionConfig.version}`,
+      '',
+      '定位：面向 PCB 布局阶段的人机协同助手，不是黑盒一键自动布局。',
+      '',
+      '当前闭环：',
+      '真实 PCB → 确定性结构/归属 → AI 语义 Snapshot → 人工补充关键证据 → Constraint Policy → Pad-aware Physical Planner → 用户确认 → 单器件受控移动 → 坐标回读 / DRC → 回滚或 Undo。',
+      '',
+      'v0.7 执行边界：',
+      '• 仅执行满足严格证据门槛的去耦电容 near(owner) 建议；',
+      '• owner 必须由用户显式确认；',
+      '• 已锁定、已有布线、物理几何不完整或基线 DRC 未通过时拒绝执行；',
+      '• 每次只移动一个器件；',
+      '• 执行失败会尝试恢复 before-state；',
+      '• Undo 不会覆盖工程师后续的手工移动。',
+      '',
+      '这是一条可审计、可验证、可回退的 Placement PoC；尚不等同于生产级全局布局优化器。',
+    ].join('\n'),
     '关于 LayoutPilot',
   );
 }
