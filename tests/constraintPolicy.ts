@@ -103,6 +103,7 @@ function makeInference(
 			'net:GROUND_RAIL',
 		]),
 	);
+	assert.equal(result.skipped.length, 0);
 }
 
 {
@@ -126,6 +127,45 @@ function makeInference(
 	assert.equal(
 		result.skipped[0].reason,
 		'policy-evidence-insufficient',
+	);
+	const diagnostic = result.skipped[0].diagnostics[0];
+	assert.equal(diagnostic.policyId, 'decoupling.near-associated-core.v1');
+	assert.equal(
+		diagnostic.checks.find(check => check.id === 'associated-core')?.status,
+		'pass',
+	);
+	assert.equal(
+		diagnostic.checks.find(check => check.id === 'core-related-power-net')?.status,
+		'pass',
+	);
+	assert.equal(
+		diagnostic.checks.find(check => check.id === 'core-related-ground-net')?.status,
+		'fail',
+	);
+}
+
+{
+	const context = makeContext();
+	const inference: SemanticInference = {
+		...makeInference('medium'),
+		associatedCore: undefined,
+	};
+	const result = buildConstraintPreview(context, inference);
+
+	assert.equal(result.proposals.length, 0);
+	assert.equal(result.skipped[0].reason, 'policy-evidence-insufficient');
+	const diagnostic = result.skipped[0].diagnostics[0];
+	assert.equal(
+		diagnostic.checks.find(check => check.id === 'associated-core')?.status,
+		'fail',
+	);
+	assert.equal(
+		diagnostic.checks.find(check => check.id === 'core-related-power-net')?.status,
+		'not-applicable',
+	);
+	assert.equal(
+		diagnostic.checks.find(check => check.id === 'core-related-ground-net')?.status,
+		'not-applicable',
 	);
 }
 
