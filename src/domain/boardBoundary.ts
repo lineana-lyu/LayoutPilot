@@ -143,6 +143,60 @@ export function parseSimpleBoardPolygon(
 	};
 }
 
+
+export interface BoardSegment {
+	start: BoardPoint;
+	end: BoardPoint;
+}
+
+export function buildSimpleBoardPolygonFromSegments(
+	segments: BoardSegment[],
+): BoardPolygonParseResult {
+	if (segments.length < 3) {
+		return { ok: false, reason: '板框线段少于 3 条' };
+	}
+
+	const unused = [...segments];
+	const first = unused.shift()!;
+	const points: BoardPoint[] = [{ ...first.start }, { ...first.end }];
+	let current = first.end;
+
+	while (unused.length) {
+		const nextIndex = unused.findIndex(segment =>
+			samePoint(segment.start, current)
+			|| samePoint(segment.end, current),
+		);
+		if (nextIndex < 0) {
+			return { ok: false, reason: '板框线段存在断点或多环，无法形成单一闭合轮廓' };
+		}
+
+		const [segment] = unused.splice(nextIndex, 1);
+		const nextPoint = samePoint(segment.start, current)
+			? segment.end
+			: segment.start;
+		points.push({ ...nextPoint });
+		current = nextPoint;
+
+		if (samePoint(current, points[0]) && unused.length > 0) {
+			return { ok: false, reason: '板框包含多个闭合环或额外线段' };
+		}
+	}
+
+	if (!samePoint(current, points[0])) {
+		return { ok: false, reason: '板框线段未闭合' };
+	}
+
+	const normalized = normalizePoints(points);
+	if (normalized.length < 3) {
+		return { ok: false, reason: '板框有效顶点少于 3 个' };
+	}
+
+	return {
+		ok: true,
+		polygon: { points: normalized },
+	};
+}
+
 function pointOnSegment(
 	point: BoardPoint,
 	a: BoardPoint,
