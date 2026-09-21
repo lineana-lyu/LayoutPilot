@@ -8,6 +8,7 @@ import { buildSemanticGatewayRequest, normalizeGatewayBaseUrl, parseSemanticGate
 import { buildConstraintPreview, mergeConstraintPreviewResults } from './domain/layoutConstraintEngine';
 import { resolveAmbiguousCoreAssociations } from './domain/coreAssociation';
 import { resolveOwnershipRelations } from './domain/ownershipRelation';
+import { buildSemanticBoardFingerprint, clearActiveSemanticSnapshot, createSemanticSnapshot, getActiveSemanticSnapshot, semanticSnapshotMatchesBoard, setActiveSemanticSnapshot, type SemanticSnapshotEntry } from './domain/semanticSnapshot';
 import { filterOwnershipPropertyNames, findOwnershipFields, findOwnershipMemberNames } from './domain/ownershipCapabilityProbe';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
@@ -1021,9 +1022,15 @@ export async function analyzeAmbiguousWithAi(): Promise<void> {
   }
 
   try {
-    const contexts = await collectSemanticContexts();
+    const analysisState = await collectAnalysisState();
+    const contexts = analysisState.contexts;
+    const boardFingerprint = buildSemanticBoardFingerprint({
+      graph: analysisState.graph,
+      contexts,
+    });
 
     if (!contexts.length) {
+      clearActiveSemanticSnapshot();
       await eda.sys_Dialog.showInformationMessage(
         '当前 PCB 没有需要 AI 补全语义的歧义器件。',
         'LayoutPilot · AI 批量语义分析',
@@ -1032,6 +1039,7 @@ export async function analyzeAmbiguousWithAi(): Promise<void> {
     }
 
     const rows: string[] = [];
+    const snapshotEntries: SemanticSnapshotEntry[] = [];
     let passed = 0;
     let blocked = 0;
     let failed = 0;
@@ -1048,13 +1056,31 @@ export async function analyzeAmbiguousWithAi(): Promise<void> {
         const model = gatewayResponse.model ?? 'unknown';
         providerLabel ||= `${provider} / ${model}`;
 
+        const entryBase = {
+          componentId: context.componentId,
+          designator: context.designator,
+          context,
+          inference: gatewayResponse.inference,
+          validationErrors: [...validation.errors],
+          provider,
+          model,
+        };
+
         if (provider === 'mock') {
+          snapshotEntries.push({
+            ...entryBase,
+            status: 'mock',
+          });
           rows.push(`${context.designator}：仅完成 Mock 通路测试，不作为 AI 结论`);
           continue;
         }
 
         if (!validation.valid) {
           blocked += 1;
+          snapshotEntries.push({
+            ...entryBase,
+            status: 'blocked',
+          });
           rows.push(
             `${context.designator}：已拦截 · ${validation.errors.join('；')}`,
           );
@@ -1062,6 +1088,11 @@ export async function analyzeAmbiguousWithAi(): Promise<void> {
         }
 
         passed += 1;
+        snapshotEntries.push({
+          ...entryBase,
+          status: 'valid',
+        });
+
         const inference = gatewayResponse.inference;
         const relation = ownershipRelationZh(context.ownership.relation);
         const owner = context.ownership.ownerDesignator
@@ -1082,14 +1113,31 @@ export async function analyzeAmbiguousWithAi(): Promise<void> {
           `[LayoutPilot] AI semantic analysis failed for ${context.designator}`,
           error,
         );
+        snapshotEntries.push({
+          componentId: context.componentId,
+          designator: context.designator,
+          context,
+          status: 'failed',
+          validationErrors: [],
+          error: String(error),
+        });
         rows.push(`${context.designator}：调用失败 · ${String(error)}`);
       }
     }
+
+    const snapshot = createSemanticSnapshot(
+      boardFingerprint,
+      snapshotEntries,
+    );
+    setActiveSemanticSnapshot(snapshot);
+    console.log('[LayoutPilot] semantic snapshot frozen', snapshot);
 
     await eda.sys_Dialog.showInformationMessage(
       [
         'LayoutPilot 歧义器件 AI 语义分析完成。',
         '',
+        `Semantic Snapshot：${snapshot.id}`,
+        `PCB Fingerprint：${snapshot.boardFingerprint}`,
         `待分析器件：${contexts.length}`,
         `通过校验：${passed}`,
         `被 Validator 拦截：${blocked}`,
@@ -1098,7 +1146,8 @@ export async function analyzeAmbiguousWithAi(): Promise<void> {
         '',
         ...rows,
         '',
-        '说明：AI 只判断语义角色；owner / bridge / shared-signal / rail-domain 由确定性规则提供，AI 无权改写。',
+        '说明：本次 AI 结果已冻结为 Semantic Snapshot；后续布局约束预览只复用这份结果，不会再次调用模型。',
+        'AI 只判断语义角色；owner / bridge / shared-signal / rail-domain 由确定性规则提供，AI 无权改写。',
       ].join('\n'),
       'LayoutPilot · AI 批量语义分析',
     );
@@ -1121,47 +1170,95 @@ export async function analyzeAmbiguousWithAi(): Promise<void> {
 
 
 export async function previewLayoutConstraints(): Promise<void> {
-  const gatewayBaseUrl = await getConfiguredGatewayBaseUrl();
-  if (!gatewayBaseUrl) return;
-
   try {
-    const contexts = await collectSemanticContexts();
+    const analysisState = await collectAnalysisState();
+    const contexts = analysisState.contexts;
+    const boardFingerprint = buildSemanticBoardFingerprint({
+      graph: analysisState.graph,
+      contexts,
+    });
+    const snapshot = getActiveSemanticSnapshot();
+
+    if (!snapshot) {
+      await eda.sys_Dialog.showInformationMessage(
+        [
+          '当前没有可复用的 Semantic Snapshot。',
+          '',
+          '请先运行“AI 分析全部歧义器件（只读）”。',
+          '布局约束预览不会为了补结果而重新调用 AI。',
+        ].join('\n'),
+        'LayoutPilot · 布局约束预览',
+      );
+      return;
+    }
+
+    if (!semanticSnapshotMatchesBoard(snapshot, boardFingerprint)) {
+      await eda.sys_Dialog.showInformationMessage(
+        [
+          '当前 PCB 的语义输入已经变化，旧 Snapshot 已过期。',
+          '',
+          `Snapshot：${snapshot.id}`,
+          `旧 Fingerprint：${snapshot.boardFingerprint}`,
+          `当前 Fingerprint：${boardFingerprint}`,
+          '',
+          '请重新运行“AI 分析全部歧义器件（只读）”。',
+          '为避免把旧 AI 决策应用到新 PCB，本次不会生成布局约束。',
+        ].join('\n'),
+        'LayoutPilot · Snapshot 已过期',
+      );
+      return;
+    }
+
     const previewResults = [];
     const rows: string[] = [];
     let blocked = 0;
     let failed = 0;
     let providerLabel = '';
 
-    for (const context of contexts) {
-      try {
-        const { gatewayResponse, validation } = await requestSemanticInference(
-          context,
-          gatewayBaseUrl,
-        );
-
-        const provider = gatewayResponse.provider ?? 'unknown';
-        const model = gatewayResponse.model ?? 'unknown';
+    for (const entry of snapshot.entries) {
+      const context = entry.context;
+      const provider = entry.provider ?? 'unknown';
+      const model = entry.model ?? 'unknown';
+      if (entry.provider || entry.model) {
         providerLabel ||= `${provider} / ${model}`;
+      }
 
-        if (provider === 'mock') {
-          rows.push(`${context.designator}：Mock 模式不生成真实布局约束`);
-          continue;
-        }
+      if (entry.status === 'mock') {
+        rows.push(`${context.designator}：Mock 模式不生成真实布局约束`);
+        continue;
+      }
 
-        if (!validation.valid) {
-          blocked += 1;
-          const reason = validation.errors.length
-            ? validation.errors.join('；')
-            : '未返回具体校验原因';
-          rows.push(
-            `${context.designator}：AI 结果被 Validator 拦截 · ${reason}`,
-          );
-          continue;
-        }
+      if (entry.status === 'blocked') {
+        blocked += 1;
+        const reason = entry.validationErrors.length
+          ? entry.validationErrors.join('；')
+          : '未返回具体校验原因';
+        rows.push(
+          `${context.designator}：Snapshot 中的 AI 结果曾被 Validator 拦截 · ${reason}`,
+        );
+        continue;
+      }
 
+      if (entry.status === 'failed') {
+        failed += 1;
+        rows.push(
+          `${context.designator}：Snapshot 中记录的 AI 调用失败 · ${entry.error ?? '未知错误'}`,
+        );
+        continue;
+      }
+
+      if (!entry.inference) {
+        failed += 1;
+        rows.push(
+          `${context.designator}：Snapshot 缺少 inference，已跳过`,
+        );
+        continue;
+      }
+
+      try {
         const result = buildConstraintPreview(
           context,
-          gatewayResponse.inference,
+          entry.inference,
         );
         previewResults.push(result);
 
@@ -1225,12 +1322,18 @@ export async function previewLayoutConstraints(): Promise<void> {
     }
 
     const merged = mergeConstraintPreviewResults(previewResults);
-    console.log('[LayoutPilot] constraint preview', merged);
+    console.log('[LayoutPilot] constraint preview from semantic snapshot', {
+      snapshotId: snapshot.id,
+      result: merged,
+    });
 
     await eda.sys_Dialog.showInformationMessage(
       [
         'LayoutPilot 布局约束预览已生成。',
         '',
+        `Semantic Snapshot：${snapshot.id}`,
+        `PCB Fingerprint：${snapshot.boardFingerprint}`,
+        '语义来源：复用已冻结 Snapshot（本步骤未调用 AI）',
         `语义上下文器件：${contexts.length}`,
         `生成约束：${merged.proposals.length}`,
         `软约束：${merged.softCount}`,
@@ -1244,6 +1347,8 @@ export async function previewLayoutConstraints(): Promise<void> {
         ...rows,
         '',
         '安全边界：',
+        '• Constraint Preview 只消费当前 Semantic Snapshot，不重新调用 AI；',
+        '• PCB 语义输入变化后旧 Snapshot 自动失效；',
         '• AI 生成的约束不会成为硬约束；',
         '• 低置信结果不会参与布局计算；',
         '• 当前仅预览约束，不会移动任何 PCB 器件。',
@@ -1259,6 +1364,7 @@ export async function previewLayoutConstraints(): Promise<void> {
     );
   }
 }
+
 
 export async function about(): Promise<void> {
   await eda.sys_Dialog.showInformationMessage(
