@@ -147,6 +147,7 @@ CI runs domain tests, gateway syntax validation, extension compilation, and pack
 - `docs/SEMANTIC_SNAPSHOT_V07.md`
 - `docs/HUMAN_OWNERSHIP_CONFIRMATION_V07.md`
 - `docs/CONTROLLED_PHYSICAL_EXECUTION_V07.md`
+- `docs/RUNTIME_SMOKE_TEST_V07.md`
 - `docs/POC_PLAN.md` — original feasibility milestone for historical context
 
 ## Status
