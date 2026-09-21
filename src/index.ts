@@ -1,6 +1,6 @@
 import { buildCircuitGraph, type CircuitComponentSnapshot } from './domain/circuitGraph';
 import { extractStructuralFeatures, type ComponentMetadata } from './domain/componentFeatures';
-import { coreLevelZh, groupEvidenceZh, lockedZh, structuralEvidenceZh } from './i18n/zhCN';
+import { coreLevelZh, groupEvidenceZh, lockedZh, netGroupingClassZh, semanticMissingEvidenceZh, structuralEvidenceZh } from './i18n/zhCN';
 import { buildCandidateGroups } from './domain/candidateGrouping';
 import { buildSemanticContexts, type SemanticComponentMetadata } from './domain/semanticContext';
 import extensionConfig from '../extension.json' with { type: 'json' };
@@ -658,7 +658,16 @@ export async function inspectSemanticContext(): Promise<void> {
 
     const preview = contexts.slice(0, 6).map((context) => {
       const nets = context.connectedNets.length
-        ? context.connectedNets.map((net) => `${net.netName}[${net.classification}]`).join('、')
+        ? context.connectedNets.map((net) => {
+            const peers = net.peerEndpoints.length
+              ? net.peerEndpoints
+                  .slice(0, 6)
+                  .map((endpoint) => `${endpoint.designator}.${endpoint.padNumber}`)
+                  .join('、')
+              : '无其他器件';
+
+            return `${net.netName}[${netGroupingClassZh(net.classification)}] → ${peers}`;
+          }).join('\n')
         : '无';
 
       const cores = context.relatedCoreDesignators.length
@@ -666,12 +675,14 @@ export async function inspectSemanticContext(): Promise<void> {
         : '暂未找到直接核心关联';
 
       const missing = context.missingEvidence.length
-        ? context.missingEvidence.join('、')
+        ? context.missingEvidence.map(semanticMissingEvidenceZh).join('；')
         : '无明显缺失';
 
       return [
         `${context.designator} · 待语义分析`,
         `器件名称：${context.name || '未知'}`,
+        `器件值：${context.value || '未知'}`,
+        `制造商型号：${context.manufacturerPart || '未知'}`,
         `封装：${context.footprintName || '未知'}`,
         `网络：${nets}`,
         `可能相关核心：${cores}`,
