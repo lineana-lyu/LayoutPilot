@@ -13,7 +13,7 @@
     "lint": "eslint",
     "fix": "eslint --fix",
     "build": "npm run compile && ts-node ./build/packaged.ts",
-    "test": "npm run test:domain && npm run test:net-informativeness && npm run test:constraint-policy && npm run test:core-association && npm run test:ownership-relation && npm run test:ownership-capability && npm run test:semantic-snapshot && npm run test:human-ownership && npm run test:physical-placement && npm run test:placement-command && npm run test:board-boundary",
+    "test": "npm run test:domain && npm run test:net-informativeness && npm run test:constraint-policy && npm run test:core-association && npm run test:ownership-relation && npm run test:ownership-capability && npm run test:semantic-snapshot && npm run test:human-ownership && npm run test:physical-placement && npm run test:placement-command && npm run test:board-boundary && npm run test:placement-transaction",
     "test:domain": "ts-node ./tests/domain.ts",
     "test:net-informativeness": "ts-node ./tests/netInformativeness.ts",
     "test:constraint-policy": "ts-node ./tests/constraintPolicy.ts",
@@ -24,7 +24,8 @@
     "test:human-ownership": "ts-node ./tests/humanOwnershipDecision.ts",
     "test:physical-placement": "ts-node ./tests/physicalPlacement.ts",
     "test:placement-command": "ts-node ./tests/placementCommand.ts",
-    "test:board-boundary": "ts-node ./tests/boardBoundary.ts"
+    "test:board-boundary": "ts-node ./tests/boardBoundary.ts",
+    "test:placement-transaction": "ts-node ./tests/placementTransaction.ts"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^5.4.1",
