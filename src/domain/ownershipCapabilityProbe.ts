@@ -5,7 +5,7 @@ export interface OwnershipCapabilityHit {
 }
 
 const OWNERSHIP_KEY_PATTERN =
-	/(?:group|reuse|block|channel|module|owner|ownership|cluster|belong|attach)/i;
+	/(?:group|reuse|block|channel|module|owner|ownership|cluster|belong|attach|分组|复用|模块|通道|归属)/i;
 
 export function isOwnershipCapabilityKey(value: string): boolean {
 	return OWNERSHIP_KEY_PATTERN.test(value);
