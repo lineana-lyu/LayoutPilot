@@ -13,6 +13,62 @@ export interface SemanticComponentMetadata {
 	otherProperty?: unknown;
 }
 
+type SemanticPropertyValue = string | number | boolean;
+
+function asPropertyRecord(value: unknown): Record<string, SemanticPropertyValue> {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) {
+		return {};
+	}
+
+	return Object.fromEntries(
+		Object.entries(value)
+			.filter(([, item]) =>
+				typeof item === 'string'
+				|| typeof item === 'number'
+				|| typeof item === 'boolean',
+			),
+	) as Record<string, SemanticPropertyValue>;
+}
+
+function getPropertyCaseInsensitive(
+	properties: Record<string, SemanticPropertyValue>,
+	key: string,
+): SemanticPropertyValue | undefined {
+	const exact = properties[key];
+	if (exact !== undefined) {
+		return exact;
+	}
+
+	const normalized = key.trim().toLowerCase();
+	const matchedKey = Object.keys(properties)
+		.find(candidate => candidate.trim().toLowerCase() === normalized);
+
+	return matchedKey ? properties[matchedKey] : undefined;
+}
+
+export function resolveComponentDisplayName(
+	rawName: string | undefined,
+	otherProperty: unknown,
+): string | undefined {
+	if (!rawName) {
+		return undefined;
+	}
+
+	const templateMatch = rawName.match(/^=\{(.+)\}$/);
+	if (!templateMatch) {
+		return rawName;
+	}
+
+	const properties = asPropertyRecord(otherProperty);
+	const resolved = getPropertyCaseInsensitive(properties, templateMatch[1]);
+
+	if (resolved === undefined || resolved === '') {
+		return undefined;
+	}
+
+	return String(resolved);
+}
+
 export interface SemanticNetContext {
 	netName: string;
 	classification: NetGroupingClass;
@@ -29,6 +85,9 @@ export interface SemanticComponentContext {
 	componentId: string;
 	designator: string;
 	name?: string;
+	rawName?: string;
+	value?: string;
+	manufacturerPart?: string;
 	referencePrefix: string;
 	manufacturer?: string;
 	supplier?: string;
@@ -61,6 +120,14 @@ export function buildSemanticContexts(
 		if (!feature) {
 			throw new Error(`Missing structural feature for ambiguous component ${componentId}`);
 		}
+
+		const properties = asPropertyRecord(meta?.otherProperty);
+		const resolvedName = resolveComponentDisplayName(meta?.name, meta?.otherProperty);
+		const valueProperty = getPropertyCaseInsensitive(properties, 'Value');
+		const manufacturerPartProperty =
+			getPropertyCaseInsensitive(properties, 'Manufacturer Part')
+			?? getPropertyCaseInsensitive(properties, 'Manufacturer Part Number')
+			?? getPropertyCaseInsensitive(properties, 'MPN');
 
 		const connectedNets: SemanticNetContext[] = graph.nets
 			.filter(net => net.componentIds.includes(componentId))
@@ -112,7 +179,7 @@ export function buildSemanticContexts(
 
 		const missingEvidence: string[] = [];
 
-		if (!meta?.name) {
+		if (!resolvedName) {
 			missingEvidence.push('component-name');
 		}
 		if (!meta?.footprintName) {
@@ -134,7 +201,12 @@ export function buildSemanticContexts(
 		return {
 			componentId,
 			designator: feature.designator,
-			name: meta?.name,
+			name: resolvedName,
+			rawName: meta?.name,
+			value: valueProperty !== undefined ? String(valueProperty) : undefined,
+			manufacturerPart: manufacturerPartProperty !== undefined
+				? String(manufacturerPartProperty)
+				: undefined,
 			referencePrefix: feature.referencePrefix,
 			manufacturer: meta?.manufacturer,
 			supplier: meta?.supplier,
