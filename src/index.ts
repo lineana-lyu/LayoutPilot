@@ -6,6 +6,7 @@ import { buildSemanticContexts, type SemanticComponentContext, type SemanticComp
 import { allowedSemanticRolesForPrefix, buildSemanticEvidenceCatalog, validateSemanticInference } from './domain/semanticInference';
 import { buildSemanticGatewayRequest, normalizeGatewayBaseUrl, parseSemanticGatewayResponse } from './ai/gatewayClient';
 import { buildConstraintPreview, mergeConstraintPreviewResults } from './domain/layoutConstraintEngine';
+import { resolveAmbiguousCoreAssociations } from './domain/coreAssociation';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
 export function activate(status?: 'onStartupFinished', arg?: string): void {
@@ -404,7 +405,7 @@ export async function inspectCandidateGroups(): Promise<void> {
 
 
 
-async function collectSemanticContexts(): Promise<SemanticComponentContext[]> {
+async function collectAnalysisState() {
   const components = await eda.pcb_PrimitiveComponent.getAll();
   const snapshots: CircuitComponentSnapshot[] = [];
   const metadata: ComponentMetadata[] = [];
@@ -446,7 +447,23 @@ async function collectSemanticContexts(): Promise<SemanticComponentContext[]> {
   const graph = buildCircuitGraph(snapshots);
   const features = extractStructuralFeatures(graph, metadata);
   const grouping = buildCandidateGroups(graph, features);
-  return buildSemanticContexts(graph, features, grouping, semanticMetadata);
+  const contexts = buildSemanticContexts(
+    graph,
+    features,
+    grouping,
+    semanticMetadata,
+  );
+
+  return {
+    graph,
+    features,
+    grouping,
+    contexts,
+  };
+}
+
+async function collectSemanticContexts(): Promise<SemanticComponentContext[]> {
+  return (await collectAnalysisState()).contexts;
 }
 
 export async function inspectSemanticContext(): Promise<void> {
