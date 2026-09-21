@@ -3,7 +3,7 @@
   "uuid": "1a2b3c4d5e6f77889900aabbccddeeff",
   "displayName": "LayoutPilot",
   "description": "面向 PCB 布局阶段的 AI 协作插件：理解电路结构、提取布局约束并辅助生成可确认的布局方案。",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "publisher": "lineana-lyu",
   "engines": { "eda": "^3.2.0" },
   "license": "Apache-2.0",
@@ -80,6 +80,11 @@
             "id": "analyze-ambiguous-ai",
             "title": "AI 分析全部歧义器件（只读）",
             "registerFn": "analyzeAmbiguousWithAi"
+          },
+          {
+            "id": "preview-layout-constraints",
+            "title": "生成布局约束预览（不移动）",
+            "registerFn": "previewLayoutConstraints"
           },
           {
             "id": "about",
