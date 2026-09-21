@@ -1,4 +1,5 @@
 import { buildCircuitGraph, type CircuitComponentSnapshot } from './domain/circuitGraph';
+import { extractStructuralFeatures, type ComponentMetadata } from './domain/componentFeatures';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
 export function activate(status?: 'onStartupFinished', arg?: string): void {
@@ -402,6 +403,87 @@ export async function inspectCircuitGraph(): Promise<void> {
 
     await eda.sys_Dialog.showInformationMessage(
       `Failed to build the circuit graph.\n\n${String(error)}`,
+      'LayoutPilot · Phase 1',
+    );
+  }
+}
+
+
+export async function inspectStructuralFeatures(): Promise<void> {
+  try {
+    const components = await eda.pcb_PrimitiveComponent.getAll();
+    const snapshots: CircuitComponentSnapshot[] = [];
+    const metadata: ComponentMetadata[] = [];
+
+    for (const component of components) {
+      const primitiveId = component.getState_PrimitiveId();
+      const designator = component.getState_Designator() ?? component.getState_Name() ?? primitiveId;
+      const pads = await eda.pcb_PrimitiveComponent.getAllPinsByPrimitiveId(primitiveId);
+      const footprint = component.getState_Footprint();
+
+      snapshots.push({
+        id: primitiveId,
+        designator,
+        name: component.getState_Name(),
+        padCount: pads?.length ?? 0,
+        pads: (pads ?? []).map((pad) => ({
+          padNumber: String(pad.getState_PadNumber() ?? '?'),
+          net: pad.getState_Net(),
+        })),
+      });
+
+      metadata.push({
+        id: primitiveId,
+        designator,
+        manufacturer: component.getState_Manufacturer(),
+        supplier: component.getState_Supplier(),
+        footprintName: footprint?.name,
+      });
+    }
+
+    const graph = buildCircuitGraph(snapshots);
+    const features = extractStructuralFeatures(graph, metadata)
+      .sort((a, b) => b.coreScore - a.coreScore || a.designator.localeCompare(b.designator));
+
+    console.log('[LayoutPilot] structural features', features);
+    console.table(features.map((feature) => ({
+      component: feature.designator,
+      prefix: feature.referencePrefix,
+      pads: feature.padCount,
+      degree: feature.degree,
+      nets: feature.connectedNetCount,
+      maxNetSize: feature.maxComponentsOnSharedNet,
+      passive: feature.isPassiveCandidate,
+      boundary: feature.isBoundaryCandidate,
+      coreScore: feature.coreScore,
+      coreLevel: feature.coreLevel,
+    })));
+
+    const preview = features.slice(0, 8).map((feature) => {
+      const evidence = feature.coreEvidence.length
+        ? feature.coreEvidence.join('; ')
+        : 'no positive core evidence';
+      return `${feature.designator}: core=${feature.coreLevel} (${feature.coreScore}/10), degree=${feature.degree}, pads=${feature.padCount}\n  evidence: ${evidence}`;
+    }).join('\n');
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        'LayoutPilot structural feature extraction complete.',
+        '',
+        'Important: core score is a transparent structural heuristic, not an AI semantic label.',
+        '',
+        preview,
+        '',
+        'Open the developer console for the complete feature table.',
+      ].join('\n'),
+      'LayoutPilot · Structural Features',
+    );
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Structural Features failed', error);
+
+    await eda.sys_Dialog.showInformationMessage(
+      `Failed to extract structural features.\n\n${String(error)}`,
       'LayoutPilot · Phase 1',
     );
   }
