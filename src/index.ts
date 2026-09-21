@@ -1,22 +1,18 @@
 import { buildCircuitGraph, type CircuitComponentSnapshot } from './domain/circuitGraph';
 import { extractStructuralFeatures, type ComponentMetadata } from './domain/componentFeatures';
-import { coreLevelZh, groupEvidenceZh, layoutConstraintTypeZh, lockedZh, netGroupingClassZh, semanticConfidenceZh, semanticMissingEvidenceZh, semanticRoleZh, structuralEvidenceZh } from './i18n/zhCN';
+import { coreLevelZh, groupEvidenceZh, layoutConstraintTypeZh, lockedZh, netGroupingClassZh, ownershipRelationZh, semanticConfidenceZh, semanticMissingEvidenceZh, semanticRoleZh, structuralEvidenceZh } from './i18n/zhCN';
 import { buildCandidateGroups } from './domain/candidateGrouping';
 import { buildSemanticContexts, type SemanticComponentContext, type SemanticComponentMetadata } from './domain/semanticContext';
 import { allowedSemanticRolesForPrefix, buildSemanticEvidenceCatalog, validateSemanticInference } from './domain/semanticInference';
 import { buildSemanticGatewayRequest, normalizeGatewayBaseUrl, parseSemanticGatewayResponse } from './ai/gatewayClient';
 import { buildConstraintPreview, mergeConstraintPreviewResults } from './domain/layoutConstraintEngine';
+import { resolveAmbiguousCoreAssociations } from './domain/coreAssociation';
+import { resolveOwnershipRelations } from './domain/ownershipRelation';
+import { filterOwnershipPropertyNames, findOwnershipFields, findOwnershipMemberNames } from './domain/ownershipCapabilityProbe';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
 export function activate(status?: 'onStartupFinished', arg?: string): void {
   console.log('[LayoutPilot] activated', { status, arg });
-}
-
-async function getTestComponent() {
-  const components = await eda.pcb_PrimitiveComponent.getAll();
-  return components.find(
-    (component) => component.getState_Designator()?.toUpperCase() === 'U1',
-  );
 }
 
 export async function inspectPcb(): Promise<void> {
@@ -404,7 +400,7 @@ export async function inspectCandidateGroups(): Promise<void> {
 
 
 
-async function collectSemanticContexts(): Promise<SemanticComponentContext[]> {
+async function collectAnalysisState() {
   const components = await eda.pcb_PrimitiveComponent.getAll();
   const snapshots: CircuitComponentSnapshot[] = [];
   const metadata: ComponentMetadata[] = [];
@@ -446,7 +442,23 @@ async function collectSemanticContexts(): Promise<SemanticComponentContext[]> {
   const graph = buildCircuitGraph(snapshots);
   const features = extractStructuralFeatures(graph, metadata);
   const grouping = buildCandidateGroups(graph, features);
-  return buildSemanticContexts(graph, features, grouping, semanticMetadata);
+  const contexts = buildSemanticContexts(
+    graph,
+    features,
+    grouping,
+    semanticMetadata,
+  );
+
+  return {
+    graph,
+    features,
+    grouping,
+    contexts,
+  };
+}
+
+async function collectSemanticContexts(): Promise<SemanticComponentContext[]> {
+  return (await collectAnalysisState()).contexts;
 }
 
 export async function inspectSemanticContext(): Promise<void> {
@@ -520,6 +532,313 @@ export async function inspectSemanticContext(): Promise<void> {
     await eda.sys_Dialog.showInformationMessage(
       `生成语义上下文失败。\n\n${String(error)}`,
       'LayoutPilot · 第 2 阶段',
+    );
+  }
+}
+
+
+export async function inspectCoreAssociations(): Promise<void> {
+  try {
+    const {
+      graph,
+      features,
+      grouping,
+    } = await collectAnalysisState();
+
+    const results = resolveAmbiguousCoreAssociations(
+      graph,
+      features,
+      grouping,
+    );
+
+    console.log('[LayoutPilot] core association results', results);
+    console.table(results.map(result => ({
+      component: result.designator,
+      status: result.status,
+      resolvedCore: result.resolvedCoreDesignator ?? '',
+      topScore: result.topScore.toFixed(3),
+      margin: result.margin?.toFixed(3) ?? '',
+      candidates: result.candidates
+        .slice(0, 4)
+        .map(candidate => `${candidate.designator}(${candidate.score.toFixed(3)})`)
+        .join(', '),
+    })));
+
+    const resolved = results.filter(result => result.status === 'resolved');
+    const ambiguous = results.filter(result => result.status === 'ambiguous');
+    const insufficient = results.filter(
+      result => result.status === 'insufficient-evidence',
+    );
+
+    const rows = results.map((result) => {
+      const candidates = result.candidates
+        .slice(0, 3)
+        .map(candidate => {
+          const evidence = candidate.evidence
+            .filter(item => item.contribution > 0)
+            .slice(0, 3)
+            .map(item => `${item.netName ?? item.kind}:+${item.contribution.toFixed(3)}`)
+            .join('、');
+          return `${candidate.designator}=${candidate.score.toFixed(3)}${evidence ? `[${evidence}]` : ''}`;
+        })
+        .join('；');
+
+      if (result.status === 'resolved') {
+        return [
+          `${result.designator}：已解析 → ${result.resolvedCoreDesignator}`,
+          `score=${result.topScore.toFixed(3)}`,
+          `margin=${result.margin?.toFixed(3) ?? '—'}`,
+          candidates ? `候选：${candidates}` : '',
+        ].filter(Boolean).join(' · ');
+      }
+
+      if (result.status === 'ambiguous') {
+        return [
+          `${result.designator}：保留歧义`,
+          candidates ? `候选：${candidates}` : '无有效候选',
+          `margin=${result.margin?.toFixed(3) ?? '—'}`,
+        ].join(' · ');
+      }
+
+      return [
+        `${result.designator}：证据不足`,
+        candidates ? `候选：${candidates}` : '无有效候选',
+        `top=${result.topScore.toFixed(3)}`,
+      ].join(' · ');
+    });
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        'LayoutPilot 核心关联诊断完成。',
+        '',
+        `歧义器件：${results.length}`,
+        `可解析：${resolved.length}`,
+        `保留歧义：${ambiguous.length}`,
+        `证据不足：${insufficient.length}`,
+        '',
+        ...rows,
+        '',
+        '说明：',
+        '• GND 不参与 owner 选择；',
+        '• 高扇出电源网只提供弱证据；',
+        '• 多个候选接近时保留歧义；',
+        '• 当前结果仅用于诊断，不会改写 AI 上下文、布局约束或 PCB。',
+      ].join('\n'),
+      'LayoutPilot · 核心关联诊断',
+    );
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Core Association Resolver failed', error);
+
+    await eda.sys_Dialog.showInformationMessage(
+      `核心关联诊断失败。\n\n${String(error)}\n\nPCB 未发生任何修改。`,
+      'LayoutPilot · Phase 3A',
+    );
+  }
+}
+
+
+export async function inspectOwnershipRelations(): Promise<void> {
+  try {
+    const {
+      graph,
+      features,
+      grouping,
+    } = await collectAnalysisState();
+
+    const results = resolveOwnershipRelations(
+      graph,
+      features,
+      grouping.ambiguousComponentIds,
+    );
+
+    console.log('[LayoutPilot] ownership relation results', results);
+    console.table(results.map(result => ({
+      component: result.designator,
+      relation: result.relation,
+      owner: result.ownerDesignator ?? '',
+      hosts: result.hostDesignators.join(', '),
+      sharedSignals: result.sharedSignalNets.join(', '),
+      rails: result.railNets.join(', '),
+    })));
+
+    const counts = new Map<string, number>();
+    for (const result of results) {
+      counts.set(
+        result.relation,
+        (counts.get(result.relation) ?? 0) + 1,
+      );
+    }
+
+    const rows = results.map((result) => {
+      const owner = result.ownerDesignator
+        ? ` · owner=${result.ownerDesignator}`
+        : '';
+      const hosts = result.hostDesignators.length
+        ? ` · hosts=${result.hostDesignators.join('、')}`
+        : '';
+      const buses = result.sharedSignalNets.length
+        ? ` · shared=${result.sharedSignalNets.join('、')}`
+        : '';
+      const rails = result.railNets.length
+        ? ` · rail=${result.railNets.join('、')}`
+        : '';
+
+      return [
+        `${result.designator}：${ownershipRelationZh(result.relation)}`,
+        owner,
+        hosts,
+        buses,
+        rails,
+        `\n  ${result.explanation}`,
+      ].join('');
+    });
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        'LayoutPilot 归属关系诊断完成。',
+        '',
+        `歧义器件：${results.length}`,
+        `显式归属：${counts.get('explicit-owner') ?? 0}`,
+        `单核心归属：${counts.get('single-core') ?? 0}`,
+        `跨核心桥接：${counts.get('bridge') ?? 0}`,
+        `共享信号/多 Host：${counts.get('shared-signal') ?? 0}`,
+        `电源域关系：${counts.get('rail-domain') ?? 0}`,
+        `未知关系：${counts.get('unknown') ?? 0}`,
+        '',
+        ...rows,
+        '',
+        '说明：',
+        '• 先判断关系类型，再决定是否存在唯一 owner；',
+        '• 共享信号、桥接、电源域不会被强行压成单核心归属；',
+        '• 显式归属接口已预留，但当前尚未从嘉立创工程读取复用模块/分组元数据；',
+        '• 当前结果只用于诊断，不会改写 Semantic Context、Constraint Policy 或 PCB。',
+      ].join('\n'),
+      'LayoutPilot · 归属关系诊断',
+    );
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Ownership Relation Resolver failed', error);
+
+    await eda.sys_Dialog.showInformationMessage(
+      `归属关系诊断失败。\n\n${String(error)}\n\nPCB 未发生任何修改。`,
+      'LayoutPilot · Phase 3A.2',
+    );
+  }
+}
+
+
+export async function inspectExplicitOwnershipCapability(): Promise<void> {
+  try {
+    const components = await eda.pcb_PrimitiveComponent.getAll();
+    const propertyNames = await eda.pcb_PrimitiveComponent.getAllPropertyNames();
+    const ownershipPropertyNames = filterOwnershipPropertyNames(
+      propertyNames ?? [],
+    );
+
+    const fieldHits = components.flatMap((component) => {
+      const designator = component.getState_Designator()
+        ?? component.getState_Name()
+        ?? component.getState_PrimitiveId();
+
+      return [
+        ...findOwnershipFields(
+          component.getState_OtherProperty(),
+          `${designator}.otherProperty`,
+        ),
+        ...findOwnershipFields(
+          component.getState_Footprint(),
+          `${designator}.footprint`,
+        ),
+      ];
+    });
+
+    const runtimeMemberHits = components.length
+      ? findOwnershipMemberNames(
+          components[0],
+          'PCB component runtime object',
+        )
+      : [];
+
+    console.log('[LayoutPilot] explicit ownership capability probe', {
+      ownershipPropertyNames,
+      fieldHits,
+      runtimeMemberHits,
+    });
+
+    const propertyText = ownershipPropertyNames.length
+      ? ownershipPropertyNames.join('、')
+      : '未发现';
+
+    const fieldText = fieldHits.length
+      ? fieldHits
+          .slice(0, 20)
+          .map(hit =>
+            `${hit.source} → ${hit.path}`
+            + (hit.valuePreview !== undefined
+              ? ` = ${hit.valuePreview}`
+              : ''),
+          )
+          .join('\n')
+      : '未发现';
+
+    const runtimeText = runtimeMemberHits.length
+      ? runtimeMemberHits.map(hit => hit.path).join('、')
+      : '未发现';
+
+    const conclusion = fieldHits.length
+      ? [
+          '发现了可读取的“显式归属候选字段”。',
+          '下一步只能先验证这些字段是否真的是稳定的分组/复用模块语义；',
+          '本版本不会自动把它们写入 owner。',
+        ].join('')
+      : ownershipPropertyNames.length
+        ? [
+            '官方属性目录中出现了疑似分组/复用相关名称，',
+            '但当前 PCB 器件的可读取扩展属性里还没有找到对应值。',
+          ].join('')
+        : runtimeMemberHits.length
+          ? [
+              '运行时对象中发现了疑似相关成员名，',
+              '但它们尚未被确认是公开、稳定的插件 API，因此不会使用。',
+            ].join('')
+          : [
+              '当前公开可读取的器件属性中没有发现可直接消费的显式归属信息。',
+              '这不代表工程文件里不存在 groupId/REUSE_BLOCK，只代表当前插件 API 路径没有直接暴露给我们。',
+            ].join('');
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        'LayoutPilot 显式归属能力探测完成。',
+        '',
+        `器件数量：${components.length}`,
+        '',
+        '① 官方器件属性名中的候选：',
+        propertyText,
+        '',
+        '② 当前器件扩展属性/封装中实际读到的候选字段：',
+        fieldText,
+        '',
+        '③ 运行时对象中疑似相关成员名（仅诊断，不作为正式 API）：',
+        runtimeText,
+        '',
+        '结论：',
+        conclusion,
+        '',
+        '安全边界：',
+        '• 只读取，不修改 PCB；',
+        '• 不会把疑似字段自动当成 owner；',
+        '• 不会改变 Semantic Context、Constraint Policy 或布局结果。',
+      ].join('\n'),
+      'LayoutPilot · 显式归属能力探测',
+    );
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Explicit ownership capability probe failed', error);
+
+    await eda.sys_Dialog.showInformationMessage(
+      `显式归属能力探测失败。\n\n${String(error)}\n\nPCB 未发生任何修改。`,
+      'LayoutPilot · Phase 3A.3',
     );
   }
 }

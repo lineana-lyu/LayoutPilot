@@ -164,3 +164,23 @@ export function layoutConstraintTypeZh(value: LayoutConstraintType): string {
 			return '暂不生成布局约束';
 	}
 }
+
+
+import type { OwnershipRelationType } from '../domain/ownershipRelation';
+
+export function ownershipRelationZh(value: OwnershipRelationType): string {
+	switch (value) {
+		case 'explicit-owner':
+			return '显式归属';
+		case 'single-core':
+			return '单核心归属';
+		case 'bridge':
+			return '跨核心桥接';
+		case 'shared-signal':
+			return '共享信号/多 Host';
+		case 'rail-domain':
+			return '电源域关系';
+		default:
+			return '未知关系';
+	}
+}
