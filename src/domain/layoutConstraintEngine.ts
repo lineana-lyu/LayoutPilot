@@ -1,29 +1,27 @@
+import type { SemanticComponentContext } from './semanticContext';
 import type {
-	LayoutConstraintType,
 	SemanticConfidence,
 	SemanticInference,
 	SemanticRole,
 } from './semanticInference';
+import {
+	deriveLayoutConstraints,
+	type ConstraintPolicySkipReason,
+	type LayoutConstraintType,
+} from './layoutConstraintPolicy';
 
 export type ConstraintStrength = 'advisory' | 'soft';
 export type ConstraintExecution = 'review-only' | 'preview-eligible';
-export type ConstraintSource = 'ai-semantic';
-
-export type ActiveLayoutConstraintType = Exclude<
-	LayoutConstraintType,
-	'no-constraint'
->;
+export type ConstraintSource = 'semantic-policy';
 
 export type ConstraintSkipReason =
-	| 'insufficient-semantic-evidence'
-	| 'unknown-semantic-role'
-	| 'no-active-constraint'
-	| 'unsupported-role-constraint';
+	| ConstraintPolicySkipReason
+	| 'no-derived-constraint';
 
 export interface ConstraintProposal {
 	id: string;
 	subject: string;
-	type: ActiveLayoutConstraintType;
+	type: LayoutConstraintType;
 	target?: string;
 	strength: ConstraintStrength;
 	execution: ConstraintExecution;
@@ -32,6 +30,7 @@ export interface ConstraintProposal {
 	role: SemanticRole;
 	evidenceRefs: string[];
 	explanation: string;
+	policyId: string;
 	requiresReview: true;
 }
 
@@ -67,17 +66,19 @@ function policyForConfidence(
 	};
 }
 
-export function buildConstraintPreviewForInference(
-	subject: string,
+export function buildConstraintPreview(
+	context: SemanticComponentContext,
 	inference: SemanticInference,
 ): ConstraintPreviewResult {
-	if (inference.status === 'insufficient-evidence') {
+	const derived = deriveLayoutConstraints(context, inference);
+
+	if (!derived.constraints.length) {
 		return {
 			proposals: [],
 			skipped: [
 				{
-					subject,
-					reason: 'insufficient-semantic-evidence',
+					subject: context.designator,
+					reason: derived.skipReason ?? 'no-derived-constraint',
 					confidence: inference.confidence,
 					role: inference.role,
 				},
@@ -89,84 +90,13 @@ export function buildConstraintPreviewForInference(
 		};
 	}
 
-	if (inference.role === 'unknown') {
-		return {
-			proposals: [],
-			skipped: [
-				{
-					subject,
-					reason: 'unknown-semantic-role',
-					confidence: inference.confidence,
-					role: inference.role,
-				},
-			],
-			advisoryCount: 0,
-			softCount: 0,
-			previewEligibleCount: 0,
-			reviewOnlyCount: 0,
-		};
-	}
-
-	const modelActiveConstraints = inference.constraints
-		.filter(
-			(
-				constraint,
-			): constraint is SemanticInference['constraints'][number] & {
-				type: ActiveLayoutConstraintType;
-			} => constraint.type !== 'no-constraint',
-		);
-
-	const activeConstraints = modelActiveConstraints.filter((constraint) => {
-		// Phase 3 v1 deliberately supports only one executable semantic pattern:
-		// a decoupling capacitor may be placed near its validated associated core.
-		//
-		// Recognizing a role such as "power-switch" does NOT by itself prove
-		// where that device should sit. Those roles need stronger evidence
-		// (pin semantics, datasheet/function topology) before they are allowed
-		// to emit placement-driving constraints.
-		if (inference.role !== 'decoupling-capacitor') {
-			return false;
-		}
-
-		if (
-			constraint.type !== 'near'
-			|| !constraint.target
-			|| !inference.associatedCore
-		) {
-			return false;
-		}
-
-		return constraint.target === inference.associatedCore;
-	});
-
-	if (!activeConstraints.length) {
-		const reason = modelActiveConstraints.length
-			? 'unsupported-role-constraint'
-			: 'no-active-constraint';
-
-		return {
-			proposals: [],
-			skipped: [
-				{
-					subject,
-					reason,
-					confidence: inference.confidence,
-					role: inference.role,
-				},
-			],
-			advisoryCount: 0,
-			softCount: 0,
-			previewEligibleCount: 0,
-			reviewOnlyCount: 0,
-		};
-	}
-
-	const policy = policyForConfidence(inference.confidence);
+	const confidencePolicy = policyForConfidence(inference.confidence);
 	const unique = new Map<string, ConstraintProposal>();
 
-	for (const constraint of activeConstraints) {
+	for (const constraint of derived.constraints) {
 		const key = [
-			subject,
+			context.designator,
+			constraint.policyId,
 			constraint.type,
 			constraint.target ?? '',
 		].join(':');
@@ -177,16 +107,17 @@ export function buildConstraintPreviewForInference(
 
 		unique.set(key, {
 			id: key,
-			subject,
+			subject: context.designator,
 			type: constraint.type,
 			target: constraint.target,
-			strength: policy.strength,
-			execution: policy.execution,
-			source: 'ai-semantic',
+			strength: confidencePolicy.strength,
+			execution: confidencePolicy.execution,
+			source: 'semantic-policy',
 			confidence: inference.confidence,
 			role: inference.role,
 			evidenceRefs: [...constraint.evidenceRefs],
-			explanation: inference.explanation,
+			explanation: constraint.rationale,
+			policyId: constraint.policyId,
 			requiresReview: true,
 		});
 	}
