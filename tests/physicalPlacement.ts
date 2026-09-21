@@ -5,6 +5,15 @@ import {
 	type PhysicalComponentSnapshot,
 } from '../src/domain/physicalPlacement';
 
+const board = {
+	points: [
+		{ x: -1000, y: -1000 },
+		{ x: 1000, y: -1000 },
+		{ x: 1000, y: 1000 },
+		{ x: -1000, y: 1000 },
+	],
+};
+
 function component(
 	id: string,
 	designator: string,
@@ -67,6 +76,7 @@ function component(
 		subject,
 		owner,
 		obstacles: [subject, owner],
+		board,
 		powerNet: '3V3',
 		groundNet: 'GND',
 	});
@@ -85,6 +95,7 @@ function component(
 		subject,
 		owner,
 		obstacles: [subject, owner],
+		board,
 		powerNet: '3V3',
 		groundNet: 'GND',
 	});
@@ -102,6 +113,7 @@ function component(
 		subject,
 		owner,
 		obstacles: [subject, owner],
+		board,
 		powerNet: '3V3',
 		groundNet: 'GND',
 	});
@@ -120,6 +132,7 @@ function component(
 		subject,
 		owner,
 		obstacles: [subject, owner],
+		board,
 		powerNet: '3V3',
 		groundNet: 'GND',
 	});
@@ -140,6 +153,7 @@ function component(
 		subject,
 		owner,
 		obstacles: [subject, owner],
+		board,
 		powerNet: '3V3',
 		groundNet: 'GND',
 	});
@@ -165,6 +179,7 @@ function component(
 		subject,
 		owner,
 		obstacles: [subject, owner, unknownObstacle],
+		board,
 		powerNet: '3V3',
 		groundNet: 'GND',
 	});
