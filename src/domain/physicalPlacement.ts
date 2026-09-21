@@ -8,7 +8,7 @@ export interface PhysicalPadSnapshot {
 	width: number;
 	height: number;
 	rotation: number;
-	connectedPrimitiveCount: number;
+	connectedPrimitiveCount?: number;
 }
 
 export interface PhysicalComponentSnapshot {
@@ -242,7 +242,12 @@ export function planDecouplingPlacement(input: {
 			`${subject.designator} 与 ${owner.designator} 不在同一器件层`,
 		);
 	}
-	if (subject.pads.some(pad => pad.connectedPrimitiveCount > 0)) {
+	if (subject.pads.some(pad => pad.connectedPrimitiveCount === undefined)) {
+		reasons.push(
+			`${subject.designator} 的已有布线状态无法确认，按失败关闭策略拒绝移动`,
+		);
+	}
+	else if (subject.pads.some(pad => (pad.connectedPrimitiveCount ?? 0) > 0)) {
 		reasons.push(
 			`${subject.designator} 已有布线/铜连接，v0.7 不执行器件移动`,
 		);
