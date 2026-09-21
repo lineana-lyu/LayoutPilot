@@ -5,11 +5,13 @@ import { buildCandidateGroups } from './domain/candidateGrouping';
 import { buildSemanticContexts, type SemanticComponentContext, type SemanticComponentMetadata } from './domain/semanticContext';
 import { allowedSemanticRolesForPrefix, buildSemanticEvidenceCatalog, validateSemanticInference } from './domain/semanticInference';
 import { buildSemanticGatewayRequest, normalizeGatewayBaseUrl, parseSemanticGatewayResponse } from './ai/gatewayClient';
-import { buildConstraintPreview, mergeConstraintPreviewResults } from './domain/layoutConstraintEngine';
+import { buildConstraintEvaluation } from './application/constraintEvaluation';
 import { resolveAmbiguousCoreAssociations } from './domain/coreAssociation';
 import { resolveOwnershipRelations } from './domain/ownershipRelation';
-import { clearHumanOwnershipDecisions, createHumanOwnershipDecision, getHumanOwnershipDecisions, removeHumanOwnershipDecision, toExplicitOwnershipHints, upsertHumanOwnershipDecision } from './domain/humanOwnershipDecision';
+import { clearHumanOwnershipDecisions, createHumanOwnershipDecision, getHumanOwnershipDecisions, removeHumanOwnershipDecision, upsertHumanOwnershipDecision } from './domain/humanOwnershipDecision';
 import { buildSemanticBoardFingerprint, clearActiveSemanticSnapshot, createSemanticSnapshot, getActiveSemanticSnapshot, semanticSnapshotMatchesBoard, setActiveSemanticSnapshot, type SemanticSnapshotEntry } from './domain/semanticSnapshot';
+import { planDecouplingPlacement, type PhysicalComponentSnapshot } from './domain/physicalPlacement';
+import { createPlacementCommand, getLastPlacementCommand, markPlacementCommandApplied, markPlacementCommandUndone, setLastPlacementCommand } from './domain/placementCommand';
 import { filterOwnershipPropertyNames, findOwnershipFields, findOwnershipMemberNames } from './domain/ownershipCapabilityProbe';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
@@ -1363,71 +1365,227 @@ export async function confirmAmbiguousOwnership(): Promise<void> {
 }
 
 
+interface CurrentConstraintSession {
+  analysisState: Awaited<ReturnType<typeof collectAnalysisState>>;
+  snapshot: NonNullable<ReturnType<typeof getActiveSemanticSnapshot>>;
+  boardFingerprint: string;
+  evaluation: ReturnType<typeof buildConstraintEvaluation>;
+}
+
+async function collectCurrentConstraintSession(): Promise<
+  | { ok: true; value: CurrentConstraintSession }
+  | { ok: false; reason: 'missing-snapshot' | 'stale-snapshot'; message: string }
+> {
+  const analysisState = await collectAnalysisState();
+  const boardFingerprint = buildSemanticBoardFingerprint({
+    graph: analysisState.graph,
+    contexts: analysisState.contexts,
+  });
+  const snapshot = getActiveSemanticSnapshot();
+
+  if (!snapshot) {
+    return {
+      ok: false,
+      reason: 'missing-snapshot',
+      message: '当前没有可复用的 Semantic Snapshot。请先运行 AI 语义分析。',
+    };
+  }
+
+  if (!semanticSnapshotMatchesBoard(snapshot, boardFingerprint)) {
+    return {
+      ok: false,
+      reason: 'stale-snapshot',
+      message: [
+        '当前 PCB 的语义输入已经变化，旧 Snapshot 已过期。',
+        `Snapshot：${snapshot.id}`,
+        `旧 Fingerprint：${snapshot.boardFingerprint}`,
+        `当前 Fingerprint：${boardFingerprint}`,
+      ].join('\n'),
+    };
+  }
+
+  const evaluation = buildConstraintEvaluation({
+    snapshot,
+    graph: analysisState.graph,
+    features: analysisState.features,
+    grouping: analysisState.grouping,
+    semanticMetadata: analysisState.semanticMetadata,
+    humanOwnershipDecisions: getHumanOwnershipDecisions(snapshot.id),
+  });
+
+  return {
+    ok: true,
+    value: {
+      analysisState,
+      snapshot,
+      boardFingerprint,
+      evaluation,
+    },
+  };
+}
+
+function padDimensions(shape: unknown): { width: number; height: number } | undefined {
+  if (!Array.isArray(shape)) return undefined;
+  const width = shape[1];
+  const height = shape[2] ?? shape[1];
+  if (
+    typeof width !== 'number'
+    || typeof height !== 'number'
+    || !Number.isFinite(width)
+    || !Number.isFinite(height)
+    || width <= 0
+    || height <= 0
+  ) {
+    return undefined;
+  }
+  return { width, height };
+}
+
+async function collectPhysicalComponents(
+  routingInspectionComponentId?: string,
+): Promise<PhysicalComponentSnapshot[]> {
+  const components = await eda.pcb_PrimitiveComponent.getAll();
+  const result: PhysicalComponentSnapshot[] = [];
+
+  for (const component of components) {
+    const id = component.getState_PrimitiveId();
+    const designator = component.getState_Designator()
+      ?? component.getState_Name()
+      ?? id;
+    const pads = await eda.pcb_PrimitiveComponent.getAllPinsByPrimitiveId(id);
+    const physicalPads = [];
+
+    for (const pad of pads ?? []) {
+      const dimensions = padDimensions(pad.getState_Pad());
+      let connectedPrimitiveCount: number | undefined;
+
+      if (id === routingInspectionComponentId) {
+        try {
+          connectedPrimitiveCount = (
+            await pad.getConnectedPrimitives(false)
+          ).length;
+        }
+        catch (error) {
+          console.warn(
+            `[LayoutPilot] Unable to inspect routed primitives for ${designator}.${pad.getState_PadNumber()}`,
+            error,
+          );
+          connectedPrimitiveCount = undefined;
+        }
+      }
+
+      physicalPads.push({
+        componentId: id,
+        designator,
+        padNumber: String(pad.getState_PadNumber() ?? '?'),
+        net: pad.getState_Net(),
+        x: pad.getState_X(),
+        y: pad.getState_Y(),
+        width: dimensions?.width ?? 0,
+        height: dimensions?.height ?? 0,
+        rotation: pad.getState_Rotation(),
+        connectedPrimitiveCount,
+      });
+    }
+
+    result.push({
+      id,
+      designator,
+      x: component.getState_X(),
+      y: component.getState_Y(),
+      rotation: component.getState_Rotation(),
+      layer: String(component.getState_Layer()),
+      locked: component.getState_PrimitiveLock(),
+      pads: physicalPads,
+    });
+  }
+
+  return result;
+}
+
+function showConfirmationDialog(
+  content: string,
+  title: string,
+  confirmTitle: string,
+): Promise<boolean> {
+  return new Promise(resolve => {
+    eda.sys_Dialog.showConfirmationMessage(
+      content,
+      title,
+      confirmTitle,
+      '取消',
+      clicked => resolve(clicked),
+    );
+  });
+}
+
+function closeEnough(a: number, b: number, tolerance = 0.01): boolean {
+  return Math.abs(a - b) <= tolerance;
+}
+
+async function moveComponentAndVerify(
+  componentId: string,
+  x: number,
+  y: number,
+): Promise<{ x: number; y: number }> {
+  const component = await eda.pcb_PrimitiveComponent.get(componentId);
+  if (!component) {
+    throw new Error(`找不到 PCB 器件：${componentId}`);
+  }
+
+  const editable = component.toAsync();
+  editable.setState_X(x);
+  editable.setState_Y(y);
+  await editable.done();
+
+  const refreshed = await eda.pcb_PrimitiveComponent.get(componentId);
+  if (!refreshed) {
+    throw new Error('移动后无法重新读取器件。');
+  }
+
+  const actual = {
+    x: refreshed.getState_X(),
+    y: refreshed.getState_Y(),
+  };
+
+  if (!closeEnough(actual.x, x) || !closeEnough(actual.y, y)) {
+    throw new Error(
+      `坐标回读校验失败：期望 (${x}, ${y})，实际 (${actual.x}, ${actual.y})`,
+    );
+  }
+
+  return actual;
+}
+
 export async function previewLayoutConstraints(): Promise<void> {
   try {
-    const analysisState = await collectAnalysisState();
-    const contexts = analysisState.contexts;
-    const boardFingerprint = buildSemanticBoardFingerprint({
-      graph: analysisState.graph,
-      contexts,
-    });
-    const snapshot = getActiveSemanticSnapshot();
-
-    if (!snapshot) {
+    const current = await collectCurrentConstraintSession();
+    if (!current.ok) {
       await eda.sys_Dialog.showInformationMessage(
         [
-          '当前没有可复用的 Semantic Snapshot。',
+          current.message,
           '',
-          '请先运行“AI 分析全部歧义器件（只读）”。',
           '布局约束预览不会为了补结果而重新调用 AI。',
         ].join('\n'),
-        'LayoutPilot · 布局约束预览',
+        current.reason === 'stale-snapshot'
+          ? 'LayoutPilot · Snapshot 已过期'
+          : 'LayoutPilot · 布局约束预览',
       );
       return;
     }
 
-    if (!semanticSnapshotMatchesBoard(snapshot, boardFingerprint)) {
-      await eda.sys_Dialog.showInformationMessage(
-        [
-          '当前 PCB 的语义输入已经变化，旧 Snapshot 已过期。',
-          '',
-          `Snapshot：${snapshot.id}`,
-          `旧 Fingerprint：${snapshot.boardFingerprint}`,
-          `当前 Fingerprint：${boardFingerprint}`,
-          '',
-          '请重新运行“AI 分析全部歧义器件（只读）”。',
-          '为避免把旧 AI 决策应用到新 PCB，本次不会生成布局约束。',
-        ].join('\n'),
-        'LayoutPilot · Snapshot 已过期',
-      );
-      return;
-    }
-
-    const explicitOwnershipHints = toExplicitOwnershipHints(snapshot.id);
-    const effectiveContexts = buildSemanticContexts(
-      analysisState.graph,
-      analysisState.features,
-      analysisState.grouping,
-      analysisState.semanticMetadata,
-      explicitOwnershipHints,
-    );
-    const effectiveContextById = new Map(
-      effectiveContexts.map(context => [context.componentId, context]),
-    );
-    const humanDecisionByComponentId = new Map(
-      getHumanOwnershipDecisions(snapshot.id)
-        .map(decision => [decision.componentId, decision]),
-    );
-
-    const previewResults = [];
+    const {
+      snapshot,
+      boardFingerprint,
+      evaluation,
+    } = current.value;
     const rows: string[] = [];
     let blocked = 0;
     let failed = 0;
     let providerLabel = '';
 
-    for (const entry of snapshot.entries) {
-      const context = effectiveContextById.get(entry.componentId) ?? entry.context;
-      const humanDecision = humanDecisionByComponentId.get(entry.componentId);
+    for (const item of evaluation.entries) {
+      const { entry, context, humanOwnershipDecision, result } = item;
       const provider = entry.provider ?? 'unknown';
       const model = entry.model ?? 'unknown';
       if (entry.provider || entry.model) {
@@ -1438,104 +1596,72 @@ export async function previewLayoutConstraints(): Promise<void> {
         rows.push(`${context.designator}：Mock 模式不生成真实布局约束`);
         continue;
       }
-
       if (entry.status === 'blocked') {
         blocked += 1;
-        const reason = entry.validationErrors.length
-          ? entry.validationErrors.join('；')
-          : '未返回具体校验原因';
         rows.push(
-          `${context.designator}：Snapshot 中的 AI 结果曾被 Validator 拦截 · ${reason}`,
+          `${context.designator}：Snapshot 中的 AI 结果被 Validator 拦截 · ${entry.validationErrors.join('；') || '无具体原因'}`,
         );
         continue;
       }
-
-      if (entry.status === 'failed') {
+      if (entry.status === 'failed' || !entry.inference || !result) {
         failed += 1;
         rows.push(
-          `${context.designator}：Snapshot 中记录的 AI 调用失败 · ${entry.error ?? '未知错误'}`,
+          `${context.designator}：Snapshot 无可用推理结果 · ${entry.error ?? '未知错误'}`,
         );
         continue;
       }
 
-      if (!entry.inference) {
-        failed += 1;
-        rows.push(
-          `${context.designator}：Snapshot 缺少 inference，已跳过`,
-        );
-        continue;
-      }
-
-      try {
-        const result = buildConstraintPreview(
-          context,
-          entry.inference,
-        );
-        previewResults.push(result);
-
-        if (result.proposals.length) {
-          for (const proposal of result.proposals) {
-            const level = proposal.strength === 'advisory' ? '提示级' : '软约束';
-            const execution = proposal.execution === 'review-only'
-              ? '仅人工复核，不参与布局计算'
-              : '可进入后续布局方案计算';
-            const target = proposal.target ? ` → ${proposal.target}` : '';
-            const ownershipSource = humanDecision
-              ? ` · owner来源=人工确认(${humanDecision.ownerDesignator})`
-              : '';
-            rows.push(
-              `${proposal.subject}：[${level}] ${layoutConstraintTypeZh(proposal.type)}${target} · 置信=${semanticConfidenceZh(proposal.confidence)} · ${execution}${ownershipSource}`,
-            );
-          }
-        }
-        else {
-          const reason = result.skipped[0]?.reason;
-          const reasonText = reason === 'semantic-not-inferred'
-            ? '语义证据不足'
-            : reason === 'unknown-semantic-role'
-              ? '语义角色未知'
-              : reason === 'no-policy-for-role'
-                ? '当前语义角色尚未建立可执行布局策略'
-                : reason === 'policy-evidence-insufficient'
-                  ? '已有布局策略，但当前 PCB 事实证据不足'
-                  : '没有可推导的布局约束';
-
-          const diagnosticLines = (result.skipped[0]?.diagnostics ?? [])
-            .flatMap(diagnostic => {
-              const checks = diagnostic.checks.map(check => {
-                const status = check.status === 'pass'
-                  ? '✓'
-                  : check.status === 'fail'
-                    ? '✗'
-                    : '·';
-                const detail = check.detail ? `：${check.detail}` : '';
-                return `    ${status} ${check.label}${detail}`;
-              });
-              return [
-                `  Policy：${diagnostic.policyId}`,
-                ...checks,
-              ];
-            });
-
+      if (result.proposals.length) {
+        for (const proposal of result.proposals) {
+          const level = proposal.strength === 'advisory' ? '提示级' : '软约束';
+          const execution = proposal.execution === 'review-only'
+            ? '仅人工复核，不参与布局计算'
+            : '可进入后续布局方案计算';
+          const target = proposal.target ? ` → ${proposal.target}` : '';
+          const ownershipSource = humanOwnershipDecision
+            ? ` · owner来源=人工确认(${humanOwnershipDecision.ownerDesignator})`
+            : '';
           rows.push(
-            [
-              `${context.designator}：跳过 · ${reasonText}`,
-              ...diagnosticLines,
-            ].join('\n'),
+            `${proposal.subject}：[${level}] ${layoutConstraintTypeZh(proposal.type)}${target} · 置信=${semanticConfidenceZh(proposal.confidence)} · ${execution}${ownershipSource}`,
           );
         }
+        continue;
       }
-      catch (error) {
-        failed += 1;
-        console.error(
-          `[LayoutPilot] Constraint preview failed for ${context.designator}`,
-          error,
-        );
-        rows.push(`${context.designator}：生成失败 · ${String(error)}`);
-      }
+
+      const reason = result.skipped[0]?.reason;
+      const reasonText = reason === 'semantic-not-inferred'
+        ? '语义证据不足'
+        : reason === 'unknown-semantic-role'
+          ? '语义角色未知'
+          : reason === 'no-policy-for-role'
+            ? '当前语义角色尚未建立可执行布局策略'
+            : reason === 'policy-evidence-insufficient'
+              ? '已有布局策略，但当前 PCB 事实证据不足'
+              : '没有可推导的布局约束';
+
+      const diagnosticLines = (result.skipped[0]?.diagnostics ?? [])
+        .flatMap(diagnostic => [
+          `  Policy：${diagnostic.policyId}`,
+          ...diagnostic.checks.map(check => {
+            const status = check.status === 'pass'
+              ? '✓'
+              : check.status === 'fail'
+                ? '✗'
+                : '·';
+            const detail = check.detail ? `：${check.detail}` : '';
+            return `    ${status} ${check.label}${detail}`;
+          }),
+        ]);
+
+      rows.push(
+        [
+          `${context.designator}：跳过 · ${reasonText}`,
+          ...diagnosticLines,
+        ].join('\n'),
+      );
     }
 
-    const merged = mergeConstraintPreviewResults(previewResults);
+    const merged = evaluation.merged;
     console.log('[LayoutPilot] constraint preview from semantic snapshot', {
       snapshotId: snapshot.id,
       result: merged,
@@ -1546,10 +1672,9 @@ export async function previewLayoutConstraints(): Promise<void> {
         'LayoutPilot 布局约束预览已生成。',
         '',
         `Semantic Snapshot：${snapshot.id}`,
-        `PCB Fingerprint：${snapshot.boardFingerprint}`,
+        `PCB Fingerprint：${boardFingerprint}`,
         '语义来源：复用已冻结 Snapshot（本步骤未调用 AI）',
-        `人工 Owner 确认：${explicitOwnershipHints.length}`,
-        `语义上下文器件：${contexts.length}`,
+        `人工 Owner 确认：${evaluation.explicitOwnershipHints.length}`,
         `生成约束：${merged.proposals.length}`,
         `软约束：${merged.softCount}`,
         `提示级约束：${merged.advisoryCount}`,
@@ -1562,12 +1687,10 @@ export async function previewLayoutConstraints(): Promise<void> {
         ...rows,
         '',
         '安全边界：',
-        '• Constraint Preview 只消费当前 Semantic Snapshot，不重新调用 AI；',
-        '• 人工 Owner 选择作为 ExplicitOwnershipHint 单独叠加，不改写 AI 角色；',
-        '• PCB 语义输入变化后旧 Snapshot 自动失效；',
-        '• AI 生成的约束不会成为硬约束；',
-        '• 低置信结果不会参与布局计算；',
-        '• 当前仅预览约束，不会移动任何 PCB 器件。',
+        '• Preview 与 Apply 消费同一个 Constraint Evaluation，不复制两套业务逻辑；',
+        '• Constraint Preview 不重新调用 AI；',
+        '• 人工 Owner 选择作为 ExplicitOwnershipHint 单独叠加；',
+        '• 当前预览不会移动任何 PCB 器件。',
       ].join('\n'),
       'LayoutPilot · 布局约束预览',
     );
@@ -1576,7 +1699,276 @@ export async function previewLayoutConstraints(): Promise<void> {
     console.error('[LayoutPilot] Layout constraint preview failed', error);
     await eda.sys_Dialog.showInformationMessage(
       `生成布局约束预览失败。\n\n${String(error)}\n\nPCB 未发生任何修改。`,
-      'LayoutPilot · 第 3 阶段',
+      'LayoutPilot · 布局约束预览',
+    );
+  }
+}
+
+export async function applyDemoPlacement(): Promise<void> {
+  try {
+    const current = await collectCurrentConstraintSession();
+    if (!current.ok) {
+      await eda.sys_Dialog.showInformationMessage(
+        current.message,
+        'LayoutPilot · 受控布局执行',
+      );
+      return;
+    }
+
+    const { snapshot, evaluation } = current.value;
+    const executable = evaluation.entries.flatMap(item => {
+      if (!item.result || !item.humanOwnershipDecision) return [];
+      return item.result.proposals
+        .filter(proposal =>
+          proposal.type === 'near'
+          && proposal.execution === 'preview-eligible'
+          && proposal.role === 'decoupling-capacitor'
+        )
+        .map(proposal => ({ item, proposal }));
+    });
+
+    if (!executable.length) {
+      await eda.sys_Dialog.showInformationMessage(
+        [
+          '当前没有满足 v0.7 执行门槛的布局建议。',
+          '',
+          '受控执行要求：',
+          '• 去耦电容 near(owner) 约束；',
+          '• medium/high 置信，属于 preview-eligible；',
+          '• owner 已由用户显式确认；',
+          '• 后续物理检查全部通过。',
+        ].join('\n'),
+        'LayoutPilot · 受控布局执行',
+      );
+      return;
+    }
+
+    let chosen = executable[0];
+    if (executable.length > 1) {
+      const selected = await showSingleSelectDialog(
+        executable.map((candidate, index) => ({
+          value: String(index),
+          displayContent: `${candidate.proposal.subject} → ${candidate.proposal.target}`,
+        })),
+        '请选择本次只执行的一条布局建议。',
+        'v0.7 每次只移动一个器件，避免批量变更扩大风险。',
+        'LayoutPilot · 选择执行建议',
+        '0',
+      );
+      if (selected === undefined) return;
+      const index = Number(selected);
+      if (!Number.isInteger(index) || !executable[index]) return;
+      chosen = executable[index];
+    }
+
+    const { item, proposal } = chosen;
+    const decision = item.humanOwnershipDecision;
+    if (!decision || !proposal.target) {
+      throw new Error('执行建议缺少人工 owner 证据。');
+    }
+
+    const physical = await collectPhysicalComponents(item.entry.componentId);
+    const subject = physical.find(component => component.id === item.entry.componentId);
+    const owner = physical.find(component => component.id === decision.ownerComponentId);
+    if (!subject || !owner) {
+      throw new Error('无法在 PCB 物理对象中定位 subject 或 owner。');
+    }
+
+    const powerNet = item.context.connectedNets.find(net =>
+      net.classification === 'global-power'
+      && net.coreDesignators.includes(owner.designator)
+    )?.netName;
+    const groundNet = item.context.connectedNets.find(net =>
+      net.classification === 'global-ground'
+      && net.coreDesignators.includes(owner.designator)
+    )?.netName;
+
+    if (!powerNet || !groundNet) {
+      throw new Error('缺少 owner 共享的电源/地物理网络，拒绝执行。');
+    }
+
+    const readiness = planDecouplingPlacement({
+      subject,
+      owner,
+      obstacles: physical,
+      powerNet,
+      groundNet,
+    });
+
+    if (!readiness.ready || !readiness.plan) {
+      await eda.sys_Dialog.showInformationMessage(
+        [
+          `${subject.designator} 当前不满足安全执行条件。`,
+          '',
+          ...readiness.reasons.map(reason => `• ${reason}`),
+          '',
+          '系统不会为了演示效果绕过这些检查。',
+        ].join('\n'),
+        'LayoutPilot · 物理执行被阻止',
+      );
+      return;
+    }
+
+    const baselineDrcPassed = await eda.pcb_Drc.check(true, false, false);
+    if (!baselineDrcPassed) {
+      await eda.sys_Dialog.showInformationMessage(
+        [
+          '当前 PCB 在移动前就没有通过 DRC。',
+          '',
+          'v0.7 采用失败关闭策略：无法建立干净基线时，不执行自动移动。',
+        ].join('\n'),
+        'LayoutPilot · DRC 基线未通过',
+      );
+      return;
+    }
+
+    const plan = readiness.plan;
+    const confirmed = await showConfirmationDialog(
+      [
+        `即将移动：${plan.subjectDesignator}`,
+        `目标 owner：${plan.ownerDesignator}`,
+        `电源锚点：${plan.ownerDesignator}.${plan.ownerPowerPadNumber} / ${plan.powerNet}`,
+        `原坐标：(${plan.from.x.toFixed(2)}, ${plan.from.y.toFixed(2)}) mil`,
+        `目标坐标：(${plan.to.x.toFixed(2)}, ${plan.to.y.toFixed(2)}) mil`,
+        `近似避让：${plan.clearanceMil} mil`,
+        '',
+        '执行后 LayoutPilot 会重新读取坐标并运行 DRC；若 DRC 失败，将自动回滚。',
+        '这仍是受控 Placement PoC，不等同于生产级自动布局器。',
+      ].join('\n'),
+      'LayoutPilot · 确认受控移动',
+      '移动并校验',
+    );
+    if (!confirmed) return;
+
+    const command = createPlacementCommand({
+      snapshotId: snapshot.id,
+      constraintId: proposal.id,
+      componentId: plan.subjectId,
+      componentDesignator: plan.subjectDesignator,
+      from: plan.from,
+      to: plan.to,
+    });
+
+    await moveComponentAndVerify(plan.subjectId, plan.to.x, plan.to.y);
+
+    const postDrcPassed = await eda.pcb_Drc.check(true, false, false);
+    if (!postDrcPassed) {
+      await moveComponentAndVerify(plan.subjectId, plan.from.x, plan.from.y);
+      const rollbackDrcPassed = await eda.pcb_Drc.check(true, false, false);
+      setLastPlacementCommand(undefined);
+      await eda.sys_Dialog.showInformationMessage(
+        [
+          '移动后的 DRC 未通过，LayoutPilot 已自动回滚原坐标。',
+          '',
+          `回滚 DRC：${rollbackDrcPassed ? '通过' : '仍未通过，请人工检查'}`,
+          '本次动作不会记录为可撤销成功操作。',
+        ].join('\n'),
+        'LayoutPilot · 已自动回滚',
+      );
+      return;
+    }
+
+    const applied = markPlacementCommandApplied(command);
+    setLastPlacementCommand(applied);
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        '受控布局动作已完成并通过校验。',
+        '',
+        `Command：${applied.id}`,
+        `${plan.subjectDesignator} → near(${plan.ownerDesignator})`,
+        `坐标：(${plan.from.x.toFixed(2)}, ${plan.from.y.toFixed(2)}) → (${plan.to.x.toFixed(2)}, ${plan.to.y.toFixed(2)}) mil`,
+        '坐标回读：PASS',
+        '移动后 DRC：PASS',
+        '',
+        '可使用“撤销上次受控布局”恢复原坐标。',
+      ].join('\n'),
+      'LayoutPilot · 受控布局执行',
+    );
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Controlled placement failed', error);
+    await eda.sys_Dialog.showInformationMessage(
+      `受控布局执行失败。\n\n${String(error)}\n\n请检查当前 PCB；系统不会继续执行后续动作。`,
+      'LayoutPilot · 受控布局执行',
+    );
+  }
+}
+
+export async function undoLastDemoPlacement(): Promise<void> {
+  try {
+    const command = getLastPlacementCommand();
+    if (!command || command.status !== 'applied') {
+      await eda.sys_Dialog.showInformationMessage(
+        '当前没有可撤销的 LayoutPilot 受控布局动作。',
+        'LayoutPilot · 撤销',
+      );
+      return;
+    }
+
+    const component = await eda.pcb_PrimitiveComponent.get(command.componentId);
+    if (!component) {
+      throw new Error(`找不到器件 ${command.componentDesignator}`);
+    }
+
+    const current = {
+      x: component.getState_X(),
+      y: component.getState_Y(),
+    };
+    if (
+      !closeEnough(current.x, command.to.x)
+      || !closeEnough(current.y, command.to.y)
+    ) {
+      await eda.sys_Dialog.showInformationMessage(
+        [
+          `${command.componentDesignator} 在 LayoutPilot 执行后又被移动过。`,
+          '',
+          `记录位置：(${command.to.x.toFixed(2)}, ${command.to.y.toFixed(2)}) mil`,
+          `当前位置：(${current.x.toFixed(2)}, ${current.y.toFixed(2)}) mil`,
+          '',
+          '为避免覆盖用户的新修改，本次拒绝自动 Undo。',
+        ].join('\n'),
+        'LayoutPilot · 撤销被阻止',
+      );
+      return;
+    }
+
+    const confirmed = await showConfirmationDialog(
+      [
+        `恢复 ${command.componentDesignator} 到执行前位置？`,
+        `当前：(${command.to.x.toFixed(2)}, ${command.to.y.toFixed(2)}) mil`,
+        `恢复：(${command.from.x.toFixed(2)}, ${command.from.y.toFixed(2)}) mil`,
+      ].join('\n'),
+      'LayoutPilot · 撤销上次受控布局',
+      '恢复原位置',
+    );
+    if (!confirmed) return;
+
+    await moveComponentAndVerify(
+      command.componentId,
+      command.from.x,
+      command.from.y,
+    );
+    const drcPassed = await eda.pcb_Drc.check(true, false, false);
+    const undone = markPlacementCommandUndone(command);
+    setLastPlacementCommand(undone);
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        '已恢复执行前坐标。',
+        '',
+        `Command：${command.id}`,
+        `坐标回读：PASS`,
+        `恢复后 DRC：${drcPassed ? 'PASS' : '未通过，请人工检查'}`,
+      ].join('\n'),
+      'LayoutPilot · 撤销完成',
+    );
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Undo placement failed', error);
+    await eda.sys_Dialog.showInformationMessage(
+      `撤销失败。\n\n${String(error)}`,
+      'LayoutPilot · 撤销',
     );
   }
 }
