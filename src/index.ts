@@ -115,7 +115,7 @@ export async function inspectTestComponent(): Promise<void> {
         '',
         '如需查看完整属性和焊盘详情，请打开开发者控制台。',
       ].join('\n'),
-      'LayoutPilot · Inspect U1',
+      'LayoutPilot · 检查 U1',
     );
   }
   catch (error) {
@@ -123,7 +123,7 @@ export async function inspectTestComponent(): Promise<void> {
 
     await eda.sys_Dialog.showInformationMessage(
       `读取 U1 失败。\n\n${String(error)}`,
-      'LayoutPilot · API PoC',
+      'LayoutPilot · API 可行性验证',
     );
   }
 }
@@ -143,7 +143,7 @@ export async function moveTestComponent(): Promise<void> {
     if (target.getState_PrimitiveLock()) {
       await eda.sys_Dialog.showInformationMessage(
         'U1 当前已锁定。请先解锁，再执行移动测试。',
-        'LayoutPilot · Move U1',
+        'LayoutPilot · 移动 U1',
       );
       return;
     }
@@ -179,7 +179,7 @@ export async function moveTestComponent(): Promise<void> {
         `目标位置：X=${requestedX}, Y=${beforeY}`,
         `回读位置：X=${afterX}, Y=${afterY}`,
       ].join('\n'),
-      'LayoutPilot · Move U1',
+      'LayoutPilot · 移动 U1',
     );
   }
   catch (error) {
@@ -187,7 +187,7 @@ export async function moveTestComponent(): Promise<void> {
 
     await eda.sys_Dialog.showInformationMessage(
       `移动 U1 失败。\n\n${String(error)}`,
-      'LayoutPilot · API PoC',
+      'LayoutPilot · API 可行性验证',
     );
   }
 }
@@ -198,7 +198,7 @@ export async function toggleTestComponentLock(): Promise<void> {
 
     if (!target) {
       await eda.sys_Dialog.showInformationMessage(
-        'U1 was not found on the current PCB.',
+        '当前 PCB 中没有找到 U1。',
         'LayoutPilot · 切换 U1 锁定状态',
       );
       return;
@@ -233,7 +233,7 @@ export async function toggleTestComponentLock(): Promise<void> {
         `目标状态：${lockedZh(requested)}`,
         `回读状态：${lockedZh(after)}`,
       ].join('\n'),
-      'LayoutPilot · Toggle U1 Lock',
+      'LayoutPilot · 切换 U1 锁定状态',
     );
   }
   catch (error) {
@@ -241,7 +241,7 @@ export async function toggleTestComponentLock(): Promise<void> {
 
     await eda.sys_Dialog.showInformationMessage(
       `切换 U1 锁定状态失败。\n\n${String(error)}`,
-      'LayoutPilot · API PoC',
+      'LayoutPilot · API 可行性验证',
     );
   }
 }
@@ -319,7 +319,7 @@ export async function inspectConnectivity(): Promise<void> {
 
     await eda.sys_Dialog.showInformationMessage(
       `检查网络连接失败。\n\n${String(error)}`,
-      'LayoutPilot · API PoC',
+      'LayoutPilot · API 可行性验证',
     );
   }
 }
@@ -485,7 +485,7 @@ export async function inspectStructuralFeatures(): Promise<void> {
 
     await eda.sys_Dialog.showInformationMessage(
       `提取结构特征失败。\n\n${String(error)}`,
-      'LayoutPilot · Phase 1',
+      'LayoutPilot · 第 1 阶段',
     );
   }
 }
