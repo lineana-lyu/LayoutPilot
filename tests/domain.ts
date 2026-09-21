@@ -374,9 +374,16 @@ console.log('Semantic inference validator passed.');
 
 	assert.ok(context);
 	const catalog = buildSemanticEvidenceCatalog(context);
-	const request = buildSemanticGatewayRequest(context, catalog);
+	const request = buildSemanticGatewayRequest(
+		context,
+		catalog,
+		allowedSemanticRolesForPrefix(context.referencePrefix),
+	);
 	assert.equal(request.version, '1');
 	assert.equal(request.context.designator, 'C1');
+	assert.ok(request.allowedRoles.includes('decoupling-capacitor'));
+	assert.ok(request.allowedConstraintTargets.includes('U1'));
+	assert.ok(request.allowedConstraintTargets.includes('GND'));
 
 	const parsed = parseSemanticGatewayResponse({
 		inference: {
