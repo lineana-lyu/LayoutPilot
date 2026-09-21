@@ -95,3 +95,35 @@ Response:
 ```
 
 The extension validates the response again. A schema-valid model response can still be rejected if it cites evidence or a core that does not exist in the deterministic PCB context.
+
+
+## 3. DeepSeek adapter
+
+DeepSeek is supported through its official OpenAI-compatible Chat Completions API.
+
+Windows PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\gateway\start-deepseek.ps1
+```
+
+The launcher asks for:
+- DeepSeek API Key
+- model ID (press Enter to use `deepseek-flash`)
+
+The key is kept only in the current PowerShell process environment.
+
+The adapter uses:
+- base URL: `https://api.deepseek.com`
+- endpoint: `/chat/completions`
+- `response_format: {"type":"json_object"}`
+- non-thinking mode for a smaller, more deterministic structured-output path
+
+DeepSeek JSON Output guarantees valid JSON, but not LayoutPilot's semantic schema. Therefore the extension-side parser and deterministic evidence validator remain mandatory.
+
+Optional environment variables:
+
+```powershell
+$env:DEEPSEEK_API_BASE="https://api.deepseek.com"
+$env:DEEPSEEK_MODEL="deepseek-flash"
+```
