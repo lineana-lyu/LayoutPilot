@@ -566,7 +566,26 @@ console.log('Semantic role compatibility validation passed.');
 	assert.equal(unknown.proposals.length, 0);
 	assert.equal(unknown.skipped[0].reason, 'insufficient-semantic-evidence');
 
-	const noConstraint = buildConstraintPreviewForInference('Q1', {
+	const unsupportedPowerSwitch = buildConstraintPreviewForInference('Q1', {
+		status: 'inferred',
+		role: 'power-switch',
+		associatedCore: 'U1',
+		confidence: 'medium',
+		evidenceRefs: ['net:3V', 'net:VBAT', 'core:U1'],
+		explanation: '角色可识别，但当前没有足够的 Pin/功能拓扑证据驱动布局。',
+		constraints: [
+			{ type: 'keep-short', target: '3V', evidenceRefs: ['net:3V'] },
+			{ type: 'keep-short', target: 'VBAT', evidenceRefs: ['net:VBAT'] },
+			{ type: 'near', target: 'U1', evidenceRefs: ['core:U1'] },
+		],
+	});
+	assert.equal(unsupportedPowerSwitch.proposals.length, 0);
+	assert.equal(
+		unsupportedPowerSwitch.skipped[0].reason,
+		'unsupported-role-constraint',
+	);
+
+	const noConstraint = buildConstraintPreviewForInference('Q2', {
 		status: 'inferred',
 		role: 'power-switch',
 		associatedCore: 'U1',
@@ -580,13 +599,19 @@ console.log('Semantic role compatibility validation passed.');
 	assert.equal(noConstraint.proposals.length, 0);
 	assert.equal(noConstraint.skipped[0].reason, 'no-active-constraint');
 
-	const merged = mergeConstraintPreviewResults([low, medium, unknown, noConstraint]);
+	const merged = mergeConstraintPreviewResults([
+		low,
+		medium,
+		unknown,
+		unsupportedPowerSwitch,
+		noConstraint,
+	]);
 	assert.equal(merged.proposals.length, 2);
 	assert.equal(merged.advisoryCount, 1);
 	assert.equal(merged.softCount, 1);
 	assert.equal(merged.previewEligibleCount, 1);
 	assert.equal(merged.reviewOnlyCount, 1);
-	assert.equal(merged.skipped.length, 2);
+	assert.equal(merged.skipped.length, 3);
 
 	for (const proposal of merged.proposals) {
 		assert.notEqual(proposal.strength, 'hard');
