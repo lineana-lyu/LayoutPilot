@@ -542,6 +542,107 @@ export async function inspectSemanticContext(): Promise<void> {
 }
 
 
+export async function inspectCoreAssociations(): Promise<void> {
+  try {
+    const {
+      graph,
+      features,
+      grouping,
+    } = await collectAnalysisState();
+
+    const results = resolveAmbiguousCoreAssociations(
+      graph,
+      features,
+      grouping,
+    );
+
+    console.log('[LayoutPilot] core association results', results);
+    console.table(results.map(result => ({
+      component: result.designator,
+      status: result.status,
+      resolvedCore: result.resolvedCoreDesignator ?? '',
+      topScore: result.topScore.toFixed(3),
+      margin: result.margin?.toFixed(3) ?? '',
+      candidates: result.candidates
+        .slice(0, 4)
+        .map(candidate => `${candidate.designator}(${candidate.score.toFixed(3)})`)
+        .join(', '),
+    })));
+
+    const resolved = results.filter(result => result.status === 'resolved');
+    const ambiguous = results.filter(result => result.status === 'ambiguous');
+    const insufficient = results.filter(
+      result => result.status === 'insufficient-evidence',
+    );
+
+    const rows = results.map((result) => {
+      const candidates = result.candidates
+        .slice(0, 3)
+        .map(candidate => {
+          const evidence = candidate.evidence
+            .filter(item => item.contribution > 0)
+            .slice(0, 3)
+            .map(item => `${item.netName ?? item.kind}:+${item.contribution.toFixed(3)}`)
+            .join('、');
+          return `${candidate.designator}=${candidate.score.toFixed(3)}${evidence ? `[${evidence}]` : ''}`;
+        })
+        .join('；');
+
+      if (result.status === 'resolved') {
+        return [
+          `${result.designator}：已解析 → ${result.resolvedCoreDesignator}`,
+          `score=${result.topScore.toFixed(3)}`,
+          `margin=${result.margin?.toFixed(3) ?? '—'}`,
+          candidates ? `候选：${candidates}` : '',
+        ].filter(Boolean).join(' · ');
+      }
+
+      if (result.status === 'ambiguous') {
+        return [
+          `${result.designator}：保留歧义`,
+          candidates ? `候选：${candidates}` : '无有效候选',
+          `margin=${result.margin?.toFixed(3) ?? '—'}`,
+        ].join(' · ');
+      }
+
+      return [
+        `${result.designator}：证据不足`,
+        candidates ? `候选：${candidates}` : '无有效候选',
+        `top=${result.topScore.toFixed(3)}`,
+      ].join(' · ');
+    });
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        'LayoutPilot 核心关联诊断完成。',
+        '',
+        `歧义器件：${results.length}`,
+        `可解析：${resolved.length}`,
+        `保留歧义：${ambiguous.length}`,
+        `证据不足：${insufficient.length}`,
+        '',
+        ...rows,
+        '',
+        '说明：',
+        '• GND 不参与 owner 选择；',
+        '• 高扇出电源网只提供弱证据；',
+        '• 多个候选接近时保留歧义；',
+        '• 当前结果仅用于诊断，不会改写 AI 上下文、布局约束或 PCB。',
+      ].join('\n'),
+      'LayoutPilot · 核心关联诊断',
+    );
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Core Association Resolver failed', error);
+
+    await eda.sys_Dialog.showInformationMessage(
+      `核心关联诊断失败。\n\n${String(error)}\n\nPCB 未发生任何修改。`,
+      'LayoutPilot · Phase 3A',
+    );
+  }
+}
+
+
 const AI_GATEWAY_CONFIG_KEY = 'aiGatewayBaseUrl';
 const DEFAULT_AI_GATEWAY_URL = 'http://127.0.0.1:8787';
 
