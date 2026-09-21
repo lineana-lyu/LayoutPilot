@@ -243,6 +243,84 @@ export async function toggleTestComponentLock(): Promise<void> {
   }
 }
 
+
+export async function inspectConnectivity(): Promise<void> {
+  try {
+    const components = await eda.pcb_PrimitiveComponent.getAll();
+    const netMap = new Map<string, Array<{ designator: string; padNumber: string }>>();
+    let totalPads = 0;
+    let namedPads = 0;
+
+    for (const component of components) {
+      const designator = component.getState_Designator() ?? component.getState_Name() ?? component.getState_PrimitiveId();
+      const primitiveId = component.getState_PrimitiveId();
+      const pads = await eda.pcb_PrimitiveComponent.getAllPinsByPrimitiveId(primitiveId);
+
+      for (const pad of pads ?? []) {
+        totalPads += 1;
+
+        const rawNet = pad.getState_Net();
+        const net = typeof rawNet === 'string' ? rawNet.trim() : '';
+        if (!net || net.toLowerCase() === 'none') {
+          continue;
+        }
+
+        namedPads += 1;
+        const padNumber = String(pad.getState_PadNumber() ?? '?');
+        const entries = netMap.get(net) ?? [];
+        entries.push({ designator, padNumber });
+        netMap.set(net, entries);
+      }
+    }
+
+    const networks = Array.from(netMap.entries())
+      .map(([net, endpoints]) => ({
+        net,
+        endpoints,
+        endpointText: endpoints.map((endpoint) => `${endpoint.designator}.${endpoint.padNumber}`).join(' ↔ '),
+      }))
+      .sort((a, b) => b.endpoints.length - a.endpoints.length || a.net.localeCompare(b.net));
+
+    console.log('[LayoutPilot] connectivity networks', networks);
+    console.table(
+      networks.slice(0, 20).map((item) => ({
+        net: item.net,
+        endpoints: item.endpointText,
+        count: item.endpoints.length,
+      })),
+    );
+
+    const preview = networks
+      .slice(0, 5)
+      .map((item) => `${item.net}: ${item.endpointText}`)
+      .join('\n');
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        'LayoutPilot connectivity inspection complete.',
+        '',
+        `Components: ${components.length}`,
+        `Pads: ${totalPads}`,
+        `Pads with named nets: ${namedPads}`,
+        `Named networks: ${networks.length}`,
+        '',
+        preview || 'No named networks found.',
+        '',
+        'Open the developer console for the complete connectivity map.',
+      ].join('\n'),
+      'LayoutPilot · Inspect Connectivity',
+    );
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Inspect Connectivity failed', error);
+
+    await eda.sys_Dialog.showInformationMessage(
+      `Failed to inspect connectivity.\n\n${String(error)}`,
+      'LayoutPilot · API PoC',
+    );
+  }
+}
+
 export async function about(): Promise<void> {
   await eda.sys_Dialog.showInformationMessage(
     `LayoutPilot v${extensionConfig.version}\n\nPhase 0: JLCEDA Extension API feasibility PoC.\nWrite tests only run when explicitly selected from the LayoutPilot menu and target U1 only.`,
