@@ -1,3 +1,7 @@
+import { buildCircuitGraph, type CircuitComponentSnapshot } from './domain/circuitGraph';
+import { extractStructuralFeatures, type ComponentMetadata } from './domain/componentFeatures';
+import { coreLevelZh, groupEvidenceZh, lockedZh, structuralEvidenceZh } from './i18n/zhCN';
+import { buildCandidateGroups } from './domain/candidateGrouping';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
 export function activate(status?: 'onStartupFinished', arg?: string): void {
@@ -33,16 +37,16 @@ export async function inspectPcb(): Promise<void> {
       .join(', ');
 
     await eda.sys_Dialog.showInformationMessage(
-      `LayoutPilot successfully read ${components.length} PCB components.\n\nFirst components: ${references || 'No components found.'}\n\nOpen the developer console for structured details.`,
-      'LayoutPilot · Inspect PCB',
+      `LayoutPilot 已成功读取 ${components.length} 个 PCB 器件。\n\n前几个器件：${references || '未发现器件'}\n\n如需查看结构化详情，请打开开发者控制台。`,
+      'LayoutPilot · 检查当前 PCB',
     );
   }
   catch (error) {
     console.error('[LayoutPilot] Inspect PCB failed', error);
 
     await eda.sys_Dialog.showInformationMessage(
-      `Failed to inspect the current PCB.\n\n${String(error)}`,
-      'LayoutPilot · API PoC',
+      `读取当前 PCB 失败。\n\n${String(error)}`,
+      'LayoutPilot · API 可行性验证',
     );
   }
 }
@@ -53,8 +57,8 @@ export async function inspectTestComponent(): Promise<void> {
 
     if (!target) {
       await eda.sys_Dialog.showInformationMessage(
-        'U1 was not found on the current PCB. This Phase 0 command expects the LayoutPilot test board.',
-        'LayoutPilot · Inspect U1',
+        '当前 PCB 中没有找到 U1。该测试命令需要使用 LayoutPilot 测试板。',
+        'LayoutPilot · 检查 U1',
       );
       return;
     }
@@ -102,25 +106,25 @@ export async function inspectTestComponent(): Promise<void> {
 
     await eda.sys_Dialog.showInformationMessage(
       [
-        'LayoutPilot successfully inspected U1.',
+        'LayoutPilot 已成功读取 U1。',
         '',
-        `Position: X=${details.x}, Y=${details.y}`,
-        `Rotation: ${details.rotation}°`,
-        `Locked: ${details.locked ? 'Yes' : 'No'}`,
-        `Pads: ${details.padCount}`,
-        `Named nets: ${nets.length}`,
+        `位置：X=${details.x}, Y=${details.y}`,
+        `旋转角度：${details.rotation}°`,
+        `锁定状态：${lockedZh(details.locked)}`,
+        `焊盘数量：${details.padCount}`,
+        `已命名网络：${nets.length}`,
         '',
-        'Open the developer console for full properties and pad details.',
+        '如需查看完整属性和焊盘详情，请打开开发者控制台。',
       ].join('\n'),
-      'LayoutPilot · Inspect U1',
+      'LayoutPilot · 检查 U1',
     );
   }
   catch (error) {
     console.error('[LayoutPilot] Inspect U1 failed', error);
 
     await eda.sys_Dialog.showInformationMessage(
-      `Failed to inspect U1.\n\n${String(error)}`,
-      'LayoutPilot · API PoC',
+      `读取 U1 失败。\n\n${String(error)}`,
+      'LayoutPilot · API 可行性验证',
     );
   }
 }
@@ -131,16 +135,16 @@ export async function moveTestComponent(): Promise<void> {
 
     if (!target) {
       await eda.sys_Dialog.showInformationMessage(
-        'U1 was not found on the current PCB.',
-        'LayoutPilot · Move U1',
+        '当前 PCB 中没有找到 U1。',
+        'LayoutPilot · 移动 U1',
       );
       return;
     }
 
     if (target.getState_PrimitiveLock()) {
       await eda.sys_Dialog.showInformationMessage(
-        'U1 is currently locked. Unlock it before running the move test.',
-        'LayoutPilot · Move U1',
+        'U1 当前已锁定。请先解锁，再执行移动测试。',
+        'LayoutPilot · 移动 U1',
       );
       return;
     }
@@ -154,7 +158,7 @@ export async function moveTestComponent(): Promise<void> {
 
     const readBack = await eda.pcb_PrimitiveComponent.get(primitiveId);
     if (!readBack) {
-      throw new Error('U1 could not be read back after the move operation.');
+      throw new Error('移动后无法重新读取 U1 状态。');
     }
 
     const afterX = readBack.getState_X();
@@ -170,21 +174,21 @@ export async function moveTestComponent(): Promise<void> {
 
     await eda.sys_Dialog.showInformationMessage(
       [
-        passed ? 'PASS: U1 move + read-back verified.' : 'WARNING: U1 moved, but read-back did not match the requested coordinate.',
+        passed ? '通过：U1 移动并回读验证成功。' : '警告：U1 已移动，但回读坐标与目标坐标不一致。',
         '',
-        `Before: X=${beforeX}, Y=${beforeY}`,
-        `Requested: X=${requestedX}, Y=${beforeY}`,
-        `Read-back: X=${afterX}, Y=${afterY}`,
+        `移动前：X=${beforeX}, Y=${beforeY}`,
+        `目标位置：X=${requestedX}, Y=${beforeY}`,
+        `回读位置：X=${afterX}, Y=${afterY}`,
       ].join('\n'),
-      'LayoutPilot · Move U1',
+      'LayoutPilot · 移动 U1',
     );
   }
   catch (error) {
     console.error('[LayoutPilot] Move U1 failed', error);
 
     await eda.sys_Dialog.showInformationMessage(
-      `Failed to move U1.\n\n${String(error)}`,
-      'LayoutPilot · API PoC',
+      `移动 U1 失败。\n\n${String(error)}`,
+      'LayoutPilot · API 可行性验证',
     );
   }
 }
@@ -195,8 +199,8 @@ export async function toggleTestComponentLock(): Promise<void> {
 
     if (!target) {
       await eda.sys_Dialog.showInformationMessage(
-        'U1 was not found on the current PCB.',
-        'LayoutPilot · Toggle U1 Lock',
+        '当前 PCB 中没有找到 U1。',
+        'LayoutPilot · 切换 U1 锁定状态',
       );
       return;
     }
@@ -209,7 +213,7 @@ export async function toggleTestComponentLock(): Promise<void> {
 
     const readBack = await eda.pcb_PrimitiveComponent.get(primitiveId);
     if (!readBack) {
-      throw new Error('U1 could not be read back after the lock operation.');
+      throw new Error('修改锁定状态后无法重新读取 U1。');
     }
 
     const after = readBack.getState_PrimitiveLock();
@@ -224,21 +228,21 @@ export async function toggleTestComponentLock(): Promise<void> {
 
     await eda.sys_Dialog.showInformationMessage(
       [
-        passed ? 'PASS: U1 lock state + read-back verified.' : 'WARNING: U1 lock read-back did not match the requested state.',
+        passed ? '通过：U1 锁定状态修改并回读验证成功。' : '警告：U1 锁定状态回读结果与目标状态不一致。',
         '',
-        `Before: ${before ? 'Locked' : 'Unlocked'}`,
-        `Requested: ${requested ? 'Locked' : 'Unlocked'}`,
-        `Read-back: ${after ? 'Locked' : 'Unlocked'}`,
+        `修改前：${lockedZh(before)}`,
+        `目标状态：${lockedZh(requested)}`,
+        `回读状态：${lockedZh(after)}`,
       ].join('\n'),
-      'LayoutPilot · Toggle U1 Lock',
+      'LayoutPilot · 切换 U1 锁定状态',
     );
   }
   catch (error) {
     console.error('[LayoutPilot] Toggle U1 lock failed', error);
 
     await eda.sys_Dialog.showInformationMessage(
-      `Failed to toggle U1 lock.\n\n${String(error)}`,
-      'LayoutPilot · API PoC',
+      `切换 U1 锁定状态失败。\n\n${String(error)}`,
+      'LayoutPilot · API 可行性验证',
     );
   }
 }
@@ -297,33 +301,303 @@ export async function inspectConnectivity(): Promise<void> {
 
     await eda.sys_Dialog.showInformationMessage(
       [
-        'LayoutPilot connectivity inspection complete.',
+        'LayoutPilot 网络连接检查完成。',
         '',
-        `Components: ${components.length}`,
-        `Pads: ${totalPads}`,
-        `Pads with named nets: ${namedPads}`,
-        `Named networks: ${networks.length}`,
+        `器件数量：${components.length}`,
+        `焊盘数量：${totalPads}`,
+        `具有已命名网络的焊盘：${namedPads}`,
+        `已命名网络数量：${networks.length}`,
         '',
-        preview || 'No named networks found.',
+        preview || '未发现已命名网络。',
         '',
-        'Open the developer console for the complete connectivity map.',
+        '如需查看完整连接关系，请打开开发者控制台。',
       ].join('\n'),
-      'LayoutPilot · Inspect Connectivity',
+      'LayoutPilot · 检查网络连接',
     );
   }
   catch (error) {
     console.error('[LayoutPilot] Inspect Connectivity failed', error);
 
     await eda.sys_Dialog.showInformationMessage(
-      `Failed to inspect connectivity.\n\n${String(error)}`,
-      'LayoutPilot · API PoC',
+      `检查网络连接失败。\n\n${String(error)}`,
+      'LayoutPilot · API 可行性验证',
+    );
+  }
+}
+
+
+export async function inspectCircuitGraph(): Promise<void> {
+  try {
+    const components = await eda.pcb_PrimitiveComponent.getAll();
+    const snapshots: CircuitComponentSnapshot[] = [];
+
+    for (const component of components) {
+      const primitiveId = component.getState_PrimitiveId();
+      const pads = await eda.pcb_PrimitiveComponent.getAllPinsByPrimitiveId(primitiveId);
+
+      snapshots.push({
+        id: primitiveId,
+        designator: component.getState_Designator() ?? component.getState_Name() ?? primitiveId,
+        name: component.getState_Name(),
+        padCount: pads?.length ?? 0,
+        pads: (pads ?? []).map((pad) => ({
+          padNumber: String(pad.getState_PadNumber() ?? '?'),
+          net: pad.getState_Net(),
+        })),
+      });
+    }
+
+    const graph = buildCircuitGraph(snapshots);
+    const idToDesignator = new Map(graph.nodes.map((node) => [node.id, node.designator]));
+
+    const nodeSummary = graph.nodes.map((node) => ({
+      component: node.designator,
+      pads: node.padCount,
+      nets: node.connectedNetCount,
+      neighbors: node.neighborComponentIds
+        .map((id) => idToDesignator.get(id) ?? id)
+        .join(', '),
+      isolated: node.isIsolated,
+    }));
+
+    const netSummary = graph.nets.map((net) => ({
+      net: net.name,
+      endpoints: net.endpoints
+        .map((endpoint) => `${endpoint.designator}.${endpoint.padNumber}`)
+        .join(' ↔ '),
+      components: net.componentIds.length,
+    }));
+
+    console.log('[LayoutPilot] circuit graph', graph);
+    console.table(nodeSummary);
+    console.table(netSummary);
+
+    const isolated = graph.nodes
+      .filter((node) => node.isIsolated)
+      .map((node) => node.designator);
+
+    const connected = graph.nodes.length - isolated.length;
+    const netPreview = graph.nets
+      .slice(0, 5)
+      .map((net) => `${net.name}: ${net.endpoints
+        .map((endpoint) => `${endpoint.designator}.${endpoint.padNumber}`)
+        .join(' ↔ ')}`)
+      .join('\n');
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        'LayoutPilot 已成功构建电路关系图。',
+        '',
+        `器件数量：${graph.nodes.length}`,
+        `已连接器件：${connected}`,
+        `孤立器件：${isolated.length}${isolated.length ? `（${isolated.join(', ')}）` : ''}`,
+        `已命名网络：${graph.nets.length}`,
+        '',
+        netPreview || '未发现已命名网络。',
+        '',
+        '如需查看节点表和网络表，请打开开发者控制台。',
+      ].join('\n'),
+      'LayoutPilot · 电路关系图',
+    );
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Circuit Graph failed', error);
+
+    await eda.sys_Dialog.showInformationMessage(
+      `构建电路关系图失败。\n\n${String(error)}`,
+      'LayoutPilot · 第 1 阶段',
+    );
+  }
+}
+
+
+export async function inspectStructuralFeatures(): Promise<void> {
+  try {
+    const components = await eda.pcb_PrimitiveComponent.getAll();
+    const snapshots: CircuitComponentSnapshot[] = [];
+    const metadata: ComponentMetadata[] = [];
+
+    for (const component of components) {
+      const primitiveId = component.getState_PrimitiveId();
+      const designator = component.getState_Designator() ?? component.getState_Name() ?? primitiveId;
+      const pads = await eda.pcb_PrimitiveComponent.getAllPinsByPrimitiveId(primitiveId);
+      const footprint = component.getState_Footprint();
+
+      snapshots.push({
+        id: primitiveId,
+        designator,
+        name: component.getState_Name(),
+        padCount: pads?.length ?? 0,
+        pads: (pads ?? []).map((pad) => ({
+          padNumber: String(pad.getState_PadNumber() ?? '?'),
+          net: pad.getState_Net(),
+        })),
+      });
+
+      metadata.push({
+        id: primitiveId,
+        designator,
+        manufacturer: component.getState_Manufacturer(),
+        supplier: component.getState_Supplier(),
+        footprintName: footprint?.name,
+      });
+    }
+
+    const graph = buildCircuitGraph(snapshots);
+    const features = extractStructuralFeatures(graph, metadata)
+      .sort((a, b) => b.coreScore - a.coreScore || a.designator.localeCompare(b.designator));
+
+    console.log('[LayoutPilot] structural features', features);
+    console.table(features.map((feature) => ({
+      component: feature.designator,
+      prefix: feature.referencePrefix,
+      pads: feature.padCount,
+      degree: feature.degree,
+      nets: feature.connectedNetCount,
+      maxNetSize: feature.maxComponentsOnSharedNet,
+      passive: feature.isPassiveCandidate,
+      peripheral: feature.isPeripheralCandidate,
+      boundary: feature.isBoundaryCandidate,
+      coreScore: feature.coreScore,
+      coreLevel: feature.coreLevel,
+    })));
+
+    const preview = features.slice(0, 8).map((feature) => {
+      const evidence = feature.coreEvidence.length
+        ? feature.coreEvidence.map(structuralEvidenceZh).join('；')
+        : '暂无结构判断依据';
+
+      const role = feature.isBoundaryCandidate
+        ? '边界器件候选'
+        : feature.isPeripheralCandidate
+          ? '外围器件候选'
+          : `核心候选=${coreLevelZh(feature.coreLevel)}（${feature.coreScore}/10）`;
+
+      return `${feature.designator}：${role}，相邻器件=${feature.degree}，焊盘=${feature.padCount}\n  判断依据：${evidence}`;
+    }).join('\n');
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        'LayoutPilot 结构特征提取完成。',
+        '',
+        '说明：核心评分来自透明的结构规则，不是 AI 语义判断。',
+        '',
+        preview,
+        '',
+        '如需查看完整特征表，请打开开发者控制台。',
+      ].join('\n'),
+      'LayoutPilot · 结构特征',
+    );
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Structural Features failed', error);
+
+    await eda.sys_Dialog.showInformationMessage(
+      `提取结构特征失败。\n\n${String(error)}`,
+      'LayoutPilot · 第 1 阶段',
+    );
+  }
+}
+
+
+export async function inspectCandidateGroups(): Promise<void> {
+  try {
+    const components = await eda.pcb_PrimitiveComponent.getAll();
+    const snapshots: CircuitComponentSnapshot[] = [];
+    const metadata: ComponentMetadata[] = [];
+
+    for (const component of components) {
+      const primitiveId = component.getState_PrimitiveId();
+      const designator = component.getState_Designator() ?? component.getState_Name() ?? primitiveId;
+      const pads = await eda.pcb_PrimitiveComponent.getAllPinsByPrimitiveId(primitiveId);
+      const footprint = component.getState_Footprint();
+
+      snapshots.push({
+        id: primitiveId,
+        designator,
+        name: component.getState_Name(),
+        padCount: pads?.length ?? 0,
+        pads: (pads ?? []).map((pad) => ({
+          padNumber: String(pad.getState_PadNumber() ?? '?'),
+          net: pad.getState_Net(),
+        })),
+      });
+
+      metadata.push({
+        id: primitiveId,
+        designator,
+        manufacturer: component.getState_Manufacturer(),
+        supplier: component.getState_Supplier(),
+        footprintName: footprint?.name,
+      });
+    }
+
+    const graph = buildCircuitGraph(snapshots);
+    const features = extractStructuralFeatures(graph, metadata);
+    const grouping = buildCandidateGroups(graph, features);
+
+    console.log('[LayoutPilot] candidate groups', grouping);
+
+    const groupText = grouping.groups.length
+      ? grouping.groups.map((group, index) => {
+          const members = group.satelliteDesignators.length
+            ? group.satelliteDesignators.join('、')
+            : '暂无外围器件';
+          const evidence = group.evidence.map(groupEvidenceZh).join('；');
+          return [
+            `候选功能块 ${index + 1}`,
+            `核心器件：${group.coreDesignator}`,
+            `外围器件：${members}`,
+            `判断依据：${evidence}`,
+          ].join('\n');
+        }).join('\n\n')
+      : '当前没有识别出候选功能块。';
+
+    const ungroupedText = grouping.ungroupedDesignators.length
+      ? grouping.ungroupedDesignators.join('、')
+      : '无';
+
+    const boundaryText = grouping.boundaryDesignators.length
+      ? grouping.boundaryDesignators.join('、')
+      : '无';
+
+    const ambiguousText = grouping.ambiguousDesignators.length
+      ? grouping.ambiguousDesignators.join('、')
+      : '无';
+
+    const ambiguityEvidenceText = grouping.ambiguityEvidence.length
+      ? grouping.ambiguityEvidence.map(groupEvidenceZh).join('；')
+      : '无';
+
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        'LayoutPilot 候选功能块分析完成。',
+        '',
+        groupText,
+        '',
+        `存在歧义的器件：${ambiguousText}`,
+        `歧义原因：${ambiguityEvidenceText}`,
+        `未归组器件：${ungroupedText}`,
+        `边界器件候选：${boundaryText}`,
+        '',
+        '说明：全局电源/地等低信息网络不会被当作强分组依据；存在歧义时系统会保留不确定性，而不是强行归组。',
+      ].join('\n'),
+      'LayoutPilot · 候选功能块',
+    );
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Candidate Grouping failed', error);
+
+    await eda.sys_Dialog.showInformationMessage(
+      `候选功能块分析失败。\n\n${String(error)}`,
+      'LayoutPilot · 第 1 阶段',
     );
   }
 }
 
 export async function about(): Promise<void> {
   await eda.sys_Dialog.showInformationMessage(
-    `LayoutPilot v${extensionConfig.version}\n\nPhase 0: JLCEDA Extension API feasibility PoC.\nWrite tests only run when explicitly selected from the LayoutPilot menu and target U1 only.`,
-    'About LayoutPilot',
+    `LayoutPilot v${extensionConfig.version}\n\n第 1 阶段：构建确定性的电路关系图与功能块候选。\n所有写入测试都必须由用户从 LayoutPilot 菜单主动触发，并且当前只作用于 U1。`,
+    '关于 LayoutPilot',
   );
 }
