@@ -1523,6 +1523,22 @@ function closeEnough(a: number, b: number, tolerance = 0.01): boolean {
   return Math.abs(a - b) <= tolerance;
 }
 
+async function readComponentPhysicalState(componentId: string): Promise<{
+  x: number;
+  y: number;
+  locked: boolean;
+}> {
+  const component = await eda.pcb_PrimitiveComponent.get(componentId);
+  if (!component) {
+    throw new Error(`找不到 PCB 器件：${componentId}`);
+  }
+  return {
+    x: component.getState_X(),
+    y: component.getState_Y(),
+    locked: component.getState_PrimitiveLock(),
+  };
+}
+
 async function moveComponentAndVerify(
   componentId: string,
   x: number,
@@ -1531,6 +1547,9 @@ async function moveComponentAndVerify(
   const component = await eda.pcb_PrimitiveComponent.get(componentId);
   if (!component) {
     throw new Error(`找不到 PCB 器件：${componentId}`);
+  }
+  if (component.getState_PrimitiveLock()) {
+    throw new Error('器件在执行前被锁定，拒绝移动。');
   }
 
   const editable = component.toAsync();
@@ -1556,6 +1575,74 @@ async function moveComponentAndVerify(
 
   return actual;
 }
+
+async function executePlacementTransaction(input: {
+  componentId: string;
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+}): Promise<
+  | { ok: true }
+  | {
+      ok: false;
+      error: string;
+      rollbackAttempted: boolean;
+      rollbackVerified: boolean;
+      rollbackDrcPassed?: boolean;
+    }
+> {
+  let mutationAttempted = false;
+
+  try {
+    mutationAttempted = true;
+    await moveComponentAndVerify(
+      input.componentId,
+      input.to.x,
+      input.to.y,
+    );
+
+    const postDrcPassed = await eda.pcb_Drc.check(true, false, false);
+    if (!postDrcPassed) {
+      throw new Error('移动后 DRC 未通过');
+    }
+
+    return { ok: true };
+  }
+  catch (error) {
+    if (!mutationAttempted) {
+      return {
+        ok: false,
+        error: String(error),
+        rollbackAttempted: false,
+        rollbackVerified: false,
+      };
+    }
+
+    try {
+      await moveComponentAndVerify(
+        input.componentId,
+        input.from.x,
+        input.from.y,
+      );
+      const rollbackDrcPassed = await eda.pcb_Drc.check(true, false, false);
+      return {
+        ok: false,
+        error: String(error),
+        rollbackAttempted: true,
+        rollbackVerified: true,
+        rollbackDrcPassed,
+      };
+    }
+    catch (rollbackError) {
+      return {
+        ok: false,
+        error: `${String(error)}；回滚失败：${String(rollbackError)}`,
+        rollbackAttempted: true,
+        rollbackVerified: false,
+      };
+    }
+  }
+}
+
 
 export async function previewLayoutConstraints(): Promise<void> {
   try {
@@ -1840,6 +1927,33 @@ export async function applyDemoPlacement(): Promise<void> {
     );
     if (!confirmed) return;
 
+    const currentSubject = await readComponentPhysicalState(plan.subjectId);
+    const currentOwner = await readComponentPhysicalState(plan.ownerId);
+    if (
+      !closeEnough(currentSubject.x, plan.from.x)
+      || !closeEnough(currentSubject.y, plan.from.y)
+      || !closeEnough(currentOwner.x, owner.x)
+      || !closeEnough(currentOwner.y, owner.y)
+    ) {
+      await eda.sys_Dialog.showInformationMessage(
+        [
+          '确认窗口打开后，subject 或 owner 的位置发生了变化。',
+          '',
+          '为避免使用过期物理计划，本次执行已取消。',
+          '请重新生成布局建议后再执行。',
+        ].join('\n'),
+        'LayoutPilot · 物理计划已过期',
+      );
+      return;
+    }
+    if (currentSubject.locked) {
+      await eda.sys_Dialog.showInformationMessage(
+        `${plan.subjectDesignator} 在执行前被锁定，本次移动已取消。`,
+        'LayoutPilot · 物理执行被阻止',
+      );
+      return;
+    }
+
     const command = createPlacementCommand({
       snapshotId: snapshot.id,
       constraintId: proposal.id,
@@ -1849,21 +1963,32 @@ export async function applyDemoPlacement(): Promise<void> {
       to: plan.to,
     });
 
-    await moveComponentAndVerify(plan.subjectId, plan.to.x, plan.to.y);
+    const transaction = await executePlacementTransaction({
+      componentId: plan.subjectId,
+      from: plan.from,
+      to: plan.to,
+    });
 
-    const postDrcPassed = await eda.pcb_Drc.check(true, false, false);
-    if (!postDrcPassed) {
-      await moveComponentAndVerify(plan.subjectId, plan.from.x, plan.from.y);
-      const rollbackDrcPassed = await eda.pcb_Drc.check(true, false, false);
+    if (!transaction.ok) {
       setLastPlacementCommand(undefined);
       await eda.sys_Dialog.showInformationMessage(
         [
-          '移动后的 DRC 未通过，LayoutPilot 已自动回滚原坐标。',
+          '受控移动没有提交。',
           '',
-          `回滚 DRC：${rollbackDrcPassed ? '通过' : '仍未通过，请人工检查'}`,
-          '本次动作不会记录为可撤销成功操作。',
+          `原因：${transaction.error}`,
+          `已尝试回滚：${transaction.rollbackAttempted ? '是' : '否'}`,
+          `坐标回滚校验：${transaction.rollbackVerified ? 'PASS' : 'FAIL / 未执行'}`,
+          transaction.rollbackDrcPassed === undefined
+            ? '回滚 DRC：未执行'
+            : `回滚 DRC：${transaction.rollbackDrcPassed ? 'PASS' : 'FAIL'}`,
+          '',
+          transaction.rollbackVerified
+            ? 'PCB 已恢复到执行前坐标，本次不记录成功 Command。'
+            : '无法证明 PCB 已恢复，请立即人工检查当前器件位置。',
         ].join('\n'),
-        'LayoutPilot · 已自动回滚',
+        transaction.rollbackVerified
+          ? 'LayoutPilot · 已自动回滚'
+          : 'LayoutPilot · 回滚需要人工检查',
       );
       return;
     }
