@@ -1,0 +1,5 @@
+$ErrorActionPreference = "Stop"
+$env:LAYOUTPILOT_GATEWAY_MODE = "mock"
+Write-Host "Starting LayoutPilot AI Gateway in MOCK mode..."
+Write-Host "This mode only tests transport and validation. It is NOT an AI result."
+node "$PSScriptRoot\server.mjs"
