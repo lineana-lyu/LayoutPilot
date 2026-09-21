@@ -38,6 +38,9 @@ export interface PhysicalPlacementPlan {
 	groundNet: string;
 	ownerPowerPadNumber: string;
 	subjectPowerPadNumber: string;
+	ownerGroundPadNumber: string;
+	subjectGroundPadNumber: string;
+	estimatedLoopProxyMil: number;
 	from: PlacementPoint;
 	to: PlacementPoint;
 	clearanceMil: number;
@@ -262,6 +265,7 @@ export function planDecouplingPlacement(input: {
 	const subjectPowerPads = subject.pads.filter(pad => pad.net === powerNet);
 	const subjectGroundPads = subject.pads.filter(pad => pad.net === groundNet);
 	const ownerPowerPads = owner.pads.filter(pad => pad.net === powerNet);
+	const ownerGroundPads = owner.pads.filter(pad => pad.net === groundNet);
 
 	if (!subjectPowerPads.length) {
 		reasons.push(
@@ -276,6 +280,11 @@ export function planDecouplingPlacement(input: {
 	if (!ownerPowerPads.length) {
 		reasons.push(
 			`${owner.designator} 未找到同一电源网 ${powerNet} 的焊盘`,
+		);
+	}
+	if (!ownerGroundPads.length) {
+		reasons.push(
+			`${owner.designator} 未找到地网 ${groundNet} 的焊盘`,
 		);
 	}
 	if (!Number.isFinite(clearanceMil) || clearanceMil <= 0) {
@@ -320,8 +329,12 @@ export function planDecouplingPlacement(input: {
 				Boolean(item.box),
 		);
 
-	const subjectPowerPad = subjectPowerPads[0];
+	const candidates: Array<{
+		plan: PhysicalPlacementPlan;
+		score: number;
+	}> = [];
 
+	for (const subjectPowerPad of subjectPowerPads) {
 	for (const ownerPowerPad of ownerPowerPads) {
 		for (const direction of candidateDirections(owner, ownerPowerPad)) {
 			const centreDistance =
@@ -365,9 +378,49 @@ export function planDecouplingPlacement(input: {
 				continue;
 			}
 
-			return {
-				ready: true,
-				reasons: [],
+			const translatedGroundPads = subjectGroundPads.map(pad => ({
+				pad,
+				x: pad.x + dx,
+				y: pad.y + dy,
+			}));
+			let bestGroundPair:
+				| {
+					subjectPad: PhysicalPadSnapshot;
+					ownerPad: PhysicalPadSnapshot;
+					distance: number;
+				}
+				| undefined;
+
+			for (const subjectGroundPad of translatedGroundPads) {
+				for (const ownerGroundPad of ownerGroundPads) {
+					const distance = Math.hypot(
+						subjectGroundPad.x - ownerGroundPad.x,
+						subjectGroundPad.y - ownerGroundPad.y,
+					);
+					if (!bestGroundPair || distance < bestGroundPair.distance) {
+						bestGroundPair = {
+							subjectPad: subjectGroundPad.pad,
+							ownerPad: ownerGroundPad,
+							distance,
+						};
+					}
+				}
+			}
+
+			if (!bestGroundPair) {
+				continue;
+			}
+
+			const powerDistance = Math.hypot(
+				targetPowerPad.x - ownerPowerPad.x,
+				targetPowerPad.y - ownerPowerPad.y,
+			);
+			const moveDistance = Math.hypot(dx, dy);
+			const loopProxy = powerDistance + bestGroundPair.distance;
+			const score = loopProxy + moveDistance * 0.05;
+
+			candidates.push({
+				score,
 				plan: {
 					subjectId: subject.id,
 					subjectDesignator: subject.designator,
@@ -377,14 +430,27 @@ export function planDecouplingPlacement(input: {
 					groundNet,
 					ownerPowerPadNumber: ownerPowerPad.padNumber,
 					subjectPowerPadNumber: subjectPowerPad.padNumber,
+					ownerGroundPadNumber: bestGroundPair.ownerPad.padNumber,
+					subjectGroundPadNumber: bestGroundPair.subjectPad.padNumber,
+					estimatedLoopProxyMil: loopProxy,
 					from: { x: subject.x, y: subject.y },
 					to,
 					clearanceMil,
 					rationale:
-						'以 owner 的同电源网焊盘为锚点，沿器件外侧搜索候选位置；用焊盘外接框和安全余量过滤明显碰撞。最终执行仍需前后 DRC 校验。',
+						'以 owner 的同电源网焊盘为锚点生成合法候选，再用 power-pad 距离 + 最近 ground 返回距离作为去耦回路几何代理排序；该指标用于候选优选，不等同于 SI/PI 证明。',
 				},
-			};
+			});
 		}
+	}
+	}
+
+	if (candidates.length) {
+		candidates.sort((a, b) => a.score - b.score);
+		return {
+			ready: true,
+			reasons: [],
+			plan: candidates[0].plan,
+		};
 	}
 
 	return {
