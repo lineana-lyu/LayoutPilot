@@ -4,7 +4,7 @@ import { buildCandidateGroups } from '../src/domain/candidateGrouping';
 import { buildCircuitGraph, type CircuitComponentSnapshot } from '../src/domain/circuitGraph';
 import { extractStructuralFeatures, type ComponentMetadata } from '../src/domain/componentFeatures';
 import { buildNetGroupingProfiles } from '../src/domain/netInformativeness';
-import { buildSemanticContexts } from '../src/domain/semanticContext';
+import { buildSemanticContexts, resolveComponentDisplayName } from '../src/domain/semanticContext';
 
 function featuresFor(components: CircuitComponentSnapshot[]) {
 	const graph = buildCircuitGraph(components);
@@ -264,3 +264,23 @@ console.log('Header false-core regression passed.');
 }
 
 console.log('Semantic context regression passed.');
+
+
+{
+	assert.equal(
+		resolveComponentDisplayName('={Value}', { Value: '100nF' }),
+		'100nF',
+	);
+	assert.equal(
+		resolveComponentDisplayName('={Manufacturer Part}', {
+			'Manufacturer Part': 'BLM21PG221SN1D',
+		}),
+		'BLM21PG221SN1D',
+	);
+	assert.equal(
+		resolveComponentDisplayName('STM32F103C8T6', { Value: 'ignored' }),
+		'STM32F103C8T6',
+	);
+}
+
+console.log('Semantic metadata template resolution passed.');
