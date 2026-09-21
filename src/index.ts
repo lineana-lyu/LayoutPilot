@@ -5,7 +5,7 @@ import { buildCandidateGroups } from './domain/candidateGrouping';
 import { buildSemanticContexts, type SemanticComponentContext, type SemanticComponentMetadata } from './domain/semanticContext';
 import { allowedSemanticRolesForPrefix, buildSemanticEvidenceCatalog, validateSemanticInference } from './domain/semanticInference';
 import { buildSemanticGatewayRequest, normalizeGatewayBaseUrl, parseSemanticGatewayResponse } from './ai/gatewayClient';
-import { buildConstraintPreviewForInference, mergeConstraintPreviewResults } from './domain/layoutConstraintEngine';
+import { buildConstraintPreview, mergeConstraintPreviewResults } from './domain/layoutConstraintEngine';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
 export function activate(status?: 'onStartupFinished', arg?: string): void {
@@ -932,13 +932,6 @@ export async function analyzeC6WithAi(): Promise<void> {
           .join('\n')
       : '• 无';
 
-    const constraintText = inference.constraints.length
-      ? inference.constraints.map((constraint) => {
-          const target = constraint.target ? ` → ${constraint.target}` : '';
-          return `• ${layoutConstraintTypeZh(constraint.type)}${target}`;
-        }).join('\n')
-      : '• 无';
-
     const provider = gatewayResponse.provider ?? 'unknown';
     const model = gatewayResponse.model ?? 'unknown';
 
@@ -975,10 +968,7 @@ export async function analyzeC6WithAi(): Promise<void> {
         '',
         `解释：${inference.explanation}`,
         '',
-        '建议布局约束：',
-        constraintText,
-        '',
-        '说明：当前仅生成建议，不会修改 PCB。',
+        '说明：这里仅展示语义判断；布局约束由下一阶段的确定性 Policy Engine 单独生成。',
       ].join('\n'),
       'LayoutPilot · AI 语义分析 C6',
     );
@@ -1057,18 +1047,11 @@ export async function analyzeAmbiguousWithAi(): Promise<void> {
         const core = inference.associatedCore
           ? ` · 关联 ${inference.associatedCore}`
           : '';
-        const constraints = inference.constraints
-          .filter(item => item.type !== 'no-constraint')
-          .map(item => {
-            const target = item.target ? `→${item.target}` : '';
-            return `${layoutConstraintTypeZh(item.type)}${target}`;
-          });
-
         rows.push(
           [
             `${context.designator}：${semanticRoleZh(inference.role)}`,
             `置信=${semanticConfidenceZh(inference.confidence)}${core}`,
-            constraints.length ? `约束=${constraints.join('、')}` : '约束=暂不生成',
+            '布局动作=由 Constraint Policy 单独推导',
           ].join(' · '),
         );
       }
@@ -1094,7 +1077,7 @@ export async function analyzeAmbiguousWithAi(): Promise<void> {
         '',
         ...rows,
         '',
-        '说明：当前只生成语义角色与布局约束建议，不会修改 PCB。',
+        '说明：当前只生成语义角色与证据结论；不会直接生成或执行布局动作。',
       ].join('\n'),
       'LayoutPilot · AI 批量语义分析',
     );
@@ -1155,8 +1138,8 @@ export async function previewLayoutConstraints(): Promise<void> {
           continue;
         }
 
-        const result = buildConstraintPreviewForInference(
-          context.designator,
+        const result = buildConstraintPreview(
+          context,
           gatewayResponse.inference,
         );
         previewResults.push(result);
@@ -1175,13 +1158,15 @@ export async function previewLayoutConstraints(): Promise<void> {
         }
         else {
           const reason = result.skipped[0]?.reason;
-          const reasonText = reason === 'insufficient-semantic-evidence'
+          const reasonText = reason === 'semantic-not-inferred'
             ? '语义证据不足'
             : reason === 'unknown-semantic-role'
               ? '语义角色未知'
-              : reason === 'unsupported-role-constraint'
-                ? '当前语义角色尚无可执行的确定性约束模板'
-                : '没有可靠的主动布局约束';
+              : reason === 'no-policy-for-role'
+                ? '当前语义角色尚未建立可执行布局策略'
+                : reason === 'policy-evidence-insufficient'
+                  ? '已有布局策略，但当前 PCB 事实证据不足'
+                  : '没有可推导的布局约束';
           rows.push(`${context.designator}：跳过 · ${reasonText}`);
         }
       }
