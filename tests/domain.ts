@@ -260,9 +260,13 @@ console.log('Header false-core regression passed.');
 	const c1 = contexts.find(context => context.designator === 'C1');
 	assert.ok(c1);
 	assert.deepEqual(new Set(c1.relatedCoreDesignators), new Set(['U1', 'U2']));
+	assert.equal(c1.ownership.relation, 'rail-domain');
+	assert.deepEqual(new Set(c1.ownership.hostDesignators), new Set(['U1', 'U2']));
+	assert.deepEqual(c1.ownership.railNets, ['3V3']);
 	assert.deepEqual(new Set(c1.lowInformationNets), new Set(['GND', '3V3']));
 	assert.equal(c1.informativeSignalNets.length, 0);
 	assert.ok(c1.missingEvidence.includes('informative-signal-net'));
+	assert.ok(!c1.missingEvidence.includes('ownership-relation'));
 }
 
 console.log('Semantic context regression passed.');
@@ -308,8 +312,10 @@ console.log('Semantic metadata template resolution passed.');
 	const catalog = buildSemanticEvidenceCatalog(c1);
 	assert.ok(catalog.some(item => item.id === 'net:GND'));
 	assert.ok(catalog.some(item => item.id === 'net:3V3'));
-	assert.ok(catalog.some(item => item.id === 'core:U1'));
-	assert.ok(catalog.some(item => item.id === 'core:U2'));
+	assert.ok(catalog.some(item => item.id === 'relation:rail-domain'));
+	assert.ok(catalog.some(item => item.id === 'host:U1'));
+	assert.ok(catalog.some(item => item.id === 'host:U2'));
+	assert.ok(catalog.some(item => item.id === 'rail:3V3'));
 
 	const valid = validateSemanticInference(c1, {
 		status: 'insufficient-evidence',
@@ -323,13 +329,11 @@ console.log('Semantic metadata template resolution passed.');
 	const hallucinated = validateSemanticInference(c1, {
 		status: 'inferred',
 		role: 'decoupling-capacitor',
-		associatedCore: 'U99',
 		confidence: 'high',
 		evidenceRefs: ['datasheet:invented'],
 		explanation: '错误示例',
 	});
 	assert.equal(hallucinated.valid, false);
-	assert.ok(hallucinated.errors.some(error => error.includes('不存在于规则层')));
 	assert.ok(hallucinated.errors.some(error => error.includes('不存在的证据')));
 }
 
@@ -366,7 +370,7 @@ console.log('Semantic inference validator passed.');
 		catalog,
 		allowedSemanticRolesForPrefix(context.referencePrefix),
 	);
-	assert.equal(request.version, '1');
+	assert.equal(request.version, '2');
 	assert.equal(request.context.designator, 'C1');
 	assert.ok(request.allowedRoles.includes('decoupling-capacitor'));
 
@@ -382,6 +386,20 @@ console.log('Semantic inference validator passed.');
 		model: 'fixture',
 	});
 	assert.equal(parsed.provider, 'mock');
+
+	assert.throws(
+		() => parseSemanticGatewayResponse({
+			inference: {
+				status: 'inferred',
+				role: 'decoupling-capacitor',
+				associatedCore: 'U1',
+				confidence: 'medium',
+				evidenceRefs: ['relation:rail-domain'],
+				explanation: 'v2 不允许 AI 输出 owner。',
+			},
+		}),
+		/associatedCore/,
+	);
 
 	assert.throws(
 		() => parseSemanticGatewayResponse({
@@ -417,6 +435,9 @@ console.log('AI gateway contract regression passed.');
 			{
 				netName: '3V',
 				classification: 'global-power',
+				electricalRole: 'power',
+				nameOrigin: 'global',
+				fanout: 2,
 				groupingWeight: 0.1,
 				selfPads: ['2'],
 				peerEndpoints: [],
@@ -425,6 +446,9 @@ console.log('AI gateway contract regression passed.');
 			{
 				netName: 'VDD',
 				classification: 'global-power',
+				electricalRole: 'power',
+				nameOrigin: 'global',
+				fanout: 2,
 				groupingWeight: 0.1,
 				selfPads: ['1'],
 				peerEndpoints: [],
@@ -432,6 +456,13 @@ console.log('AI gateway contract regression passed.');
 			},
 		],
 		relatedCoreDesignators: ['U1'],
+		ownership: {
+			relation: 'rail-domain',
+			hostDesignators: ['U1'],
+			sharedSignalNets: [],
+			railNets: ['3V', 'VDD'],
+			explanation: '仅有电源域关系。',
+		},
 		informativeSignalNets: [],
 		lowInformationNets: ['3V', 'VDD'],
 		missingEvidence: [],
@@ -440,9 +471,8 @@ console.log('AI gateway contract regression passed.');
 	const invalidRole = validateSemanticInference(context, {
 		status: 'inferred',
 		role: 'filter-capacitor',
-		associatedCore: 'U1',
 		confidence: 'medium',
-		evidenceRefs: ['net:3V', 'net:VDD', 'core:U1'],
+		evidenceRefs: ['net:3V', 'net:VDD', 'relation:rail-domain', 'host:U1'],
 		explanation: '错误地把 L1 判断成电容。',
 	});
 

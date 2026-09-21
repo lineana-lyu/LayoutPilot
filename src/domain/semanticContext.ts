@@ -1,7 +1,17 @@
 import type { CandidateGroupingResult } from './candidateGrouping';
 import type { CircuitGraph } from './circuitGraph';
 import type { StructuralFeature } from './componentFeatures';
-import { buildNetGroupingProfiles, type NetGroupingClass } from './netInformativeness';
+import { getCoreAssociationCandidates } from './coreAssociation';
+import {
+	resolveOwnershipRelation,
+	type OwnershipRelationType,
+} from './ownershipRelation';
+import {
+	buildNetGroupingProfiles,
+	type NetElectricalRole,
+	type NetGroupingClass,
+	type NetNameOrigin,
+} from './netInformativeness';
 
 export interface SemanticComponentMetadata {
 	id: string;
@@ -72,6 +82,9 @@ export function resolveComponentDisplayName(
 export interface SemanticNetContext {
 	netName: string;
 	classification: NetGroupingClass;
+	electricalRole: NetElectricalRole;
+	nameOrigin: NetNameOrigin;
+	fanout: number;
 	groupingWeight: number;
 	selfPads: string[];
 	peerEndpoints: Array<{
@@ -79,6 +92,15 @@ export interface SemanticNetContext {
 		padNumber: string;
 	}>;
 	coreDesignators: string[];
+}
+
+export interface SemanticOwnershipContext {
+	relation: OwnershipRelationType;
+	ownerDesignator?: string;
+	hostDesignators: string[];
+	sharedSignalNets: string[];
+	railNets: string[];
+	explanation: string;
 }
 
 export interface SemanticComponentContext {
@@ -96,6 +118,7 @@ export interface SemanticComponentContext {
 	structuralRole: 'ambiguous';
 	connectedNets: SemanticNetContext[];
 	relatedCoreDesignators: string[];
+	ownership: SemanticOwnershipContext;
 	informativeSignalNets: string[];
 	lowInformationNets: string[];
 	missingEvidence: string[];
@@ -109,7 +132,9 @@ export function buildSemanticContexts(
 ): SemanticComponentContext[] {
 	const featureById = new Map(features.map(feature => [feature.id, feature]));
 	const metadataById = new Map(metadata.map(item => [item.id, item]));
-	const coreIds = new Set(grouping.groups.map(group => group.coreComponentId));
+	const coreIds = new Set(
+		getCoreAssociationCandidates(features).map(feature => feature.id),
+	);
 	const designatorById = new Map(graph.nodes.map(node => [node.id, node.designator]));
 	const netProfiles = buildNetGroupingProfiles(graph);
 
@@ -128,6 +153,12 @@ export function buildSemanticContexts(
 			getPropertyCaseInsensitive(properties, 'Manufacturer Part')
 			?? getPropertyCaseInsensitive(properties, 'Manufacturer Part Number')
 			?? getPropertyCaseInsensitive(properties, 'MPN');
+
+		const ownershipResult = resolveOwnershipRelation(
+			graph,
+			features,
+			componentId,
+		);
 
 		const connectedNets: SemanticNetContext[] = graph.nets
 			.filter(net => net.componentIds.includes(componentId))
@@ -157,24 +188,36 @@ export function buildSemanticContexts(
 				return {
 					netName: net.name,
 					classification: profile.classification,
+					electricalRole: profile.electricalRole,
+					nameOrigin: profile.nameOrigin,
+					fanout: profile.fanout,
 					groupingWeight: profile.groupingWeight,
 					selfPads,
 					peerEndpoints,
 					coreDesignators,
 				};
 			})
-			.sort((a, b) => b.groupingWeight - a.groupingWeight || a.netName.localeCompare(b.netName));
+			.sort((a, b) =>
+				b.groupingWeight - a.groupingWeight
+				|| a.netName.localeCompare(b.netName),
+			);
 
 		const relatedCoreDesignators = Array.from(new Set(
 			connectedNets.flatMap(net => net.coreDesignators),
 		));
 
 		const informativeSignalNets = connectedNets
-			.filter(net => net.groupingWeight >= 0.5)
+			.filter(net =>
+				net.electricalRole === 'signal'
+				&& net.groupingWeight >= 0.5,
+			)
 			.map(net => net.netName);
 
 		const lowInformationNets = connectedNets
-			.filter(net => net.groupingWeight < 0.5)
+			.filter(net =>
+				net.electricalRole !== 'signal'
+				|| net.groupingWeight < 0.5,
+			)
 			.map(net => net.netName);
 
 		const missingEvidence: string[] = [];
@@ -194,8 +237,8 @@ export function buildSemanticContexts(
 		if (informativeSignalNets.length === 0) {
 			missingEvidence.push('informative-signal-net');
 		}
-		if (relatedCoreDesignators.length === 0) {
-			missingEvidence.push('direct-core-relation');
+		if (ownershipResult.relation === 'unknown') {
+			missingEvidence.push('ownership-relation');
 		}
 
 		return {
@@ -215,6 +258,14 @@ export function buildSemanticContexts(
 			structuralRole: 'ambiguous',
 			connectedNets,
 			relatedCoreDesignators,
+			ownership: {
+				relation: ownershipResult.relation,
+				ownerDesignator: ownershipResult.ownerDesignator,
+				hostDesignators: ownershipResult.hostDesignators,
+				sharedSignalNets: ownershipResult.sharedSignalNets,
+				railNets: ownershipResult.railNets,
+				explanation: ownershipResult.explanation,
+			},
 			informativeSignalNets,
 			lowInformationNets,
 			missingEvidence,

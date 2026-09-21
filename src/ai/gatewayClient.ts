@@ -5,7 +5,7 @@ import type {
 } from '../domain/semanticInference';
 
 export interface SemanticGatewayRequest {
-	version: '1';
+	version: '2';
 	context: SemanticComponentContext;
 	evidenceCatalog: SemanticEvidenceItem[];
 	allowedRoles: SemanticInference['role'][];
@@ -67,17 +67,13 @@ export function parseSemanticGatewayResponse(value: unknown): SemanticGatewayRes
 	if (typeof inference.explanation !== 'string') {
 		throw new Error('AI Gateway 缺少 explanation。');
 	}
-	if (
-		inference.associatedCore !== undefined
-		&& typeof inference.associatedCore !== 'string'
-	) {
-		throw new Error('AI Gateway 的 associatedCore 格式错误。');
+	if ('associatedCore' in inference) {
+		throw new Error('AI Gateway v2 禁止 AI 输出 associatedCore；归属关系必须来自确定性 context.ownership。');
 	}
 	return {
 		inference: {
 			status: inference.status as SemanticInference['status'],
 			role: inference.role as SemanticInference['role'],
-			associatedCore: inference.associatedCore as string | undefined,
 			confidence: inference.confidence as SemanticInference['confidence'],
 			evidenceRefs: inference.evidenceRefs,
 			explanation: inference.explanation,
@@ -102,7 +98,7 @@ export function buildSemanticGatewayRequest(
 	validationFeedback?: string[],
 ): SemanticGatewayRequest {
 	return {
-		version: '1',
+		version: '2',
 		context,
 		evidenceCatalog,
 		allowedRoles,

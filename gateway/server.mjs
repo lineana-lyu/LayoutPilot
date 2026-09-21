@@ -27,9 +27,6 @@ const semanticSchema = {
 				'unknown',
 			],
 		},
-		associatedCore: {
-			type: ['string', 'null'],
-		},
 		confidence: {
 			type: 'string',
 			enum: ['low', 'medium', 'high'],
@@ -45,7 +42,6 @@ const semanticSchema = {
 	required: [
 		'status',
 		'role',
-		'associatedCore',
 		'confidence',
 		'evidenceRefs',
 		'explanation',
@@ -86,7 +82,6 @@ function buildMockInference(request) {
 	return {
 		status: 'insufficient-evidence',
 		role: 'unknown',
-		associatedCore: null,
 		confidence: 'low',
 		evidenceRefs: fallbackRefs,
 		explanation: 'Mock 模式只验证传输、解析和校验链路，不模拟真实语义判断。',
@@ -110,11 +105,7 @@ function extractOutputText(response) {
 }
 
 function normalizeInference(inference) {
-	const normalized = structuredClone(inference);
-	if (normalized.associatedCore === null) {
-		delete normalized.associatedCore;
-	}
-	return normalized;
+	return structuredClone(inference);
 }
 
 
@@ -139,7 +130,6 @@ async function inferWithDeepSeek(request) {
 	const outputExample = {
 		status: exampleRole === 'unknown' ? 'insufficient-evidence' : 'inferred',
 		role: exampleRole,
-		associatedCore: request.context?.relatedCoreDesignators?.[0] ?? null,
 		confidence: 'medium',
 		evidenceRefs: [],
 		explanation: '示例说明。',
@@ -153,7 +143,7 @@ async function inferWithDeepSeek(request) {
 				'你只能根据输入 JSON 中的 context 和 evidenceCatalog 推理，禁止创造新的 PCB 事实。',
 				'你的最终回答必须是一个 JSON object，不要输出 Markdown、代码块或额外文本。',
 				'evidenceRefs 只能引用 evidenceCatalog 中存在的 id。',
-				'associatedCore 只能从 context.relatedCoreDesignators 中选择；不能确定时使用 null。',
+				'器件归属关系已经由确定性规则写入 context.ownership；禁止你重新选择、发明或输出 associatedCore。',
 				'status 只允许 inferred 或 insufficient-evidence。',
 				'role 必须严格从输入中的 allowedRoles 数组中选择，禁止输出 allowedRoles 之外的角色。',
 				'confidence 只允许 low, medium, high。',
@@ -169,7 +159,7 @@ async function inferWithDeepSeek(request) {
 			content: JSON.stringify({
 				task: validationFeedback.length
 					? '上一次输出被 Validator 拒绝。请根据 validationFeedback 修正，并只返回新的合法 JSON。'
-					: '请判断这个歧义 PCB 器件最可能的电路角色和关联核心。只返回 JSON。',
+					: '请判断这个歧义 PCB 器件最可能的电路角色。归属关系已经由确定性规则提供，不要重新决定 owner。只返回 JSON。',
 				context: request.context,
 				evidenceCatalog: request.evidenceCatalog,
 				allowedRoles,
@@ -234,14 +224,14 @@ async function inferWithOpenAI(request) {
 			'你是 LayoutPilot 的 PCB 语义分析器。',
 			'你只能根据输入中的 context 和 evidenceCatalog 推理，禁止创造新的 PCB 事实。',
 			'evidenceRefs 只能引用 evidenceCatalog 中存在的 id。',
-			'associatedCore 只能从 context.relatedCoreDesignators 中选择；不能确定时设为 null。',
+			'器件归属关系已经由确定性规则写入 context.ownership；禁止重新选择、发明或输出 associatedCore。',
 			'如果证据不足，status 必须为 insufficient-evidence，role 必须为 unknown。',
 			'role 必须严格从输入 allowedRoles 中选择。',
 			'如果 validationFeedback 非空，必须优先修复其中指出的问题。',
 			'置信度只允许 low / medium / high，不要输出百分比。',
 		].join('\n'),
 		input: JSON.stringify({
-			task: 'Infer the likely circuit role and associated core for this ambiguous PCB component. Return only the requested structured result.',
+			task: 'Infer only the likely circuit role for this ambiguous PCB component. Ownership relation is deterministic input and must not be changed.',
 			context: request.context,
 			evidenceCatalog: request.evidenceCatalog,
 			allowedRoles: request.allowedRoles,
@@ -282,7 +272,7 @@ async function inferWithOpenAI(request) {
 }
 
 async function handleSemanticInfer(request) {
-	if (!request || request.version !== '1' || !request.context) {
+	if (!request || request.version !== '2' || !request.context) {
 		throw new Error('请求格式错误。');
 	}
 

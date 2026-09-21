@@ -20,6 +20,9 @@ function makeContext(options?: {
 		connectedNets.push({
 			netName: 'VCC_RAIL',
 			classification: 'global-power',
+			electricalRole: 'power',
+			nameOrigin: 'global',
+			fanout: 2,
 			groupingWeight: 0.1,
 			selfPads: ['1'],
 			peerEndpoints: [
@@ -36,6 +39,9 @@ function makeContext(options?: {
 		connectedNets.push({
 			netName: 'GROUND_RAIL',
 			classification: 'global-ground',
+			electricalRole: 'ground',
+			nameOrigin: 'global',
+			fanout: 2,
 			groupingWeight: 0.1,
 			selfPads: ['2'],
 			peerEndpoints: [
@@ -57,6 +63,14 @@ function makeContext(options?: {
 		structuralRole: 'ambiguous',
 		connectedNets,
 		relatedCoreDesignators: ['U_CORE'],
+		ownership: {
+			relation: 'single-core',
+			ownerDesignator: 'U_CORE',
+			hostDesignators: ['U_CORE'],
+			sharedSignalNets: [],
+			railNets: includePower ? ['VCC_RAIL'] : [],
+			explanation: '合成测试中的唯一 owner。',
+		},
 		informativeSignalNets: [],
 		lowInformationNets: connectedNets.map(net => net.netName),
 		missingEvidence: [],
@@ -69,13 +83,13 @@ function makeInference(
 	return {
 		status: 'inferred',
 		role: 'decoupling-capacitor',
-		associatedCore: 'U_CORE',
 		confidence,
 		evidenceRefs: [
 			'component:value',
 			'net:VCC_RAIL',
 			'net:GROUND_RAIL',
-			'core:U_CORE',
+			'relation:single-core',
+			'owner:U_CORE',
 		],
 		explanation: '语义测试输入。',
 	};
@@ -92,13 +106,14 @@ function makeInference(
 	assert.equal(result.proposals[0].source, 'semantic-policy');
 	assert.equal(
 		result.proposals[0].policyId,
-		'decoupling.near-associated-core.v1',
+		'decoupling.near-deterministic-owner.v2',
 	);
 	assert.deepEqual(
 		new Set(result.proposals[0].evidenceRefs),
 		new Set([
 			'component:value',
-			'core:U_CORE',
+			'relation:single-core',
+			'owner:U_CORE',
 			'net:VCC_RAIL',
 			'net:GROUND_RAIL',
 		]),
@@ -129,42 +144,45 @@ function makeInference(
 		'policy-evidence-insufficient',
 	);
 	const diagnostic = result.skipped[0].diagnostics[0];
-	assert.equal(diagnostic.policyId, 'decoupling.near-associated-core.v1');
+	assert.equal(diagnostic.policyId, 'decoupling.near-deterministic-owner.v2');
 	assert.equal(
-		diagnostic.checks.find(check => check.id === 'associated-core')?.status,
+		diagnostic.checks.find(check => check.id === 'deterministic-owner')?.status,
 		'pass',
 	);
 	assert.equal(
-		diagnostic.checks.find(check => check.id === 'core-related-power-net')?.status,
+		diagnostic.checks.find(check => check.id === 'owner-related-power-net')?.status,
 		'pass',
 	);
 	assert.equal(
-		diagnostic.checks.find(check => check.id === 'core-related-ground-net')?.status,
+		diagnostic.checks.find(check => check.id === 'owner-related-ground-net')?.status,
 		'fail',
 	);
 }
 
 {
 	const context = makeContext();
-	const inference: SemanticInference = {
-		...makeInference('medium'),
-		associatedCore: undefined,
+	context.ownership = {
+		relation: 'rail-domain',
+		hostDesignators: ['U_CORE'],
+		sharedSignalNets: [],
+		railNets: ['VCC_RAIL'],
+		explanation: '只有电源域关系，没有唯一 owner。',
 	};
-	const result = buildConstraintPreview(context, inference);
+	const result = buildConstraintPreview(context, makeInference('medium'));
 
 	assert.equal(result.proposals.length, 0);
 	assert.equal(result.skipped[0].reason, 'policy-evidence-insufficient');
 	const diagnostic = result.skipped[0].diagnostics[0];
 	assert.equal(
-		diagnostic.checks.find(check => check.id === 'associated-core')?.status,
+		diagnostic.checks.find(check => check.id === 'deterministic-owner')?.status,
 		'fail',
 	);
 	assert.equal(
-		diagnostic.checks.find(check => check.id === 'core-related-power-net')?.status,
+		diagnostic.checks.find(check => check.id === 'owner-related-power-net')?.status,
 		'not-applicable',
 	);
 	assert.equal(
-		diagnostic.checks.find(check => check.id === 'core-related-ground-net')?.status,
+		diagnostic.checks.find(check => check.id === 'owner-related-ground-net')?.status,
 		'not-applicable',
 	);
 }
@@ -174,9 +192,8 @@ function makeInference(
 	const inference: SemanticInference = {
 		status: 'inferred',
 		role: 'power-switch',
-		associatedCore: 'U_CORE',
 		confidence: 'high',
-		evidenceRefs: ['core:U_CORE'],
+		evidenceRefs: ['relation:single-core', 'owner:U_CORE'],
 		explanation: '角色本身不足以决定布局位置。',
 	};
 

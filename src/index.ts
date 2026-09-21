@@ -493,9 +493,16 @@ export async function inspectSemanticContext(): Promise<void> {
           }).join('\n')
         : '无';
 
-      const cores = context.relatedCoreDesignators.length
-        ? context.relatedCoreDesignators.join('、')
-        : '暂未找到直接核心关联';
+      const hosts = context.ownership.hostDesignators.length
+        ? context.ownership.hostDesignators.join('、')
+        : '无';
+      const owner = context.ownership.ownerDesignator ?? '无唯一 owner';
+      const sharedSignals = context.ownership.sharedSignalNets.length
+        ? context.ownership.sharedSignalNets.join('、')
+        : '无';
+      const rails = context.ownership.railNets.length
+        ? context.ownership.railNets.join('、')
+        : '无';
 
       const missing = context.missingEvidence.length
         ? context.missingEvidence.map(semanticMissingEvidenceZh).join('；')
@@ -507,8 +514,12 @@ export async function inspectSemanticContext(): Promise<void> {
         `器件值：${context.value || '未知'}`,
         `制造商型号：${context.manufacturerPart || '未知'}`,
         `封装：${context.footprintName || '未知'}`,
+        `确定性关系：${ownershipRelationZh(context.ownership.relation)}`,
+        `唯一 owner：${owner}`,
+        `Host：${hosts}`,
+        `共享信号：${sharedSignals}`,
+        `电源域：${rails}`,
         `网络：${nets}`,
-        `可能相关核心：${cores}`,
         `缺失证据：${missing}`,
       ].join('\n');
     }).join('\n\n');
@@ -517,7 +528,7 @@ export async function inspectSemanticContext(): Promise<void> {
       [
         'LayoutPilot 已生成语义上下文。',
         '',
-        '注意：下面只是准备给 AI 的结构化输入，目前还没有调用 AI。',
+        '注意：归属关系由确定性规则先计算；AI 只负责判断器件角色，不再决定 owner。',
         '',
         preview,
         '',
@@ -1052,13 +1063,15 @@ export async function analyzeAmbiguousWithAi(): Promise<void> {
 
         passed += 1;
         const inference = gatewayResponse.inference;
-        const core = inference.associatedCore
-          ? ` · 关联 ${inference.associatedCore}`
+        const relation = ownershipRelationZh(context.ownership.relation);
+        const owner = context.ownership.ownerDesignator
+          ? ` · owner=${context.ownership.ownerDesignator}`
           : '';
         rows.push(
           [
             `${context.designator}：${semanticRoleZh(inference.role)}`,
-            `置信=${semanticConfidenceZh(inference.confidence)}${core}`,
+            `置信=${semanticConfidenceZh(inference.confidence)}`,
+            `确定性关系=${relation}${owner}`,
             '布局动作=由 Constraint Policy 单独推导',
           ].join(' · '),
         );
@@ -1085,7 +1098,7 @@ export async function analyzeAmbiguousWithAi(): Promise<void> {
         '',
         ...rows,
         '',
-        '说明：当前只生成语义角色与证据结论；不会直接生成或执行布局动作。',
+        '说明：AI 只判断语义角色；owner / bridge / shared-signal / rail-domain 由确定性规则提供，AI 无权改写。',
       ].join('\n'),
       'LayoutPilot · AI 批量语义分析',
     );
@@ -1249,7 +1262,7 @@ export async function previewLayoutConstraints(): Promise<void> {
 
 export async function about(): Promise<void> {
   await eda.sys_Dialog.showInformationMessage(
-    `LayoutPilot v${extensionConfig.version}\n\n第 3 阶段：把已校验的语义结果转换为可解释、分级的布局约束。\n当前只生成约束预览，不会自动修改 PCB。`,
+    `LayoutPilot v${extensionConfig.version}\n\n第 3B 阶段：确定性关系负责 owner/bridge/shared-signal/rail-domain，AI 只判断器件角色，再由 Constraint Policy 生成可解释约束。\n当前仍不会自动修改 PCB。`,
     '关于 LayoutPilot',
   );
 }
