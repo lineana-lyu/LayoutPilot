@@ -78,6 +78,24 @@ function headerFalseCoreFixture(): CircuitComponentSnapshot[] {
 			],
 		},
 		{
+			id: 'c4',
+			designator: 'C4',
+			padCount: 2,
+			pads: [
+				{ padNumber: '1', net: 'GND' },
+				{ padNumber: '2', net: 'NRST' },
+			],
+		},
+		{
+			id: 'sw1',
+			designator: 'SW1',
+			padCount: 4,
+			pads: [
+				{ padNumber: '1', net: 'NRST' },
+				{ padNumber: '2', net: 'GND' },
+			],
+		},
+		{
 			id: 'x1',
 			designator: 'X1',
 			padCount: 2,
@@ -189,9 +207,15 @@ console.log('LayoutPilot domain regression tests passed.');
 
 {
 	const { graph, features } = featuresFor(headerFalseCoreFixture());
+	const profiles = buildNetGroupingProfiles(graph);
 	const result = buildCandidateGroups(graph, features);
 	const h5 = features.find(feature => feature.designator === 'H5');
 	const x1 = features.find(feature => feature.designator === 'X1');
+	const sw1 = features.find(feature => feature.designator === 'SW1');
+	const u1Group = result.groups.find(group => group.coreDesignator === 'U1');
+
+	assert.equal(profiles.get('NRST')?.classification, 'named-signal');
+	assert.equal(profiles.get('NRST')?.groupingWeight, 1);
 
 	assert.ok(h5);
 	assert.equal(h5.isBoundaryCandidate, true);
@@ -202,6 +226,15 @@ console.log('LayoutPilot domain regression tests passed.');
 	assert.ok(x1);
 	assert.equal(x1.isPassiveCandidate, true);
 	assert.equal(x1.isCoreEligible, false);
+
+	assert.ok(sw1);
+	assert.equal(sw1.isPeripheralCandidate, true);
+	assert.equal(sw1.isCoreEligible, false);
+
+	assert.ok(u1Group);
+	assert.ok(u1Group.satelliteDesignators.includes('R1'));
+	assert.ok(u1Group.satelliteDesignators.includes('C4'));
+	assert.ok(u1Group.satelliteDesignators.includes('SW1'));
 }
 
 console.log('Header false-core regression passed.');
