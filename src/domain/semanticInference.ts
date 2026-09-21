@@ -18,13 +18,12 @@ export type SemanticConfidence = 'low' | 'medium' | 'high';
 export interface SemanticEvidenceItem {
 	id: string;
 	label: string;
-	source: 'component' | 'net' | 'peer' | 'core-relation';
+	source: 'component' | 'net' | 'peer' | 'ownership-relation';
 }
 
 export interface SemanticInference {
 	status: 'inferred' | 'insufficient-evidence';
 	role: SemanticRole;
-	associatedCore?: string;
 	confidence: SemanticConfidence;
 	evidenceRefs: string[];
 	explanation: string;
@@ -121,6 +120,17 @@ function netClassificationLabel(value: string): string {
 	}
 }
 
+function netOriginLabel(value: string): string {
+	switch (value) {
+		case 'generated':
+			return '自动生成名称';
+		case 'global':
+			return '全局网络名称';
+		default:
+			return '显式名称';
+	}
+}
+
 export function buildSemanticEvidenceCatalog(
 	context: SemanticComponentContext,
 ): SemanticEvidenceItem[] {
@@ -158,7 +168,9 @@ export function buildSemanticEvidenceCatalog(
 	for (const net of context.connectedNets) {
 		items.push({
 			id: `net:${net.netName}`,
-			label: `网络 ${net.netName}（${netClassificationLabel(net.classification)}）`,
+			label:
+				`网络 ${net.netName}（${netClassificationLabel(net.classification)}；`
+				+ `${netOriginLabel(net.nameOrigin)}；fanout=${net.fanout}）`,
 			source: 'net',
 		});
 
@@ -171,11 +183,41 @@ export function buildSemanticEvidenceCatalog(
 		}
 	}
 
-	for (const core of context.relatedCoreDesignators) {
+	items.push({
+		id: `relation:${context.ownership.relation}`,
+		label: `确定性归属关系：${context.ownership.relation}。 ${context.ownership.explanation}`,
+		source: 'ownership-relation',
+	});
+
+	if (context.ownership.ownerDesignator) {
 		items.push({
-			id: `core:${core}`,
-			label: `可能相关核心器件：${core}`,
-			source: 'core-relation',
+			id: `owner:${context.ownership.ownerDesignator}`,
+			label: `确定性唯一 owner：${context.ownership.ownerDesignator}`,
+			source: 'ownership-relation',
+		});
+	}
+
+	for (const host of context.ownership.hostDesignators) {
+		items.push({
+			id: `host:${host}`,
+			label: `归属关系 Host：${host}`,
+			source: 'ownership-relation',
+		});
+	}
+
+	for (const netName of context.ownership.sharedSignalNets) {
+		items.push({
+			id: `shared:${netName}`,
+			label: `多 Host 共享信号：${netName}`,
+			source: 'ownership-relation',
+		});
+	}
+
+	for (const netName of context.ownership.railNets) {
+		items.push({
+			id: `rail:${netName}`,
+			label: `电源域网络：${netName}`,
+			source: 'ownership-relation',
 		});
 	}
 
@@ -189,7 +231,6 @@ export function validateSemanticInference(
 	const errors: string[] = [];
 	const catalog = buildSemanticEvidenceCatalog(context);
 	const allowedEvidenceIds = new Set(catalog.map(item => item.id));
-	const allowedCores = new Set(context.relatedCoreDesignators);
 	const allowedRoles = new Set(
 		allowedSemanticRolesForPrefix(context.referencePrefix),
 	);
@@ -206,13 +247,6 @@ export function validateSemanticInference(
 		errors.push(
 			`语义角色 ${inference.role} 与器件位号前缀 ${context.referencePrefix} 不兼容。`,
 		);
-	}
-
-	if (
-		inference.associatedCore
-		&& !allowedCores.has(inference.associatedCore)
-	) {
-		errors.push(`关联核心 ${inference.associatedCore} 不存在于规则层提供的候选核心中。`);
 	}
 
 	for (const ref of inference.evidenceRefs) {
