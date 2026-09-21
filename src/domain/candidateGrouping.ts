@@ -1,16 +1,20 @@
 import type { CircuitGraph } from './circuitGraph';
 import type { StructuralFeature } from './componentFeatures';
+import { buildNetGroupingProfiles } from './netInformativeness';
 
 export type GroupEvidenceCode =
 	| 'CORE_SELECTED'
 	| 'PASSIVE_SINGLE_CORE_NEIGHBOR'
 	| 'BOUNDARY_KEPT_SEPARATE'
-	| 'ISOLATED_UNGROUPED';
+	| 'ISOLATED_UNGROUPED'
+	| 'ONLY_LOW_INFORMATION_NETS'
+	| 'MULTIPLE_CORE_CANDIDATES';
 
 export interface GroupEvidence {
 	code: GroupEvidenceCode;
 	component?: string;
 	core?: string;
+	cores?: string[];
 }
 
 export interface CandidateGroup {
@@ -28,6 +32,9 @@ export interface CandidateGroupingResult {
 	ungroupedDesignators: string[];
 	boundaryComponentIds: string[];
 	boundaryDesignators: string[];
+	ambiguousComponentIds: string[];
+	ambiguousDesignators: string[];
+	ambiguityEvidence: GroupEvidence[];
 }
 
 export function buildCandidateGroups(
@@ -36,6 +43,7 @@ export function buildCandidateGroups(
 ): CandidateGroupingResult {
 	const featureById = new Map(features.map(feature => [feature.id, feature]));
 	const nodeById = new Map(graph.nodes.map(node => [node.id, node]));
+	const netProfiles = buildNetGroupingProfiles(graph);
 
 	const coreFeatures = features.filter(feature => feature.coreLevel === 'high');
 	const coreIds = new Set(coreFeatures.map(feature => feature.id));
@@ -52,6 +60,8 @@ export function buildCandidateGroups(
 	const groupByCoreId = new Map(groups.map(group => [group.coreComponentId, group]));
 	const ungrouped = new Set<string>();
 	const boundary = new Set<string>();
+	const ambiguous = new Set<string>();
+	const ambiguityEvidence: GroupEvidence[] = [];
 
 	for (const node of graph.nodes) {
 		const feature = featureById.get(node.id);
@@ -70,9 +80,35 @@ export function buildCandidateGroups(
 		}
 
 		if (feature.isPassiveCandidate) {
-			const neighboringCoreIds = node.neighborComponentIds.filter(id => coreIds.has(id));
-			if (neighboringCoreIds.length === 1) {
-				const coreId = neighboringCoreIds[0];
+			const informativeCoreIds = new Set<string>();
+			const lowInformationCoreIds = new Set<string>();
+
+			for (const net of graph.nets) {
+				if (!net.componentIds.includes(node.id)) {
+					continue;
+				}
+
+				const profile = netProfiles.get(net.name);
+				if (!profile) {
+					continue;
+				}
+
+				const coreIdsOnNet = net.componentIds.filter(
+					id => id !== node.id && coreIds.has(id),
+				);
+
+				for (const coreId of coreIdsOnNet) {
+					if (profile.groupingWeight >= 0.5) {
+						informativeCoreIds.add(coreId);
+					}
+					else {
+						lowInformationCoreIds.add(coreId);
+					}
+				}
+			}
+
+			if (informativeCoreIds.size === 1) {
+				const coreId = Array.from(informativeCoreIds)[0];
 				const group = groupByCoreId.get(coreId);
 				if (group) {
 					group.satelliteComponentIds.push(node.id);
@@ -84,6 +120,28 @@ export function buildCandidateGroups(
 					});
 					continue;
 				}
+			}
+
+			if (informativeCoreIds.size > 1) {
+				ambiguous.add(node.id);
+				ambiguityEvidence.push({
+					code: 'MULTIPLE_CORE_CANDIDATES',
+					component: node.designator,
+					cores: Array.from(informativeCoreIds)
+						.map(id => featureById.get(id)?.designator ?? id),
+				});
+				continue;
+			}
+
+			if (informativeCoreIds.size === 0 && lowInformationCoreIds.size > 0) {
+				ambiguous.add(node.id);
+				ambiguityEvidence.push({
+					code: 'ONLY_LOW_INFORMATION_NETS',
+					component: node.designator,
+					cores: Array.from(lowInformationCoreIds)
+						.map(id => featureById.get(id)?.designator ?? id),
+				});
+				continue;
 			}
 		}
 
@@ -99,5 +157,8 @@ export function buildCandidateGroups(
 		ungroupedDesignators: Array.from(ungrouped).map(designatorOf),
 		boundaryComponentIds: Array.from(boundary),
 		boundaryDesignators: Array.from(boundary).map(designatorOf),
+		ambiguousComponentIds: Array.from(ambiguous),
+		ambiguousDesignators: Array.from(ambiguous).map(designatorOf),
+		ambiguityEvidence,
 	};
 }
