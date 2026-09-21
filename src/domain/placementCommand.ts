@@ -51,8 +51,8 @@ export function createPlacementCommand(input: {
 		constraintId: input.constraintId,
 		componentId: input.componentId,
 		componentDesignator: input.componentDesignator,
-		from: { ...input.from },
-		to: { ...input.to },
+		from: Object.freeze({ ...input.from }),
+		to: Object.freeze({ ...input.to }),
 		createdAt,
 		status: 'planned' as const,
 	});
