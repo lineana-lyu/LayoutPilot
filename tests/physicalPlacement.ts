@@ -77,6 +77,7 @@ function component(
 		owner,
 		obstacles: [subject, owner],
 		board,
+		componentKeepouts: [],
 		powerNet: '3V3',
 		groundNet: 'GND',
 	});
@@ -96,6 +97,7 @@ function component(
 		owner,
 		obstacles: [subject, owner],
 		board,
+		componentKeepouts: [],
 		powerNet: '3V3',
 		groundNet: 'GND',
 	});
@@ -114,6 +116,7 @@ function component(
 		owner,
 		obstacles: [subject, owner],
 		board,
+		componentKeepouts: [],
 		powerNet: '3V3',
 		groundNet: 'GND',
 	});
@@ -133,6 +136,7 @@ function component(
 		owner,
 		obstacles: [subject, owner],
 		board,
+		componentKeepouts: [],
 		powerNet: '3V3',
 		groundNet: 'GND',
 	});
@@ -154,6 +158,7 @@ function component(
 		owner,
 		obstacles: [subject, owner],
 		board,
+		componentKeepouts: [],
 		powerNet: '3V3',
 		groundNet: 'GND',
 	});
@@ -180,12 +185,41 @@ function component(
 		owner,
 		obstacles: [subject, owner, unknownObstacle],
 		board,
+		componentKeepouts: [],
 		powerNet: '3V3',
 		groundNet: 'GND',
 	});
 
 	assert.equal(result.ready, false);
 	assert.ok(result.reasons.some(reason => reason.includes('不能证明候选位置无碰撞')));
+}
+
+{
+	const subject = component('c1', 'C1', 300, 300, { routed: 0 });
+	const owner = component('u1', 'U1', 100, 100, {
+		powerPadX: 160,
+		powerPadY: 100,
+	});
+	const blockingKeepout = {
+		points: [
+			{ x: 150, y: 50 },
+			{ x: 300, y: 50 },
+			{ x: 300, y: 150 },
+			{ x: 150, y: 150 },
+		],
+	};
+	const result = planDecouplingPlacement({
+		subject,
+		owner,
+		obstacles: [subject, owner],
+		board,
+		componentKeepouts: [blockingKeepout],
+		powerNet: '3V3',
+		groundNet: 'GND',
+	});
+
+	assert.equal(result.ready, false);
+	assert.ok(result.reasons.some(reason => reason.includes('keepout')));
 }
 
 console.log('Physical placement planner tests passed.');
