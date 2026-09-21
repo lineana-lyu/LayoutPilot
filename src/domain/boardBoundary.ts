@@ -266,6 +266,47 @@ function properSegmentsIntersect(
 	);
 }
 
+function pointInsideBox(point: BoardPoint, box: Box): boolean {
+	return point.x >= box.minX - EPSILON
+		&& point.x <= box.maxX + EPSILON
+		&& point.y >= box.minY - EPSILON
+		&& point.y <= box.maxY + EPSILON;
+}
+
+export function boxIntersectsPolygon(
+	box: Box,
+	polygon: BoardPolygon,
+): boolean {
+	const corners: BoardPoint[] = [
+		{ x: box.minX, y: box.minY },
+		{ x: box.maxX, y: box.minY },
+		{ x: box.maxX, y: box.maxY },
+		{ x: box.minX, y: box.maxY },
+	];
+
+	if (corners.some(corner => pointInOrOnPolygon(corner, polygon))) {
+		return true;
+	}
+	if (polygon.points.some(point => pointInsideBox(point, box))) {
+		return true;
+	}
+
+	const boxEdges = corners.map((corner, index) => [
+		corner,
+		corners[(index + 1) % corners.length],
+	] as const);
+	const polygonEdges = polygon.points.map((point, index) => [
+		point,
+		polygon.points[(index + 1) % polygon.points.length],
+	] as const);
+
+	return boxEdges.some(([a1, a2]) =>
+		polygonEdges.some(([b1, b2]) =>
+			properSegmentsIntersect(a1, a2, b1, b2),
+		),
+	);
+}
+
 export function boxInsideBoard(
 	box: Box,
 	polygon: BoardPolygon,
