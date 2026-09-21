@@ -5,7 +5,7 @@ import { buildCircuitGraph, type CircuitComponentSnapshot } from '../src/domain/
 import { extractStructuralFeatures, type ComponentMetadata } from '../src/domain/componentFeatures';
 import { buildNetGroupingProfiles } from '../src/domain/netInformativeness';
 import { buildSemanticContexts, resolveComponentDisplayName } from '../src/domain/semanticContext';
-import { buildSemanticEvidenceCatalog, validateSemanticInference } from '../src/domain/semanticInference';
+import { allowedSemanticRolesForPrefix, buildSemanticEvidenceCatalog, validateSemanticInference } from '../src/domain/semanticInference';
 import { buildSemanticGatewayRequest, normalizeGatewayBaseUrl, parseSemanticGatewayResponse } from '../src/ai/gatewayClient';
 
 function featuresFor(components: CircuitComponentSnapshot[]) {
@@ -454,3 +454,61 @@ console.log('AI gateway contract regression passed.');
 }
 
 console.log('Constraint target validation passed.');
+
+
+{
+	assert.ok(allowedSemanticRolesForPrefix('C').includes('decoupling-capacitor'));
+	assert.ok(!allowedSemanticRolesForPrefix('C').includes('power-path-inductor'));
+	assert.ok(allowedSemanticRolesForPrefix('L').includes('power-path-inductor'));
+	assert.ok(!allowedSemanticRolesForPrefix('L').includes('filter-capacitor'));
+
+	const context = {
+		componentId: 'l1',
+		designator: 'L1',
+		referencePrefix: 'L',
+		structuralRole: 'ambiguous',
+		connectedNets: [
+			{
+				netName: '3V',
+				classification: 'global-power',
+				groupingWeight: 0.1,
+				selfPads: ['2'],
+				peerEndpoints: [],
+				coreDesignators: ['U1'],
+			},
+			{
+				netName: 'VDD',
+				classification: 'global-power',
+				groupingWeight: 0.1,
+				selfPads: ['1'],
+				peerEndpoints: [],
+				coreDesignators: ['U1'],
+			},
+		],
+		relatedCoreDesignators: ['U1'],
+		informativeSignalNets: [],
+		lowInformationNets: ['3V', 'VDD'],
+		missingEvidence: [],
+	};
+
+	const invalidRole = validateSemanticInference(context, {
+		status: 'inferred',
+		role: 'filter-capacitor',
+		associatedCore: 'U1',
+		confidence: 'medium',
+		evidenceRefs: ['net:3V', 'net:VDD', 'core:U1'],
+		explanation: '错误地把 L1 判断成电容。',
+		constraints: [
+			{
+				type: 'near',
+				target: 'U1',
+				evidenceRefs: ['core:U1'],
+			},
+		],
+	});
+
+	assert.equal(invalidRole.valid, false);
+	assert.ok(invalidRole.errors.some(error => error.includes('与器件位号前缀 L 不兼容')));
+}
+
+console.log('Semantic role compatibility validation passed.');
