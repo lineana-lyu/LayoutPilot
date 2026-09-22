@@ -78,9 +78,17 @@ export function placementPlansEquivalent(
 		&& samePoint(a.to, b.to);
 }
 
+export type PlacementTargetFailureCode =
+	| 'invalid-input'
+	| 'invalid-obstacle'
+	| 'collision'
+	| 'board-boundary'
+	| 'keepout';
+
 export interface PlacementTargetValidation {
 	valid: boolean;
 	reasons: string[];
+	failureCode?: PlacementTargetFailureCode;
 }
 
 export interface PlacementReadiness {
@@ -98,7 +106,10 @@ interface BBox {
 }
 
 const DEFAULT_CLEARANCE_MIL = 20;
-const EPSILON = 1e-6;
+const MIN_LOCAL_SEARCH_RADIUS_MIL = 200;
+const MAX_LOCAL_SEARCH_RADIUS_MIL = 500;
+const MIN_LOCAL_SEARCH_STEP_MIL = 10;
+const MAX_LOCAL_SEARCH_STEP_MIL = 25;
 
 function rotatedHalfExtents(
 	width: number,
@@ -111,20 +122,6 @@ function rotatedHalfExtents(
 	return {
 		halfX: cos * width / 2 + sin * height / 2,
 		halfY: sin * width / 2 + cos * height / 2,
-	};
-}
-
-function padBox(pad: PhysicalPadSnapshot): BBox {
-	const { halfX, halfY } = rotatedHalfExtents(
-		pad.width,
-		pad.height,
-		pad.rotation,
-	);
-	return {
-		minX: pad.x - halfX,
-		minY: pad.y - halfY,
-		maxX: pad.x + halfX,
-		maxY: pad.y + halfY,
 	};
 }
 
@@ -175,58 +172,74 @@ function boxesOverlap(a: BBox, b: BBox): boolean {
 	);
 }
 
-function unitVector(x: number, y: number): PlacementPoint | undefined {
-	const length = Math.hypot(x, y);
-	if (length < EPSILON) {
-		return undefined;
-	}
-	return {
-		x: x / length,
-		y: y / length,
-	};
+function clamp(value: number, min: number, max: number): number {
+	return Math.max(min, Math.min(max, value));
 }
 
-function candidateDirections(
-	owner: PhysicalComponentSnapshot,
-	ownerPad: PhysicalPadSnapshot,
-): PlacementPoint[] {
-	const outward = unitVector(
-		ownerPad.x - owner.x,
-		ownerPad.y - owner.y,
+function localSearchStep(clearanceMil: number): number {
+	return clamp(
+		clearanceMil,
+		MIN_LOCAL_SEARCH_STEP_MIL,
+		MAX_LOCAL_SEARCH_STEP_MIL,
 	);
-	const base = outward
-		? [
-				outward,
-				{ x: -outward.y, y: outward.x },
-				{ x: outward.y, y: -outward.x },
-				{ x: -outward.x, y: -outward.y },
-			]
-		: [
-				{ x: 1, y: 0 },
-				{ x: -1, y: 0 },
-				{ x: 0, y: 1 },
-				{ x: 0, y: -1 },
-			];
-
-	const seen = new Set<string>();
-	return base.filter(direction => {
-		const key = `${direction.x.toFixed(6)}:${direction.y.toFixed(6)}`;
-		if (seen.has(key)) return false;
-		seen.add(key);
-		return true;
-	});
 }
 
-function supportDistance(
-	pad: PhysicalPadSnapshot,
-	direction: PlacementPoint,
+function localSearchRadius(
+	subjectBox: BBox,
+	ownerBox: BBox,
+	clearanceMil: number,
 ): number {
-	const { halfX, halfY } = rotatedHalfExtents(
-		pad.width,
-		pad.height,
-		pad.rotation,
+	const subjectSpan = Math.max(
+		subjectBox.maxX - subjectBox.minX,
+		subjectBox.maxY - subjectBox.minY,
 	);
-	return Math.abs(direction.x) * halfX + Math.abs(direction.y) * halfY;
+	const ownerSpan = Math.max(
+		ownerBox.maxX - ownerBox.minX,
+		ownerBox.maxY - ownerBox.minY,
+	);
+	const localScale = Math.max(subjectSpan, Math.min(ownerSpan, 200));
+
+	return clamp(
+		localScale * 2 + clearanceMil * 4,
+		MIN_LOCAL_SEARCH_RADIUS_MIL,
+		MAX_LOCAL_SEARCH_RADIUS_MIL,
+	);
+}
+
+function buildLocalSearchOffsets(
+	stepMil: number,
+	radiusMil: number,
+): PlacementPoint[] {
+	const offsets: PlacementPoint[] = [];
+	const maxRing = Math.max(1, Math.ceil(radiusMil / stepMil));
+
+	for (let ring = 1; ring <= maxRing; ring += 1) {
+		const distance = ring * stepMil;
+
+		for (let xIndex = -ring; xIndex <= ring; xIndex += 1) {
+			offsets.push({
+				x: xIndex * stepMil,
+				y: -distance,
+			});
+			offsets.push({
+				x: xIndex * stepMil,
+				y: distance,
+			});
+		}
+
+		for (let yIndex = -ring + 1; yIndex <= ring - 1; yIndex += 1) {
+			offsets.push({
+				x: -distance,
+				y: yIndex * stepMil,
+			});
+			offsets.push({
+				x: distance,
+				y: yIndex * stepMil,
+			});
+		}
+	}
+
+	return offsets;
 }
 
 function isFinitePositive(value: number): boolean {
@@ -295,7 +308,11 @@ export function validatePlacementTarget(input: {
 		reasons.push('布局安全间距必须为正数');
 	}
 	if (reasons.length) {
-		return { valid: false, reasons };
+		return {
+			valid: false,
+			reasons,
+			failureCode: 'invalid-input',
+		};
 	}
 
 	const subjectBox = componentBox(subject);
@@ -303,6 +320,7 @@ export function validatePlacementTarget(input: {
 		return {
 			valid: false,
 			reasons: [`${subject.designator} 无法建立实测器件 BBox`],
+			failureCode: 'invalid-input',
 		};
 	}
 
@@ -319,6 +337,7 @@ export function validatePlacementTarget(input: {
 			reasons: [
 				`无法确认 ${invalidObstacle.designator} 的 EasyEDA 实测 BBox，不能证明目标位置无碰撞`,
 			],
+			failureCode: 'invalid-obstacle',
 		};
 	}
 
@@ -336,12 +355,14 @@ export function validatePlacementTarget(input: {
 		return {
 			valid: false,
 			reasons: [`目标位置与 ${collision.designator} 的实测器件 BBox 冲突`],
+			failureCode: 'collision',
 		};
 	}
 	if (!boxInsideBoardRegion(translated, board)) {
 		return {
 			valid: false,
 			reasons: ['目标位置超出可验证板框或安全余量越界'],
+			failureCode: 'board-boundary',
 		};
 	}
 	if (componentKeepouts.some(keepout =>
@@ -350,6 +371,7 @@ export function validatePlacementTarget(input: {
 		return {
 			valid: false,
 			reasons: ['目标位置与 NO_COMPONENTS keepout 冲突'],
+			failureCode: 'keepout',
 		};
 	}
 
@@ -442,10 +464,11 @@ export function planDecouplingPlacement(input: {
 	}
 
 	const subjectBox = componentBox(subject);
-	if (!subjectBox) {
+	const ownerBox = componentBox(owner);
+	if (!subjectBox || !ownerBox) {
 		return {
 			ready: false,
-			reasons: [`${subject.designator} 无法建立 EasyEDA 实测器件 BBox`],
+			reasons: ['无法建立 subject / owner 的 EasyEDA 实测器件 BBox'],
 			executionBlockers,
 		};
 	}
@@ -469,109 +492,122 @@ export function planDecouplingPlacement(input: {
 		plan: PhysicalPlacementPlan;
 		score: number;
 	}> = [];
+	const rejectionCounts = new Map<PlacementTargetFailureCode, number>();
+	const searchStepMil = localSearchStep(clearanceMil);
+	const searchRadiusMil = localSearchRadius(
+		subjectBox,
+		ownerBox,
+		clearanceMil,
+	);
+	const searchOffsets = buildLocalSearchOffsets(
+		searchStepMil,
+		searchRadiusMil,
+	);
+
+	const recordRejection = (code?: PlacementTargetFailureCode) => {
+		if (!code) return;
+		rejectionCounts.set(code, (rejectionCounts.get(code) ?? 0) + 1);
+	};
 
 	for (const subjectPowerPad of subjectPowerPads) {
-	for (const ownerPowerPad of ownerPowerPads) {
-		for (const direction of candidateDirections(owner, ownerPowerPad)) {
-			const centreDistance =
-				supportDistance(ownerPowerPad, direction)
-				+ supportDistance(subjectPowerPad, direction)
-				+ clearanceMil;
-
-			const targetPowerPad = {
-				x: ownerPowerPad.x + direction.x * centreDistance,
-				y: ownerPowerPad.y + direction.y * centreDistance,
-			};
-			const subjectPowerOffset = {
-				x: subjectPowerPad.x - subject.x,
-				y: subjectPowerPad.y - subject.y,
-			};
-			const to = {
-				x: targetPowerPad.x - subjectPowerOffset.x,
-				y: targetPowerPad.y - subjectPowerOffset.y,
-			};
-			const dx = to.x - subject.x;
-			const dy = to.y - subject.y;
-			const targetValidation = validatePlacementTarget({
-				subject,
-				obstacles,
-				board,
-				componentKeepouts,
-				target: to,
-				clearanceMil,
-			});
-			if (!targetValidation.valid) {
-				continue;
-			}
-
-			const translatedGroundPads = subjectGroundPads.map(pad => ({
-				pad,
-				x: pad.x + dx,
-				y: pad.y + dy,
-			}));
-			let bestGroundPair:
-				| {
-					subjectPad: PhysicalPadSnapshot;
-					ownerPad: PhysicalPadSnapshot;
-					distance: number;
+		for (const ownerPowerPad of ownerPowerPads) {
+			for (const offset of searchOffsets) {
+				const targetPowerPad = {
+					x: ownerPowerPad.x + offset.x,
+					y: ownerPowerPad.y + offset.y,
+				};
+				const subjectPowerOffset = {
+					x: subjectPowerPad.x - subject.x,
+					y: subjectPowerPad.y - subject.y,
+				};
+				const to = {
+					x: targetPowerPad.x - subjectPowerOffset.x,
+					y: targetPowerPad.y - subjectPowerOffset.y,
+				};
+				const dx = to.x - subject.x;
+				const dy = to.y - subject.y;
+				const targetValidation = validatePlacementTarget({
+					subject,
+					obstacles,
+					board,
+					componentKeepouts,
+					target: to,
+					clearanceMil,
+				});
+				if (!targetValidation.valid) {
+					recordRejection(targetValidation.failureCode);
+					continue;
 				}
-				| undefined;
 
-			for (const subjectGroundPad of translatedGroundPads) {
-				for (const ownerGroundPad of ownerGroundPads) {
-					const distance = Math.hypot(
-						subjectGroundPad.x - ownerGroundPad.x,
-						subjectGroundPad.y - ownerGroundPad.y,
-					);
-					if (!bestGroundPair || distance < bestGroundPair.distance) {
-						bestGroundPair = {
-							subjectPad: subjectGroundPad.pad,
-							ownerPad: ownerGroundPad,
-							distance,
-						};
+				const translatedGroundPads = subjectGroundPads.map(pad => ({
+					pad,
+					x: pad.x + dx,
+					y: pad.y + dy,
+				}));
+				let bestGroundPair:
+					| {
+						subjectPad: PhysicalPadSnapshot;
+						ownerPad: PhysicalPadSnapshot;
+						distance: number;
+					}
+					| undefined;
+
+				for (const subjectGroundPad of translatedGroundPads) {
+					for (const ownerGroundPad of ownerGroundPads) {
+						const distance = Math.hypot(
+							subjectGroundPad.x - ownerGroundPad.x,
+							subjectGroundPad.y - ownerGroundPad.y,
+						);
+						if (!bestGroundPair || distance < bestGroundPair.distance) {
+							bestGroundPair = {
+								subjectPad: subjectGroundPad.pad,
+								ownerPad: ownerGroundPad,
+								distance,
+							};
+						}
 					}
 				}
+
+				if (!bestGroundPair) {
+					continue;
+				}
+
+				const powerDistance = Math.hypot(offset.x, offset.y);
+				const moveDistance = Math.hypot(dx, dy);
+				const loopProxy = powerDistance + bestGroundPair.distance;
+				const score = loopProxy + moveDistance * 0.05;
+
+				candidates.push({
+					score,
+					plan: {
+						subjectId: subject.id,
+						subjectDesignator: subject.designator,
+						ownerId: owner.id,
+						ownerDesignator: owner.designator,
+						powerNet,
+						groundNet,
+						ownerPowerPadNumber: ownerPowerPad.padNumber,
+						subjectPowerPadNumber: subjectPowerPad.padNumber,
+						ownerGroundPadNumber: bestGroundPair.ownerPad.padNumber,
+						subjectGroundPadNumber: bestGroundPair.subjectPad.padNumber,
+						estimatedLoopProxyMil: loopProxy,
+						from: { x: subject.x, y: subject.y },
+						to,
+						clearanceMil,
+						rationale:
+							'以 owner 同电源网 Pad 为中心执行有界局部占用栅格搜索；每个候选仍通过板框、NO_COMPONENTS keepout 与 EasyEDA 实测器件 BBox 的统一硬约束校验，再用 power-pad 距离 + 最近 ground 返回距离作为去耦回路几何代理排序。搜索只扩大候选覆盖，不降低既有安全门槛。',
+					},
+				});
 			}
-
-			if (!bestGroundPair) {
-				continue;
-			}
-
-			const powerDistance = Math.hypot(
-				targetPowerPad.x - ownerPowerPad.x,
-				targetPowerPad.y - ownerPowerPad.y,
-			);
-			const moveDistance = Math.hypot(dx, dy);
-			const loopProxy = powerDistance + bestGroundPair.distance;
-			const score = loopProxy + moveDistance * 0.05;
-
-			candidates.push({
-				score,
-				plan: {
-					subjectId: subject.id,
-					subjectDesignator: subject.designator,
-					ownerId: owner.id,
-					ownerDesignator: owner.designator,
-					powerNet,
-					groundNet,
-					ownerPowerPadNumber: ownerPowerPad.padNumber,
-					subjectPowerPadNumber: subjectPowerPad.padNumber,
-					ownerGroundPadNumber: bestGroundPair.ownerPad.padNumber,
-					subjectGroundPadNumber: bestGroundPair.subjectPad.padNumber,
-					estimatedLoopProxyMil: loopProxy,
-					from: { x: subject.x, y: subject.y },
-					to,
-					clearanceMil,
-					rationale:
-						'以 owner 的同电源网焊盘为锚点生成合法候选，碰撞检查使用 EasyEDA 运行时实测器件 BBox；再用 power-pad 距离 + 最近 ground 返回距离作为去耦回路几何代理排序。该指标用于候选优选，不等同于 SI/PI 证明。',
-				},
-			});
 		}
-	}
 	}
 
 	if (candidates.length) {
-		candidates.sort((a, b) => a.score - b.score);
+		candidates.sort((a, b) =>
+			a.score - b.score
+			|| a.plan.to.x - b.plan.to.x
+			|| a.plan.to.y - b.plan.to.y,
+		);
 		return {
 			ready: true,
 			reasons: [],
@@ -580,10 +616,24 @@ export function planDecouplingPlacement(input: {
 		};
 	}
 
+	const rejectionSummary = [
+		['器件 BBox 碰撞', rejectionCounts.get('collision') ?? 0],
+		['板框 / 安全余量', rejectionCounts.get('board-boundary') ?? 0],
+		['NO_COMPONENTS keepout', rejectionCounts.get('keepout') ?? 0],
+		['障碍物几何无效', rejectionCounts.get('invalid-obstacle') ?? 0],
+		['候选输入无效', rejectionCounts.get('invalid-input') ?? 0],
+	]
+		.filter(([, count]) => Number(count) > 0)
+		.map(([label, count]) => `${label} ${count}`)
+		.join('，');
+
 	return {
 		ready: false,
 		reasons: [
-			`未找到同时满足板框、器件 keepout 与 ${clearanceMil} mil 近似器件避让条件的候选位置`,
+			`在 Owner 电源 Pad 周围 ${searchRadiusMil.toFixed(0)} mil 的局部占用栅格内未找到合法候选位置（步长 ${searchStepMil.toFixed(0)} mil，安全间距 ${clearanceMil} mil）。`,
+			rejectionSummary
+				? `候选拒绝统计：${rejectionSummary}。`
+				: '没有候选通过当前物理安全门槛。',
 		],
 		executionBlockers,
 	};
