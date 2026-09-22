@@ -23,6 +23,10 @@ export function activate(status?: 'onStartupFinished', arg?: string): void {
   console.log('[LayoutPilot] activated', { status, arg });
 }
 
+export async function openWorkbench(): Promise<void> {
+  await openLayoutPilotWorkbench();
+}
+
 export async function inspectPcb(): Promise<void> {
   try {
     const components = await eda.pcb_PrimitiveComponent.getAll();
