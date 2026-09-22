@@ -2,17 +2,14 @@ import assert from 'node:assert/strict';
 
 import {
 	createPlacementCommand,
-	getLastPlacementCommand,
 	markPlacementCommandApplied,
 	markPlacementCommandSuperseded,
 	markPlacementCommandUndone,
-	setLastPlacementCommand,
 } from '../src/domain/placementCommand';
-
-setLastPlacementCommand(undefined);
 
 const command = createPlacementCommand({
 	snapshotId: 'semantic-1',
+	boardFingerprint: 'sem-v1-board-a',
 	constraintId: 'C1:policy:near:U1',
 	componentId: 'c1',
 	componentDesignator: 'C1',
@@ -22,6 +19,7 @@ const command = createPlacementCommand({
 });
 
 assert.equal(command.status, 'planned');
+assert.equal(command.boardFingerprint, 'sem-v1-board-a');
 assert.equal(Object.isFrozen(command), true);
 assert.equal(Object.isFrozen(command.from), true);
 assert.equal(Object.isFrozen(command.to), true);
@@ -33,15 +31,10 @@ const applied = markPlacementCommandApplied(
 assert.equal(applied.status, 'applied');
 assert.equal(applied.verifiedAt, '2026-09-21T13:01:00.000Z');
 
-setLastPlacementCommand(applied);
-assert.equal(getLastPlacementCommand()?.id, applied.id);
-
 const undone = markPlacementCommandUndone(applied);
-setLastPlacementCommand(undone);
-assert.equal(getLastPlacementCommand()?.status, 'undone');
+assert.equal(undone.status, 'undone');
 
 const superseded = markPlacementCommandSuperseded(applied);
-setLastPlacementCommand(superseded);
-assert.equal(getLastPlacementCommand()?.status, 'superseded');
+assert.equal(superseded.status, 'superseded');
 
 console.log('Placement command tests passed.');
