@@ -934,9 +934,9 @@ window.setInterval(() => {
 	if (busy) return;
 	const workflow = inspectStoredWorkflowState();
 	if (workflow.updatedAt !== lastWorkflowUpdatedAt) {
-		syncWindowSizeButtons();
-void refresh();
+		void refresh();
 	}
 }, 1500);
 
+syncWindowSizeButtons();
 void refresh();
