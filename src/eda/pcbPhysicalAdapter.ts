@@ -1,4 +1,9 @@
 import {
+	paddedCanvasRegion,
+	unionCanvasBounds,
+	type CanvasBounds,
+} from '../domain/canvasRegion';
+import {
 	buildBoardPolygonsFromSegments,
 	buildBoardRegionFromPolygons,
 	parseBoardOutlineSource,
@@ -479,6 +484,51 @@ export async function endPcbEvidenceReview(input: {
 	}
 }
 
+async function readPrimitiveBoundsSafe(
+	primitiveId: string,
+): Promise<CanvasBounds | undefined> {
+	try {
+		const box = await eda.pcb_Primitive.getPrimitivesBBox([primitiveId]);
+		if (
+			box
+			&& Number.isFinite(box.minX)
+			&& Number.isFinite(box.minY)
+			&& Number.isFinite(box.maxX)
+			&& Number.isFinite(box.maxY)
+		) {
+			return box;
+		}
+	}
+	catch (error) {
+		console.warn('[LayoutPilot] unable to read primitive BBox for evidence focus', {
+			primitiveId,
+			error,
+		});
+	}
+	return undefined;
+}
+
+async function readComponentPointSafe(
+	componentId: string,
+): Promise<{ x: number; y: number } | undefined> {
+	try {
+		const component = await eda.pcb_PrimitiveComponent.get(componentId);
+		if (!component) return undefined;
+		const x = component.getState_X();
+		const y = component.getState_Y();
+		return Number.isFinite(x) && Number.isFinite(y)
+			? { x, y }
+			: undefined;
+	}
+	catch (error) {
+		console.warn('[LayoutPilot] unable to read component point for evidence focus', {
+			componentId,
+			error,
+		});
+		return undefined;
+	}
+}
+
 export async function focusPcbEvidence(input: {
 	subjectId: string;
 	subjectDesignator: string;
@@ -505,19 +555,62 @@ export async function focusPcbEvidence(input: {
 	await eda.dmt_EditorControl.activateDocument(document.tabId);
 	await eda.pcb_SelectControl.clearSelected();
 
-	const selected = await eda.pcb_SelectControl.doSelectPrimitives([
-		input.subjectId,
-		input.ownerId,
-	]);
-	if (!selected) {
-		throw new Error('嘉立创EDA未能选中目标器件。');
+	try {
+		const selected = await eda.pcb_SelectControl.doSelectPrimitives([
+			input.subjectId,
+			input.ownerId,
+		]);
+		if (!selected) {
+			console.warn(
+				'[LayoutPilot] evidence focus selection was not accepted; continuing with explicit viewport framing',
+			);
+		}
+	}
+	catch (error) {
+		console.warn(
+			'[LayoutPilot] evidence focus selection failed; continuing with explicit viewport framing',
+			error,
+		);
 	}
 
-	const zoomed = await eda.dmt_EditorControl.zoomToSelectedPrimitives(
+	const [subjectBounds, ownerBounds, subjectPoint, ownerPoint] =
+		await Promise.all([
+			readPrimitiveBoundsSafe(input.subjectId),
+			readPrimitiveBoundsSafe(input.ownerId),
+			readComponentPointSafe(input.subjectId),
+			readComponentPointSafe(input.ownerId),
+		]);
+	const evidencePoints = [
+		subjectPoint,
+		ownerPoint,
+		input.powerEvidence
+			? { x: input.powerEvidence.subjectX, y: input.powerEvidence.subjectY }
+			: undefined,
+		input.powerEvidence
+			? { x: input.powerEvidence.ownerX, y: input.powerEvidence.ownerY }
+			: undefined,
+	].filter((point): point is { x: number; y: number } => Boolean(point));
+	const focusBounds = unionCanvasBounds(
+		[subjectBounds, ownerBounds],
+		evidencePoints,
+	);
+	if (!focusBounds) {
+		throw new Error('无法建立 subject / owner 的可靠定位区域。');
+	}
+	const region = paddedCanvasRegion(focusBounds, {
+		marginRatio: 0.22,
+		minMarginMil: 80,
+		minSpanMil: 240,
+	});
+	const zoomed = await eda.dmt_EditorControl.zoomToRegion(
+		region.left,
+		region.right,
+		region.top,
+		region.bottom,
 		document.tabId,
 	);
-	if (zoomed === false) {
-		throw new Error('嘉立创EDA未能定位到选中的器件。');
+	if (!zoomed) {
+		throw new Error('嘉立创EDA未能定位到 subject / owner 区域。');
 	}
 
 	await eda.dmt_EditorControl.removeIndicatorMarkers(document.tabId);
