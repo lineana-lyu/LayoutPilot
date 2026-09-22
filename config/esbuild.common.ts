@@ -5,6 +5,7 @@ export default {
 		index: './src/index',
 		workbench: './src/workbench',
 		evidenceReview: './src/evidenceReview',
+		layoutPreview: './src/layoutPreview',
 	},
 	entryNames: '[name]',
 	assetNames: '[name]',
