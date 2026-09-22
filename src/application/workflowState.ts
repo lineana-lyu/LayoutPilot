@@ -1,0 +1,208 @@
+import type { HumanOwnershipDecision } from '../domain/humanOwnershipDecision';
+import type { PlacementCommandRecord } from '../domain/placementCommand';
+import type { SemanticSnapshot } from '../domain/semanticSnapshot';
+
+export interface LayoutPilotWorkflowState {
+	schemaVersion: 1;
+	semanticSnapshot?: SemanticSnapshot;
+	humanOwnershipDecisions: HumanOwnershipDecision[];
+	lastPlacementCommand?: PlacementCommandRecord;
+	updatedAt: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function isSemanticSnapshot(value: unknown): value is SemanticSnapshot {
+	return isRecord(value)
+		&& value.schemaVersion === 1
+		&& typeof value.id === 'string'
+		&& typeof value.boardFingerprint === 'string'
+		&& typeof value.createdAt === 'string'
+		&& Array.isArray(value.entries);
+}
+
+function isHumanOwnershipDecision(value: unknown): value is HumanOwnershipDecision {
+	return isRecord(value)
+		&& typeof value.snapshotId === 'string'
+		&& typeof value.componentId === 'string'
+		&& typeof value.componentDesignator === 'string'
+		&& typeof value.ownerComponentId === 'string'
+		&& typeof value.ownerDesignator === 'string'
+		&& typeof value.createdAt === 'string'
+		&& value.source === 'user-confirmed-owner-v1';
+}
+
+function isPlacementCommand(value: unknown): value is PlacementCommandRecord {
+	return isRecord(value)
+		&& typeof value.id === 'string'
+		&& typeof value.snapshotId === 'string'
+		&& typeof value.boardFingerprint === 'string'
+		&& typeof value.constraintId === 'string'
+		&& typeof value.componentId === 'string'
+		&& typeof value.componentDesignator === 'string'
+		&& isRecord(value.from)
+		&& typeof value.from.x === 'number'
+		&& typeof value.from.y === 'number'
+		&& isRecord(value.to)
+		&& typeof value.to.x === 'number'
+		&& typeof value.to.y === 'number'
+		&& typeof value.createdAt === 'string'
+		&& (
+			value.status === 'planned'
+			|| value.status === 'applied'
+			|| value.status === 'undone'
+			|| value.status === 'superseded'
+		);
+}
+
+function freezeDeep<T>(value: T): T {
+	if (!value || typeof value !== 'object' || Object.isFrozen(value)) {
+		return value;
+	}
+	for (const child of Object.values(value as Record<string, unknown>)) {
+		freezeDeep(child);
+	}
+	return Object.freeze(value as object) as T;
+}
+
+export function createEmptyWorkflowState(
+	updatedAt = new Date().toISOString(),
+): LayoutPilotWorkflowState {
+	return freezeDeep({
+		schemaVersion: 1,
+		humanOwnershipDecisions: [],
+		updatedAt,
+	});
+}
+
+export function normalizeWorkflowState(
+	value: unknown,
+	updatedAt = new Date().toISOString(),
+): LayoutPilotWorkflowState {
+	if (!isRecord(value) || value.schemaVersion !== 1) {
+		return createEmptyWorkflowState(updatedAt);
+	}
+
+	const semanticSnapshot = isSemanticSnapshot(value.semanticSnapshot)
+		? value.semanticSnapshot
+		: undefined;
+	const humanOwnershipDecisions = Array.isArray(value.humanOwnershipDecisions)
+		? value.humanOwnershipDecisions.filter(isHumanOwnershipDecision)
+		: [];
+	const lastPlacementCommand = isPlacementCommand(value.lastPlacementCommand)
+		? value.lastPlacementCommand
+		: undefined;
+
+	const validDecisions = semanticSnapshot
+		? humanOwnershipDecisions.filter(
+				decision => decision.snapshotId === semanticSnapshot.id,
+			)
+		: [];
+
+	return freezeDeep({
+		schemaVersion: 1,
+		semanticSnapshot,
+		humanOwnershipDecisions: validDecisions,
+		lastPlacementCommand,
+		updatedAt:
+			typeof value.updatedAt === 'string'
+				? value.updatedAt
+				: updatedAt,
+	});
+}
+
+export function replaceWorkflowSemanticSnapshot(
+	state: LayoutPilotWorkflowState,
+	snapshot: SemanticSnapshot,
+	updatedAt = new Date().toISOString(),
+): LayoutPilotWorkflowState {
+	return freezeDeep({
+		...state,
+		semanticSnapshot: snapshot,
+		humanOwnershipDecisions: [],
+		updatedAt,
+	});
+}
+
+export function clearWorkflowSemanticSnapshot(
+	state: LayoutPilotWorkflowState,
+	updatedAt = new Date().toISOString(),
+): LayoutPilotWorkflowState {
+	const {
+		semanticSnapshot: _semanticSnapshot,
+		humanOwnershipDecisions: _humanOwnershipDecisions,
+		...rest
+	} = state;
+	return freezeDeep({
+		...rest,
+		schemaVersion: 1 as const,
+		humanOwnershipDecisions: [],
+		updatedAt,
+	});
+}
+
+export function upsertWorkflowHumanDecision(
+	state: LayoutPilotWorkflowState,
+	decision: HumanOwnershipDecision,
+	updatedAt = new Date().toISOString(),
+): LayoutPilotWorkflowState {
+	if (!state.semanticSnapshot || decision.snapshotId !== state.semanticSnapshot.id) {
+		throw new Error('Human ownership decision does not belong to the active Semantic Snapshot.');
+	}
+
+	const humanOwnershipDecisions = [
+		...state.humanOwnershipDecisions.filter(item =>
+			!(
+				item.snapshotId === decision.snapshotId
+				&& item.componentId === decision.componentId
+			),
+		),
+		decision,
+	];
+
+	return freezeDeep({
+		...state,
+		humanOwnershipDecisions,
+		updatedAt,
+	});
+}
+
+export function removeWorkflowHumanDecision(
+	state: LayoutPilotWorkflowState,
+	snapshotId: string,
+	componentId: string,
+	updatedAt = new Date().toISOString(),
+): LayoutPilotWorkflowState {
+	return freezeDeep({
+		...state,
+		humanOwnershipDecisions: state.humanOwnershipDecisions.filter(item =>
+			!(
+				item.snapshotId === snapshotId
+				&& item.componentId === componentId
+			),
+		),
+		updatedAt,
+	});
+}
+
+export function setWorkflowPlacementCommand(
+	state: LayoutPilotWorkflowState,
+	command: PlacementCommandRecord | undefined,
+	updatedAt = new Date().toISOString(),
+): LayoutPilotWorkflowState {
+	const next = {
+		...state,
+		updatedAt,
+	} as LayoutPilotWorkflowState;
+
+	if (command) {
+		next.lastPlacementCommand = command;
+	}
+	else {
+		delete next.lastPlacementCommand;
+	}
+
+	return freezeDeep(next);
+}
