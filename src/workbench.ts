@@ -5,6 +5,8 @@ import {
 	semanticSnapshotMatchesBoard,
 } from './domain/semanticSnapshot';
 import { resolveComponentDisplayName } from './domain/semanticContext';
+import type { OwnershipRelationType } from './domain/ownershipRelation';
+import type { SemanticConfidence, SemanticRole } from './domain/semanticInference';
 import { collectAnalysisState, type AnalysisState } from './eda/analysisAdapter';
 import {
 	getStoredHumanOwnershipDecisions,
@@ -36,9 +38,9 @@ interface HostCandidate {
 interface OwnerTask {
 	componentId: string;
 	designator: string;
-	role: string;
-	confidence: string;
-	relation: string;
+	role: SemanticRole;
+	confidence: SemanticConfidence;
+	relation: OwnershipRelationType;
 	rail: string;
 	candidates: HostCandidate[];
 	selectedOwnerId?: string;
@@ -100,7 +102,7 @@ function showToast(message: string): void {
 	window.setTimeout(() => toast.classList.remove('show'), 2200);
 }
 
-function confidenceRank(value: string): number {
+function confidenceRank(value: SemanticConfidence): number {
 	return value === 'high' ? 0 : value === 'medium' ? 1 : 2;
 }
 
@@ -260,7 +262,7 @@ function renderTasks(tasks: OwnerTask[]): void {
 					<span class="task-name">${escapeHtml(task.designator)}</span>
 					<span class="badge ${confirmed ? 'ok' : 'pending'}">${confirmed ? `→ ${escapeHtml(task.selectedOwnerDesignator)}` : '待确认'}</span>
 				</div>
-				<div class="task-rail">${escapeHtml(task.rail)} · ${escapeHtml(semanticConfidenceZh(task.confidence as never))}</div>
+				<div class="task-rail">${escapeHtml(task.rail)} · ${escapeHtml(semanticConfidenceZh(task.confidence))}</div>
 			</button>`;
 	}).join('');
 
@@ -364,9 +366,9 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 			<div class="hero">
 				<div class="ref">${escapeHtml(task.designator)}</div>
 				<div class="hero-copy">
-					<div class="hero-title">${escapeHtml(semanticRoleZh(task.role as never))} · ${escapeHtml(semanticConfidenceZh(task.confidence as never))}</div>
+					<div class="hero-title">${escapeHtml(semanticRoleZh(task.role))} · ${escapeHtml(semanticConfidenceZh(task.confidence))}</div>
 					<div class="hero-sub">
-						确定性关系：${escapeHtml(ownershipRelationZh(task.relation as never))}<br/>
+						确定性关系：${escapeHtml(ownershipRelationZh(task.relation))}<br/>
 						${task.selectedOwnerDesignator
 							? `已确认 Owner：${escapeHtml(task.selectedOwnerDesignator)}`
 							: '系统只能确认它属于一个电源域，不能从电源网本身推断唯一 Owner。'}
