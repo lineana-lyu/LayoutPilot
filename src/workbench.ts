@@ -14,8 +14,13 @@ import {
 	layoutPlanAcceptanceMode,
 	type LayoutPlan,
 } from './domain/layoutPlan';
+import { formatLayoutPlanItemReview } from './domain/layoutPlanReview';
 import { collectAnalysisState, type AnalysisState } from './eda/analysisAdapter';
-import { generateCurrentLayoutPlan, validateStoredLayoutPlanCurrent } from './eda/layoutPlanRuntime';
+import {
+	generateCurrentLayoutPlan,
+	validateLayoutPlanCurrent,
+	validateStoredLayoutPlanCurrent,
+} from './eda/layoutPlanRuntime';
 import { showLayoutPlanGhost } from './eda/layoutPreviewAdapter';
 import { beginPcbEvidenceReview, collectPadEvidenceComponents, endPcbEvidenceReview } from './eda/pcbPhysicalAdapter';
 import {
@@ -80,6 +85,7 @@ interface RuntimeModel {
 	previewEligibleCount: number;
 	evaluation?: ReturnType<typeof buildConstraintEvaluation>;
 	layoutPlan?: LayoutPlan;
+	referencePlans: LayoutPlan[];
 }
 
 const el = <T extends HTMLElement>(id: string): T => {
@@ -207,6 +213,7 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 				constraintCount: 0,
 				previewEligibleCount: 0,
 				layoutPlan: workflow.layoutPlan,
+				referencePlans: workflow.referencePlans,
 			};
 		}
 
@@ -360,6 +367,7 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 			previewEligibleCount: evaluation.merged.previewEligibleCount,
 			evaluation,
 			layoutPlan: workflow.layoutPlan,
+			referencePlans: workflow.referencePlans,
 		};
 	})();
 }
