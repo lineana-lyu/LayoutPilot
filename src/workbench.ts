@@ -504,6 +504,11 @@ async function refresh(): Promise<void> {
 			String(workflow.semanticSnapshot?.entries.length ?? 0);
 
 		if (!workflow.semanticSnapshot) {
+			el<HTMLDivElement>('stageAnalyzeMeta').textContent = '等待分析';
+			el<HTMLDivElement>('stageOwnerMeta').textContent = '等待证据';
+			el<HTMLDivElement>('stageConstraintMeta').textContent = '0 条约束';
+			el<HTMLDivElement>('stageExecuteMeta').textContent = '尚未执行';
+			planPanel.innerHTML = '<div class="empty"><div><strong>暂无布局计划</strong><span>先完成 PCB 语义分析。</span></div></div>';
 			el<HTMLDivElement>('metricPending').textContent = '0';
 			el<HTMLDivElement>('metricConstraints').textContent = '0';
 			el<HTMLDivElement>('taskCount').textContent = '未分析';
@@ -526,6 +531,11 @@ async function refresh(): Promise<void> {
 
 		const model = await buildRuntimeModel();
 		if (model.stale) {
+			el<HTMLDivElement>('stageAnalyzeMeta').textContent = 'Snapshot 已过期';
+			el<HTMLDivElement>('stageOwnerMeta').textContent = '等待重新分析';
+			el<HTMLDivElement>('stageConstraintMeta').textContent = '不可复用';
+			el<HTMLDivElement>('stageExecuteMeta').textContent = '执行已阻止';
+			planPanel.innerHTML = '<div class="blocked"><strong>Semantic Snapshot 已过期</strong><br/>当前 PCB 语义发生变化，旧约束不再展示为可执行计划。</div>';
 			el<HTMLDivElement>('metricPending').textContent = '—';
 			el<HTMLDivElement>('metricConstraints').textContent = '—';
 			el<HTMLDivElement>('taskCount').textContent = 'Snapshot 已过期';
@@ -545,6 +555,10 @@ async function refresh(): Promise<void> {
 		}
 
 		const pending = model.tasks.filter(task => !task.selectedOwnerId).length;
+		const confirmed = model.tasks.length - pending;
+		el<HTMLDivElement>('stageAnalyzeMeta').textContent = `${workflow.semanticSnapshot.entries.length} 个语义器件`;
+		el<HTMLDivElement>('stageOwnerMeta').textContent = `${confirmed}/${model.tasks.length} 已确认`;
+		el<HTMLDivElement>('stageConstraintMeta').textContent = `${model.constraintCount} 条 · ${model.previewEligibleCount} 可执行`;
 		el<HTMLDivElement>('metricPending').textContent = String(pending);
 		el<HTMLDivElement>('metricConstraints').textContent = String(model.constraintCount);
 		renderTasks(model.tasks, model);
@@ -559,6 +573,13 @@ async function refresh(): Promise<void> {
 		);
 
 		const command = workflow.lastPlacementCommand;
+		el<HTMLDivElement>('stageExecuteMeta').textContent = command?.status === 'applied'
+			? `${command.componentDesignator} 已移动 · 可撤销`
+			: command?.status === 'undone'
+				? `${command.componentDesignator} 已撤销`
+				: model.previewEligibleCount > 0
+					? `${model.previewEligibleCount} 条建议待执行`
+					: '尚无可执行建议';
 		setStage(
 			'stageExecute',
 			command?.status === 'applied'
