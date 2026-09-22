@@ -1,4 +1,4 @@
-# v0.8.5 EasyEDA Runtime Smoke Test
+# v0.9.0 EasyEDA Runtime Smoke Test
 
 This checklist validates the real EasyEDA Pro runtime path. It is intentionally separate from automated tests.
 
@@ -16,11 +16,11 @@ Use a disposable PCB with:
 - components whose runtime BBoxes can be read successfully;
 - no intentional overlap around the test area.
 
-For the first positive-path run, avoid curved board edges and complex keepout geometry. Those cases are expected to fail closed in v0.8.5.
+For the first positive-path run, avoid curved board edges and complex keepout geometry. Those cases are expected to fail closed in v0.9.0.
 
 ## Pre-flight
 
-1. Install the package built from `feat/v0.8.5-interview-mvp`.
+1. Install the package built from `feat/v0.9.0-interview-mvp`.
 2. Open the disposable PCB.
 3. Run EasyEDA DRC manually and confirm it passes.
 4. Record the test capacitor's X/Y position.
@@ -116,13 +116,31 @@ Expected:
 - the target capacitor receives `near(owner)` only after explicit owner confirmation;
 - the proposal is `preview-eligible` only for medium/high confidence.
 
-### 4. Apply controlled placement
+### 4. Generate and review Ghost Preview
 
 Run:
 
+`Workbench → 生成布局预览`
+
+Expected:
+
+- exactly one v0.9 MVP LayoutPlan item is frozen;
+- the Workbench hides and a compact Layout Preview Bar remains visible;
+- the PCB shows a target outline / movement marker without moving the real component;
+- routed subjects may be shown as preview-only, but are clearly blocked from Apply;
+- **返回工作台** clears Ghost markers without changing PCB state;
+- **放弃方案** returns with the plan marked rejected;
+- **接受方案** returns with the plan marked accepted, still without moving any PCB primitive.
+
+After accepting, the Workbench should show stage 3 as complete and stage 4 as the next executable stage.
+
+### 5. Apply accepted LayoutPlan
+
+Run only after accepting Ghost Preview:
+
 `Workbench → 物理预检并应用`
 
-Before accepting the confirmation dialog, verify it displays:
+Before accepting the confirmation dialog, verify it displays the same frozen LayoutPlan coordinate that was shown in Ghost Preview:
 
 - subject component;
 - confirmed owner;
@@ -138,6 +156,7 @@ Accept the move.
 Expected:
 
 - exactly one component moves;
+- the applied target coordinate is identical to the accepted Ghost Preview coordinate;
 - component rotation is unchanged;
 - coordinate read-back reports PASS;
 - post-move DRC reports PASS;
@@ -145,7 +164,7 @@ Expected:
 
 Inspect the board visually. The capacitor should be adjacent to the relevant owner power pad, not merely near the IC body centre.
 
-### 5. Undo
+### 6. Undo
 
 Run:
 
@@ -171,7 +190,7 @@ Expected: blocked before mutation.
 
 Route at least one test-capacitor pad and attempt Apply.
 
-Expected: blocked because v0.8.5 does not reposition routed components.
+Expected: blocked because v0.9.0 does not reposition routed components.
 
 ### Dirty DRC baseline
 
