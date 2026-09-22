@@ -7,6 +7,7 @@ import {
 	replaceWorkflowSemanticSnapshot,
 	setWorkflowPlacementCommand,
 	setWorkflowEvidenceReviewSession,
+	setAndArchiveWorkflowReferencePlan,
 	setWorkflowLayoutPlan,
 	setWorkflowLayoutPreviewSession,
 	upsertWorkflowHumanDecision,
@@ -129,6 +130,12 @@ export async function archiveStoredReferencePlan(
 	plan: LayoutPlan,
 ): Promise<void> {
 	await saveState(archiveWorkflowReferencePlan(loadState(), plan));
+}
+
+export async function setAndArchiveStoredReferencePlan(
+	plan: LayoutPlan,
+): Promise<void> {
+	await saveState(setAndArchiveWorkflowReferencePlan(loadState(), plan));
 }
 
 export function getStoredLayoutPlanById(
