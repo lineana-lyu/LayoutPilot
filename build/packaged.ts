@@ -6,7 +6,7 @@ import * as extensionConfig from '../extension.json';
 
 const PACKAGE_ROOT = path.join(__dirname, '../');
 const RUNTIME_ROOT_FILES = ['extension.json'] as const;
-const RUNTIME_DIRECTORIES = ['dist'] as const;
+const RUNTIME_DIRECTORIES = ['dist', 'iframe'] as const;
 
 function testUuid(uuid?: string): uuid is string {
 	const regExp = /^[a-z0-9]{32}$/;
