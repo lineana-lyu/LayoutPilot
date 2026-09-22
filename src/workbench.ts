@@ -373,7 +373,7 @@ function renderTasks(
 	el<HTMLDivElement>('taskCount').textContent = `${pending} 待确认 / ${tasks.length}`;
 
 	if (!tasks.length) {
-		taskList.innerHTML = '<div style="padding:14px 10px;color:#7a8792;font-size:11px;line-height:1.5">当前没有 rail-domain 去耦器件需要人工确认。</div>';
+		taskList.innerHTML = '<div style="padding:12px 10px;color:#737d87;font-size:10px;line-height:1.55">当前没有 rail-domain 去耦器件需要人工确认。</div>';
 		return;
 	}
 
@@ -389,7 +389,9 @@ function renderTasks(
 			<button class="task${active}" data-task="${escapeHtml(task.componentId)}">
 				<div class="task-row">
 					<span class="task-name">${escapeHtml(task.designator)}</span>
-					<span class="badge ${confirmed ? 'ok' : 'pending'}">${confirmed ? `→ ${escapeHtml(task.selectedOwnerDesignator)}` : '待确认'}</span>
+					<span class="task-state ${confirmed ? 'ok' : ''}">
+						${confirmed ? `Owner ${escapeHtml(task.selectedOwnerDesignator)}` : '待确认'}
+					</span>
 				</div>
 				<div class="task-rail">${escapeHtml(task.rail)} · ${escapeHtml(semanticConfidenceZh(task.confidence))}</div>
 			</button>`;
