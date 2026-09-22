@@ -86,10 +86,13 @@ Pad-distance evidence is loaded only for the currently selected task. Switching 
 
 ### Board region geometry
 
-v0.9.1 upgrades physical board parsing from a single-polygon assumption to a fail-closed board-region model:
+v0.9.2 upgrades physical board parsing from a single-polygon assumption to a fail-closed board-region model:
 
+- fragmented BOARD_OUTLINE polylines are parsed as path segments and reconstructed across primitives using an endpoint-topology graph;
+- endpoint coordinates within 0.01 mil are clustered into the same topology vertex to tolerate harmless runtime serialization noise;
 - largest compatible BOARD_OUTLINE contour = outer board boundary;
 - fully contained non-intersecting contours = board holes / cutouts;
+- every reconstructed contour vertex must have topology degree = 2; dangling endpoints, branches and touching contours remain fail-closed;
 - disjoint outer contours, intersecting loops or nested ambiguous islands remain rejected;
 - placement BBoxes must be inside the outer contour and outside every hole;
 - board holes are included in the physical fingerprint, so changing a cutout invalidates a frozen LayoutPlan.
