@@ -24,6 +24,7 @@ export interface LayoutPlanItem {
 	fromBounds: PhysicalBounds;
 	toBounds: PhysicalBounds;
 	movementMil: number;
+	currentLoopProxyMil: number;
 	estimatedLoopProxyMil: number;
 	clearanceMil: number;
 	executionBlockers: string[];
@@ -113,40 +114,77 @@ export function layoutPlanAcceptanceMode(
 	return 'mixed';
 }
 
+export type LayoutPlanEvent =
+	| 'accept'
+	| 'reject'
+	| 'apply'
+	| 'supersede';
+
+const LAYOUT_PLAN_TRANSITIONS: Record<
+	LayoutPlanStatus,
+	Partial<Record<LayoutPlanEvent, LayoutPlanStatus>>
+> = {
+	preview: {
+		accept: 'accepted',
+		reject: 'rejected',
+		supersede: 'superseded',
+	},
+	accepted: {
+		apply: 'applied',
+		supersede: 'superseded',
+	},
+	rejected: {},
+	applied: {
+		supersede: 'superseded',
+	},
+	superseded: {},
+};
+
+export function canTransitionLayoutPlan(
+	plan: LayoutPlan,
+	event: LayoutPlanEvent,
+): boolean {
+	return Boolean(LAYOUT_PLAN_TRANSITIONS[plan.status][event]);
+}
+
+export function transitionLayoutPlan(
+	plan: LayoutPlan,
+	event: LayoutPlanEvent,
+): LayoutPlan {
+	const nextStatus = LAYOUT_PLAN_TRANSITIONS[plan.status][event];
+	if (!nextStatus) {
+		throw new Error(
+			`Invalid LayoutPlan transition: ${plan.status} --${event}--> ?`,
+		);
+	}
+	return freezeDeep({
+		...plan,
+		status: nextStatus,
+	});
+}
+
 export function markLayoutPlanAccepted(
 	plan: LayoutPlan,
 ): LayoutPlan {
-	return freezeDeep({
-		...plan,
-		status: 'accepted' as const,
-	});
+	return transitionLayoutPlan(plan, 'accept');
 }
 
 export function markLayoutPlanRejected(
 	plan: LayoutPlan,
 ): LayoutPlan {
-	return freezeDeep({
-		...plan,
-		status: 'rejected' as const,
-	});
+	return transitionLayoutPlan(plan, 'reject');
 }
 
 export function markLayoutPlanApplied(
 	plan: LayoutPlan,
 ): LayoutPlan {
-	return freezeDeep({
-		...plan,
-		status: 'applied' as const,
-	});
+	return transitionLayoutPlan(plan, 'apply');
 }
 
 export function markLayoutPlanSuperseded(
 	plan: LayoutPlan,
 ): LayoutPlan {
-	return freezeDeep({
-		...plan,
-		status: 'superseded' as const,
-	});
+	return transitionLayoutPlan(plan, 'supersede');
 }
 
 export type LayoutPlanStateMismatch =
@@ -248,6 +286,8 @@ export function isLayoutPlan(value: unknown): value is LayoutPlan {
 			&& isBounds(item.toBounds)
 			&& typeof item.movementMil === 'number'
 			&& Number.isFinite(item.movementMil)
+			&& typeof item.currentLoopProxyMil === 'number'
+			&& Number.isFinite(item.currentLoopProxyMil)
 			&& typeof item.estimatedLoopProxyMil === 'number'
 			&& Number.isFinite(item.estimatedLoopProxyMil)
 			&& typeof item.clearanceMil === 'number'
