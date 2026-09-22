@@ -8,6 +8,7 @@ import {
 	buildSimpleBoardPolygonFromSegments,
 	parseBoardOutlineSource,
 	parseSimpleBoardPolygon,
+	tessellateBoardArc,
 } from '../src/domain/boardBoundary';
 
 {
@@ -235,4 +236,101 @@ console.log('Board boundary tests passed.');
 		false,
 		'branched board-outline topology must remain fail-closed',
 	);
+}
+
+
+{
+	const arc = tessellateBoardArc(
+		{ x: 100, y: 0 },
+		{ x: 200, y: 100 },
+		90,
+	);
+	assert.equal(arc.ok, true);
+	if (arc.ok) {
+		assert.ok(arc.points.length > 4);
+		assert.deepEqual(arc.points[0], { x: 100, y: 0 });
+		assert.deepEqual(arc.points[arc.points.length - 1], { x: 200, y: 100 });
+		assert.equal(arc.approximationToleranceMil, 0.05);
+	}
+}
+
+{
+	const curved = parseBoardOutlineSource([
+		0, 0,
+		'L', 100, 0,
+		'ARC', 90, 200, 100,
+		'L', 200, 200, 0, 200, 0, 0,
+	]);
+	assert.equal(curved.ok, true);
+	if (curved.ok) {
+		assert.ok(curved.segments.length > 6);
+		assert.equal(curved.approximationToleranceMil, 0.05);
+		const rebuilt = buildBoardPolygonsFromSegments(curved.segments);
+		assert.equal(rebuilt.ok, true);
+		if (rebuilt.ok) {
+			assert.equal(rebuilt.polygons.length, 1);
+		}
+	}
+}
+
+{
+	const circle = parseBoardOutlineSource(['CIRCLE', 100, 100, 50, false]);
+	assert.equal(circle.ok, true);
+	if (circle.ok) {
+		assert.equal(circle.closedPolygons.length, 1);
+		assert.ok(circle.closedPolygons[0].points.length >= 32);
+		assert.equal(circle.approximationToleranceMil, 0.05);
+	}
+}
+
+{
+	const rounded = parseBoardOutlineSource([
+		'R', 0, 0, 500, 300, 15, false, 25,
+	]);
+	assert.equal(rounded.ok, true);
+	if (rounded.ok) {
+		assert.equal(rounded.closedPolygons.length, 1);
+		assert.ok(rounded.closedPolygons[0].points.length > 8);
+		assert.equal(rounded.approximationToleranceMil, 0.05);
+	}
+}
+
+{
+	const bezier = parseBoardOutlineSource([
+		0, 0,
+		'C', 50, 0, 50, 100, 100, 100,
+		'L', 0, 100, 0, 0,
+	]);
+	assert.equal(bezier.ok, true);
+	if (bezier.ok) {
+		assert.ok(bezier.segments.length > 4);
+		assert.equal(bezier.approximationToleranceMil, 0.05);
+	}
+}
+
+{
+	const region = buildBoardRegionFromPolygons(
+		[
+			{
+				points: [
+					{ x: 0, y: 0 },
+					{ x: 100, y: 0 },
+					{ x: 100, y: 100 },
+					{ x: 0, y: 100 },
+				],
+			},
+		],
+		1,
+	);
+	assert.equal(region.ok, true);
+	if (region.ok) {
+		assert.equal(
+			boxInsideBoardRegion(
+				{ minX: 0.5, minY: 20, maxX: 10, maxY: 30 },
+				region.region,
+			),
+			false,
+			'curve approximation budget must conservatively inflate the placement box',
+		);
+	}
 }
