@@ -9,9 +9,9 @@ export interface EvidenceReviewSession {
 	ownerId: string;
 	ownerDesignator: string;
 	railLabel: string;
-	powerEvidence?: SharedRailPadEvidence;
+	powerEvidence?: Readonly<SharedRailPadEvidence>;
 	documentTabId: string;
-	originalSelectionIds: string[];
+	originalSelectionIds: readonly string[];
 	createdAt: string;
 }
 
