@@ -364,7 +364,7 @@ export async function beginPcbEvidenceReview(input: {
 
 export async function endPcbEvidenceReview(input: {
 	documentTabId: string;
-	originalSelectionIds: string[];
+	originalSelectionIds: readonly string[];
 }): Promise<void> {
 	await eda.dmt_EditorControl.activateDocument(input.documentTabId);
 
@@ -380,7 +380,7 @@ export async function endPcbEvidenceReview(input: {
 	if (input.originalSelectionIds.length) {
 		try {
 			await eda.pcb_SelectControl.doSelectPrimitives(
-				input.originalSelectionIds,
+				[...input.originalSelectionIds],
 			);
 		}
 		catch (error) {
