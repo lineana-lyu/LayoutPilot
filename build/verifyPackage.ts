@@ -21,7 +21,9 @@ async function main(): Promise<void> {
 		.sort();
 
 	const unexpected = files.filter(file =>
-		file !== 'extension.json' && !file.startsWith('dist/'),
+		file !== 'extension.json'
+			&& !file.startsWith('dist/')
+			&& !file.startsWith('iframe/'),
 	);
 	if (unexpected.length) {
 		throw new Error(
@@ -33,6 +35,12 @@ async function main(): Promise<void> {
 	}
 	if (!files.includes('dist/index.js')) {
 		throw new Error('Packaged extension is missing dist/index.js');
+	}
+	if (!files.includes('dist/workbench.js')) {
+		throw new Error('Packaged extension is missing dist/workbench.js');
+	}
+	if (!files.includes('iframe/workbench.html')) {
+		throw new Error('Packaged extension is missing iframe/workbench.html');
 	}
 
 	console.log('[LayoutPilot] package boundary verified', files);
