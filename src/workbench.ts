@@ -12,7 +12,7 @@ import { createEvidenceReviewSession } from './domain/evidenceReviewSession';
 import { createLayoutPreviewSession } from './domain/layoutPreviewSession';
 import type { LayoutPlan } from './domain/layoutPlan';
 import { collectAnalysisState, type AnalysisState } from './eda/analysisAdapter';
-import { generateCurrentLayoutPlan } from './eda/layoutPlanRuntime';
+import { generateCurrentLayoutPlan, validateStoredLayoutPlanCurrent } from './eda/layoutPlanRuntime';
 import { showLayoutPlanGhost } from './eda/layoutPreviewAdapter';
 import { beginPcbEvidenceReview, collectPadEvidenceComponents, endPcbEvidenceReview } from './eda/pcbPhysicalAdapter';
 import {
@@ -805,6 +805,7 @@ async function refresh(): Promise<void> {
 			setStage('stageOwner', 'idle');
 			setStage('stageConstraint', 'idle');
 			setStage('stageExecute', 'idle');
+			previewPlanBtn.disabled = true;
 			applyBtn.disabled = true;
 			undoBtn.disabled = true;
 			footerNote.textContent = '先运行 AI 语义分析，工作台会持续保留结果。';
@@ -832,6 +833,7 @@ async function refresh(): Promise<void> {
 			setStage('stageOwner', 'idle');
 			setStage('stageConstraint', 'idle');
 			setStage('stageExecute', 'idle');
+			previewPlanBtn.disabled = true;
 			applyBtn.disabled = true;
 			renderEmpty(
 				'当前 PCB 已发生语义变化',
@@ -885,7 +887,22 @@ async function refresh(): Promise<void> {
 			}
 		}
 
-		applyBtn.disabled = model.previewEligibleCount === 0;
+		const plan = model.layoutPlan;
+		const acceptedPlan = plan?.status === 'accepted';
+		const planHasPreflightCandidate = plan?.items.some(
+			item => item.executionBlockers.length === 0,
+		) ?? false;
+
+		previewPlanBtn.disabled = model.previewEligibleCount === 0;
+		previewPlanBtn.textContent = plan
+			? plan.status === 'preview'
+				? '查看布局预览'
+				: plan.status === 'accepted'
+					? '查看已接受方案'
+					: '重新生成布局预览'
+			: '生成布局预览';
+
+		applyBtn.disabled = !acceptedPlan || !planHasPreflightCandidate;
 		undoBtn.disabled = command?.status !== 'applied';
 
 		const firstProvider = workflow.semanticSnapshot.entries
@@ -957,6 +974,69 @@ sizeStandardBtn.addEventListener('click', () => {
 });
 sizeWideBtn.addEventListener('click', () => {
 	void changeWorkbenchSize('wide');
+});
+
+async function presentLayoutPlanPreview(plan: LayoutPlan): Promise<void> {
+	await clearActiveLayoutPreviewCanvas();
+	const canvas = await showLayoutPlanGhost(plan);
+	await setStoredLayoutPreviewSession(
+		createLayoutPreviewSession({
+			planId: plan.id,
+			documentTabId: canvas.documentTabId,
+		}),
+	);
+
+	try {
+		await openLayoutPreviewBar();
+		await hideLayoutPilotWorkbench();
+	}
+	catch (error) {
+		await clearActiveLayoutPreviewCanvas();
+		throw error;
+	}
+}
+
+previewPlanBtn.addEventListener('click', async () => {
+	if (busy || previewPlanBtn.disabled) return;
+	setBusy(true);
+	try {
+		const workflow = inspectStoredWorkflowState();
+		let plan = workflow.layoutPlan;
+
+		if (
+			!plan
+			|| plan.status === 'rejected'
+			|| plan.status === 'applied'
+			|| plan.status === 'superseded'
+		) {
+			const result = await generateCurrentLayoutPlan(4);
+			if (!result.ok) {
+				showToast(result.message);
+				return;
+			}
+			plan = result.plan;
+		}
+		else {
+			const validation = await validateStoredLayoutPlanCurrent();
+			if (!validation.ok) {
+				const regenerated = await generateCurrentLayoutPlan(4);
+				if (!regenerated.ok) {
+					showToast(regenerated.message);
+					return;
+				}
+				plan = regenerated.plan;
+			}
+		}
+
+		await presentLayoutPlanPreview(plan);
+	}
+	catch (error) {
+		console.error('[LayoutPilot Workbench] layout preview failed', error);
+		showToast(`布局预览失败：${String(error)}`);
+	}
+	finally {
+		setBusy(false);
+	}
 });
 
 applyBtn.addEventListener('click', async () => {
