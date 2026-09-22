@@ -85,13 +85,14 @@ v0.7 only executes a very narrow placement case:
 - subject and owner are on the same component layer;
 - subject has no existing routed primitives;
 - pad geometry is available;
-- an approximate collision-free candidate exists;
+- EasyEDA runtime returns a measured component BBox for every relevant obstacle;
+- a collision-free candidate exists under the measured-BBox safety model;
 - a simple, verifiable board boundary is available;
 - the candidate remains inside the board boundary;
 - the candidate avoids parseable `NO_COMPONENTS` keepout regions;
 - the PCB passes DRC before execution.
 
-The target is anchored to the owner's **shared power pad**, not the IC body centre. Legal candidates are ranked by a geometric proxy for the decoupling loop: power-pad distance plus the nearest GND return distance. This is a placement heuristic, not an SI/PI proof.
+The target is anchored to the owner's **shared power pad**, not the IC body centre. Electrical anchoring uses pad geometry, while mechanical occupancy uses `pcb_Primitive.getPrimitivesBBox()` as the runtime authority. Legal candidates are ranked by a geometric proxy for the decoupling loop: power-pad distance plus the nearest GND return distance. This is a placement heuristic, not an SI/PI proof.
 
 After moving one component, LayoutPilot reads coordinates back and runs DRC again. A post-move DRC failure triggers automatic rollback.
 
@@ -132,7 +133,8 @@ Read-back + DRC + Undo
 - no test mode or synthetic fixture path in production;
 - already-routed components are not moved in v0.7;
 - failed execution should restore the before-state;
-- Undo must not overwrite a newer manual edit.
+- Undo must not overwrite a newer manual edit;
+- Undo is a guarded inverse transaction: routed/locked/stale targets are not mechanically restored.
 
 ## Test isolation
 
