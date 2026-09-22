@@ -4,11 +4,8 @@ import { buildCircuitGraph, type CircuitComponentSnapshot } from '../src/domain/
 import type { SemanticComponentContext } from '../src/domain/semanticContext';
 import {
 	buildSemanticBoardFingerprint,
-	clearActiveSemanticSnapshot,
 	createSemanticSnapshot,
-	getActiveSemanticSnapshot,
 	semanticSnapshotMatchesBoard,
-	setActiveSemanticSnapshot,
 } from '../src/domain/semanticSnapshot';
 
 function graphFixture(order: 'normal' | 'reversed' = 'normal') {
@@ -92,9 +89,6 @@ function contextFixture(netName = 'SIG'): SemanticComponentContext {
 }
 
 {
-	clearActiveSemanticSnapshot();
-	assert.equal(getActiveSemanticSnapshot(), undefined);
-
 	const fingerprint = buildSemanticBoardFingerprint({
 		graph: graphFixture(),
 		contexts: [contextFixture()],
@@ -122,8 +116,6 @@ function contextFixture(netName = 'SIG'): SemanticComponentContext {
 		'2026-09-21T12:00:00.000Z',
 	);
 
-	setActiveSemanticSnapshot(snapshot);
-	assert.equal(getActiveSemanticSnapshot()?.id, snapshot.id);
 	assert.equal(semanticSnapshotMatchesBoard(snapshot, fingerprint), true);
 	assert.equal(semanticSnapshotMatchesBoard(snapshot, 'sem-v1-stale'), false);
 	assert.doesNotThrow(() => JSON.stringify(snapshot), 'snapshot must stay serializable');
