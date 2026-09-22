@@ -128,6 +128,7 @@ export function replaceWorkflowSemanticSnapshot(
 		...state,
 		semanticSnapshot: snapshot,
 		humanOwnershipDecisions: [],
+		evidenceReviewSession: undefined,
 		updatedAt,
 	});
 }
@@ -139,6 +140,7 @@ export function clearWorkflowSemanticSnapshot(
 	const {
 		semanticSnapshot: _semanticSnapshot,
 		humanOwnershipDecisions: _humanOwnershipDecisions,
+		evidenceReviewSession: _evidenceReviewSession,
 		...rest
 	} = state;
 	return freezeDeep({
