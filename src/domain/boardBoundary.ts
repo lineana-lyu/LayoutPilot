@@ -149,6 +149,137 @@ export interface BoardSegment {
 	end: BoardPoint;
 }
 
+export type BoardOutlineSourceParseResult =
+	| {
+		ok: true;
+		segments: BoardSegment[];
+		closedPolygons: BoardPolygon[];
+	}
+	| { ok: false; reason: string };
+
+export function parseBoardOutlineSource(
+	source: unknown,
+): BoardOutlineSourceParseResult {
+	if (!Array.isArray(source) || !source.length) {
+		return {
+			ok: false,
+			reason: 'BOARD_OUTLINE source 为空或格式未知',
+		};
+	}
+
+	if (source[0] === 'R') {
+		const parsed = parseSimpleBoardPolygon(source);
+		return parsed.ok
+			? {
+				ok: true,
+				segments: [],
+				closedPolygons: [parsed.polygon],
+			}
+			: parsed;
+	}
+
+	if (source.some(token =>
+		token === 'ARC'
+		|| token === 'CARC'
+		|| token === 'C'
+		|| token === 'CIRCLE'
+	)) {
+		return {
+			ok: false,
+			reason:
+				'当前 BOARD_OUTLINE polyline 含圆弧/贝塞尔/圆形路径；当前版本不做几何离散近似。',
+		};
+	}
+
+	const points: BoardPoint[] = [];
+	let index = 0;
+	if (isFiniteNumber(source[0]) && isFiniteNumber(source[1])) {
+		points.push({
+			x: source[0],
+			y: source[1],
+		});
+		index = 2;
+	}
+	else {
+		return {
+			ok: false,
+			reason: 'BOARD_OUTLINE polyline 缺少起始坐标',
+		};
+	}
+
+	while (index < source.length) {
+		const token = source[index++];
+		if (token !== 'L') {
+			return {
+				ok: false,
+				reason: `无法可靠解析 BOARD_OUTLINE 路径命令：${String(token)}`,
+			};
+		}
+
+		let added = 0;
+		while (
+			isFiniteNumber(source[index])
+			&& isFiniteNumber(source[index + 1])
+		) {
+			points.push({
+				x: source[index] as number,
+				y: source[index + 1] as number,
+			});
+			index += 2;
+			added += 1;
+		}
+		if (!added) {
+			return {
+				ok: false,
+				reason: 'BOARD_OUTLINE polyline 的 L 命令缺少坐标',
+			};
+		}
+	}
+
+	const normalizedPath: BoardPoint[] = [];
+	for (const point of points) {
+		if (
+			!normalizedPath.length
+			|| !samePoint(normalizedPath[normalizedPath.length - 1], point)
+		) {
+			normalizedPath.push(point);
+		}
+	}
+
+	if (normalizedPath.length < 2) {
+		return {
+			ok: false,
+			reason: 'BOARD_OUTLINE polyline 有效路径点少于 2 个',
+		};
+	}
+
+	const segments: BoardSegment[] = [];
+	for (let pointIndex = 1; pointIndex < normalizedPath.length; pointIndex += 1) {
+		const start = normalizedPath[pointIndex - 1];
+		const end = normalizedPath[pointIndex];
+		if (!samePoint(start, end)) {
+			segments.push({
+				start: { ...start },
+				end: { ...end },
+			});
+		}
+	}
+
+	if (!segments.length) {
+		return {
+			ok: false,
+			reason: 'BOARD_OUTLINE polyline 没有有效线段',
+		};
+	}
+
+	return {
+		ok: true,
+		segments,
+		closedPolygons: [],
+	};
+}
+
+
 export function buildSimpleBoardPolygonFromSegments(
 	segments: BoardSegment[],
 ): BoardPolygonParseResult {
