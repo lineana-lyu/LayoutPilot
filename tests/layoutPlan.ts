@@ -36,12 +36,15 @@ const components = [
 ];
 
 const board = {
-	points: [
-		{ x: 0, y: 0 },
-		{ x: 500, y: 0 },
-		{ x: 500, y: 500 },
-		{ x: 0, y: 500 },
-	],
+	outer: {
+		points: [
+			{ x: 0, y: 0 },
+			{ x: 500, y: 0 },
+			{ x: 500, y: 500 },
+			{ x: 0, y: 500 },
+		],
+	},
+	holes: [],
 };
 
 const fingerprintA = buildPhysicalBoardFingerprint({
