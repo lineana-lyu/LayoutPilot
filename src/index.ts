@@ -1,4 +1,3 @@
-import { buildCircuitGraph, type CircuitComponentSnapshot } from './domain/circuitGraph';
 import { extractStructuralFeatures, type ComponentMetadata } from './domain/componentFeatures';
 import { coreLevelZh, groupEvidenceZh, layoutConstraintTypeZh, lockedZh, netGroupingClassZh, ownershipRelationZh, semanticConfidenceZh, semanticMissingEvidenceZh, semanticRoleZh, structuralEvidenceZh } from './i18n/zhCN';
 import { buildCandidateGroups } from './domain/candidateGrouping';
@@ -15,6 +14,7 @@ import { placementPlansEquivalent, planDecouplingPlacement, validatePlacementTar
 import { createPlacementCommand, markPlacementCommandApplied, markPlacementCommandSuperseded, markPlacementCommandUndone } from './domain/placementCommand';
 import { filterOwnershipPropertyNames, findOwnershipFields, findOwnershipMemberNames } from './domain/ownershipCapabilityProbe';
 import { collectPhysicalComponents, collectSimpleBoardBoundary, collectSimpleComponentKeepouts, moveComponentAndVerify, readComponentPhysicalState } from './eda/pcbPhysicalAdapter';
+import { collectAnalysisState } from './eda/analysisAdapter';
 import { clearStoredSemanticSnapshot, getStoredHumanOwnershipDecisions, getStoredLastPlacementCommand, getStoredSemanticSnapshot, removeStoredHumanOwnershipDecision, replaceStoredSemanticSnapshot, setStoredLastPlacementCommand, upsertStoredHumanOwnershipDecision } from './eda/workflowStore';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
@@ -406,64 +406,6 @@ export async function inspectCandidateGroups(): Promise<void> {
 }
 
 
-
-async function collectAnalysisState() {
-  const components = await eda.pcb_PrimitiveComponent.getAll();
-  const snapshots: CircuitComponentSnapshot[] = [];
-  const metadata: ComponentMetadata[] = [];
-  const semanticMetadata: SemanticComponentMetadata[] = [];
-
-  for (const component of components) {
-    const primitiveId = component.getState_PrimitiveId();
-    const designator = component.getState_Designator() ?? component.getState_Name() ?? primitiveId;
-    const pads = await eda.pcb_PrimitiveComponent.getAllPinsByPrimitiveId(primitiveId);
-    const footprint = component.getState_Footprint();
-
-    snapshots.push({
-      id: primitiveId,
-      designator,
-      name: component.getState_Name(),
-      padCount: pads?.length ?? 0,
-      pads: (pads ?? []).map((pad) => ({
-        padNumber: String(pad.getState_PadNumber() ?? '?'),
-        net: pad.getState_Net(),
-      })),
-    });
-
-    const commonMeta = {
-      id: primitiveId,
-      designator,
-      manufacturer: component.getState_Manufacturer(),
-      supplier: component.getState_Supplier(),
-      footprintName: footprint?.name,
-    };
-
-    metadata.push(commonMeta);
-    semanticMetadata.push({
-      ...commonMeta,
-      name: component.getState_Name(),
-      otherProperty: component.getState_OtherProperty(),
-    });
-  }
-
-  const graph = buildCircuitGraph(snapshots);
-  const features = extractStructuralFeatures(graph, metadata);
-  const grouping = buildCandidateGroups(graph, features);
-  const contexts = buildSemanticContexts(
-    graph,
-    features,
-    grouping,
-    semanticMetadata,
-  );
-
-  return {
-    graph,
-    features,
-    grouping,
-    contexts,
-    semanticMetadata,
-  };
-}
 
 async function collectSemanticContexts(): Promise<SemanticComponentContext[]> {
   return (await collectAnalysisState()).contexts;
