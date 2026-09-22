@@ -55,6 +55,29 @@ export interface PhysicalPlacementPlan {
 	rationale: string;
 }
 
+
+export function placementPlansEquivalent(
+	a: PhysicalPlacementPlan,
+	b: PhysicalPlacementPlan,
+	tolerance = 0.01,
+): boolean {
+	const samePoint = (p1: PlacementPoint, p2: PlacementPoint) =>
+		Math.abs(p1.x - p2.x) <= tolerance
+		&& Math.abs(p1.y - p2.y) <= tolerance;
+
+	return a.subjectId === b.subjectId
+		&& a.ownerId === b.ownerId
+		&& a.powerNet === b.powerNet
+		&& a.groundNet === b.groundNet
+		&& a.ownerPowerPadNumber === b.ownerPowerPadNumber
+		&& a.subjectPowerPadNumber === b.subjectPowerPadNumber
+		&& a.ownerGroundPadNumber === b.ownerGroundPadNumber
+		&& a.subjectGroundPadNumber === b.subjectGroundPadNumber
+		&& Math.abs(a.clearanceMil - b.clearanceMil) <= tolerance
+		&& samePoint(a.from, b.from)
+		&& samePoint(a.to, b.to);
+}
+
 export interface PlacementReadiness {
 	ready: boolean;
 	reasons: string[];
