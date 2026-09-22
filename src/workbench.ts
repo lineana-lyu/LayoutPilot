@@ -627,10 +627,19 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 				await hideLayoutPilotWorkbench();
 			}
 			catch (error) {
-				if (reviewContext) {
-					await endPcbEvidenceReview(reviewContext);
+				try {
+					await retireEvidenceReviewBar();
 				}
-				await setStoredEvidenceReviewSession(undefined);
+				catch (cleanupError) {
+					console.warn(
+						'[LayoutPilot Workbench] unable to retire failed evidence review',
+						cleanupError,
+					);
+					if (reviewContext) {
+						await endPcbEvidenceReview(reviewContext);
+					}
+					await setStoredEvidenceReviewSession(undefined);
+				}
 				console.error('[LayoutPilot Workbench] PCB evidence review failed', error);
 				showToast(`PCB 定位失败：${String(error)}`);
 			}
