@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.4 Layout Preview MVP
+## Current stage — v0.9.5 Layout Preview MVP
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -117,6 +117,12 @@ This fixes real EasyEDA projects that legitimately contain multiple BOARD_OUTLIN
 v0.9.4 replaces the previous four-direction / single-distance placement sampling with a bounded local occupancy-grid search around the confirmed Owner power pad. The safety model is unchanged: every generated coordinate still passes the same measured-BBox collision, board-region and NO_COMPONENTS keepout gates before it can enter a LayoutPlan.
 
 The design adapts the mature separation used by KiCad's autoplacer: candidate-space enumeration is distinct from hard legality checks and placement-cost ranking. LayoutPilot keeps the search local because a decoupling `near(owner)` constraint should fail rather than drift arbitrarily across the board. Rejected candidates are counted by collision / board / keepout reason so a failed preview is diagnosable instead of collapsing into one generic message.
+
+## Canonical physical fingerprint
+
+v0.9.5 canonicalizes closed board / keepout polygon rings before hashing. Equivalent geometry now produces the same physical fingerprint regardless of which vertex the EasyEDA runtime returns first or whether a ring is enumerated clockwise or counter-clockwise. Real physical edits such as component movement still invalidate the fingerprint.
+
+This follows the same normalization principle used by mature geometry engines such as GEOS / Shapely: geometry is converted to a stable canonical form before equality-style comparison or identity hashing. LayoutPlan acceptance therefore remains fail-closed without treating representation-order changes as PCB edits.
 
 ## Layout Preview MVP
 
