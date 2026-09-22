@@ -178,6 +178,7 @@ async function inferWithDeepSeek(request) {
 			model,
 			messages,
 			thinking: { type: 'disabled' },
+			temperature: 0,
 			stream: false,
 			max_tokens: 2000,
 			response_format: { type: 'json_object' },
