@@ -5,7 +5,10 @@ import {
 } from './domain/layoutPlan';
 import { validateStoredLayoutPlanCurrent } from './eda/layoutPlanRuntime';
 import {
+	archiveStoredReferencePlan,
 	getStoredLayoutPlan,
+	getStoredLayoutPlanById,
+	getStoredLayoutPreviewSession,
 	setStoredLayoutPlan,
 } from './eda/workflowStore';
 import { closeLayoutPreviewBarAndReturn } from './ui/layoutPreviewWindow';
@@ -24,8 +27,16 @@ function setBusy(value: boolean): void {
 	acceptBtn.disabled = value;
 }
 
+function currentPreviewPlan() {
+	const session = getStoredLayoutPreviewSession();
+	if (session) {
+		return getStoredLayoutPlanById(session.planId);
+	}
+	return getStoredLayoutPlan();
+}
+
 function render(): void {
-	const plan = getStoredLayoutPlan();
+	const plan = currentPreviewPlan();
 	if (!plan) {
 		title.textContent = 'LayoutPlan 已不存在';
 		meta.textContent = '';
@@ -60,11 +71,21 @@ function render(): void {
 			? blockerSummary.slice(0, 2).map(reason => `仅参考：${reason}`)
 			: []),
 	].join('   |   ');
-	acceptBtn.textContent = acceptanceMode === 'reference-only'
-		? '保存参考方案'
-		: acceptanceMode === 'mixed'
-			? '接受可执行项'
-			: '接受并进入预检';
+	if (plan.status !== 'preview') {
+		acceptBtn.textContent = acceptanceMode === 'reference-only'
+			? '参考方案已保存'
+			: '方案已接受';
+		acceptBtn.disabled = true;
+		rejectBtn.disabled = true;
+	}
+	else {
+		acceptBtn.textContent = acceptanceMode === 'reference-only'
+			? '保存参考方案'
+			: acceptanceMode === 'mixed'
+				? '接受可执行项'
+				: '接受并进入预检';
+		rejectBtn.disabled = false;
+	}
 }
 
 returnBtn.addEventListener('click', async () => {
@@ -83,8 +104,8 @@ rejectBtn.addEventListener('click', async () => {
 	if (rejectBtn.disabled) return;
 	setBusy(true);
 	try {
-		const plan = getStoredLayoutPlan();
-		if (plan) {
+		const plan = currentPreviewPlan();
+		if (plan?.status === 'preview') {
 			await setStoredLayoutPlan(markLayoutPlanRejected(plan));
 		}
 		await closeLayoutPreviewBarAndReturn();
@@ -105,7 +126,11 @@ acceptBtn.addEventListener('click', async () => {
 			throw new Error(validation.message);
 		}
 
-		await setStoredLayoutPlan(markLayoutPlanAccepted(validation.plan));
+		const accepted = markLayoutPlanAccepted(validation.plan);
+		await setStoredLayoutPlan(accepted);
+		if (layoutPlanAcceptanceMode(accepted) === 'reference-only') {
+			await archiveStoredReferencePlan(accepted);
+		}
 		await closeLayoutPreviewBarAndReturn();
 	}
 	catch (error) {
