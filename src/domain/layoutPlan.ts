@@ -145,3 +145,77 @@ export function layoutPlanMatchesCurrentState(
 		&& plan.semanticFingerprint === input.semanticFingerprint
 		&& plan.physicalFingerprint === input.physicalFingerprint;
 }
+
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function isPoint(value: unknown): value is PlacementPoint {
+	return isRecord(value)
+		&& typeof value.x === 'number'
+		&& Number.isFinite(value.x)
+		&& typeof value.y === 'number'
+		&& Number.isFinite(value.y);
+}
+
+function isBounds(value: unknown): value is PhysicalBounds {
+	return isRecord(value)
+		&& typeof value.minX === 'number'
+		&& typeof value.minY === 'number'
+		&& typeof value.maxX === 'number'
+		&& typeof value.maxY === 'number'
+		&& Number.isFinite(value.minX)
+		&& Number.isFinite(value.minY)
+		&& Number.isFinite(value.maxX)
+		&& Number.isFinite(value.maxY);
+}
+
+export function isLayoutPlan(value: unknown): value is LayoutPlan {
+	if (!isRecord(value) || value.schemaVersion !== 1) return false;
+	if (
+		typeof value.id !== 'string'
+		|| typeof value.snapshotId !== 'string'
+		|| typeof value.semanticFingerprint !== 'string'
+		|| typeof value.physicalFingerprint !== 'string'
+		|| typeof value.createdAt !== 'string'
+		|| !(
+			value.status === 'preview'
+			|| value.status === 'accepted'
+			|| value.status === 'rejected'
+			|| value.status === 'applied'
+			|| value.status === 'superseded'
+		)
+		|| !Array.isArray(value.items)
+	) {
+		return false;
+	}
+
+	return value.items.every(item => {
+		if (!isRecord(item)) return false;
+		return typeof item.constraintId === 'string'
+			&& typeof item.subjectId === 'string'
+			&& typeof item.subjectDesignator === 'string'
+			&& typeof item.ownerId === 'string'
+			&& typeof item.ownerDesignator === 'string'
+			&& typeof item.powerNet === 'string'
+			&& typeof item.groundNet === 'string'
+			&& typeof item.ownerPowerPadNumber === 'string'
+			&& typeof item.subjectPowerPadNumber === 'string'
+			&& typeof item.ownerGroundPadNumber === 'string'
+			&& typeof item.subjectGroundPadNumber === 'string'
+			&& isPoint(item.from)
+			&& isPoint(item.to)
+			&& isBounds(item.fromBounds)
+			&& isBounds(item.toBounds)
+			&& typeof item.movementMil === 'number'
+			&& Number.isFinite(item.movementMil)
+			&& typeof item.estimatedLoopProxyMil === 'number'
+			&& Number.isFinite(item.estimatedLoopProxyMil)
+			&& typeof item.clearanceMil === 'number'
+			&& Number.isFinite(item.clearanceMil)
+			&& Array.isArray(item.executionBlockers)
+			&& item.executionBlockers.every(reason => typeof reason === 'string')
+			&& typeof item.rationale === 'string';
+	});
+}
