@@ -181,21 +181,6 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 				&& entry.context.ownership.relation === 'rail-domain'
 				&& entry.context.ownership.hostDesignators.length > 0,
 		);
-		const evidenceComponentIds = [...new Set(
-			eligibleEntries.flatMap(entry => [
-				entry.componentId,
-				...entry.context.ownership.hostDesignators
-					.map(designator => nodeByDesignator.get(designator)?.id)
-					.filter((id): id is string => Boolean(id)),
-			]),
-		)];
-		const padEvidenceComponents = await collectPadEvidenceComponents(
-			evidenceComponentIds,
-		);
-		const padEvidenceById = new Map(
-			padEvidenceComponents.map(component => [component.id, component]),
-		);
-
 		const tasks: OwnerTask[] = eligibleEntries
 			.filter(entry =>
 				entry.status === 'valid'
@@ -210,15 +195,6 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 					.filter((node): node is NonNullable<typeof node> => Boolean(node))
 					.map(node => {
 						const meta = metadataById.get(node.id);
-						const subjectPhysical = padEvidenceById.get(entry.componentId);
-						const ownerPhysical = padEvidenceById.get(node.id);
-						const powerPadEvidence = subjectPhysical && ownerPhysical
-							? buildClosestSharedRailPadEvidence(
-								subjectPhysical,
-								ownerPhysical,
-								entry.context.ownership.railNets,
-							)
-							: undefined;
 						const connectedToCandidate = entry.context.connectedNets
 							.filter(net =>
 								net.peerEndpoints.some(
@@ -266,15 +242,9 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 							manufacturer: meta?.manufacturer,
 							footprint: meta?.footprintName,
 							evidenceLines,
-							powerPadEvidence,
 						};
 					})
-					.sort((a, b) => {
-						const aDistance = a.powerPadEvidence?.distanceMil ?? Number.POSITIVE_INFINITY;
-						const bDistance = b.powerPadEvidence?.distanceMil ?? Number.POSITIVE_INFINITY;
-						return aDistance - bDistance
-							|| a.designator.localeCompare(b.designator);
-					});
+					.sort((a, b) => a.designator.localeCompare(b.designator));
 
 				return {
 					componentId: entry.componentId,
@@ -297,6 +267,46 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 					|| a.candidates.length - b.candidates.length
 					|| a.designator.localeCompare(b.designator);
 			});
+
+		const selectedTask = tasks.find(
+			task => task.componentId === selectedComponentId,
+		) ?? tasks.find(task => !task.selectedOwnerId) ?? tasks[0];
+
+		if (selectedTask) {
+			selectedComponentId = selectedTask.componentId;
+			const evidenceIds = [
+				selectedTask.componentId,
+				...selectedTask.candidates.map(candidate => candidate.id),
+			];
+			const padEvidenceComponents = await collectPadEvidenceComponents(
+				evidenceIds,
+			);
+			const padEvidenceById = new Map(
+				padEvidenceComponents.map(component => [component.id, component]),
+			);
+			const subjectPhysical = padEvidenceById.get(selectedTask.componentId);
+
+			if (subjectPhysical) {
+				for (const candidate of selectedTask.candidates) {
+					const ownerPhysical = padEvidenceById.get(candidate.id);
+					candidate.powerPadEvidence = ownerPhysical
+						? buildClosestSharedRailPadEvidence(
+							subjectPhysical,
+							ownerPhysical,
+							selectedTask.rail.split('、').filter(Boolean),
+						)
+						: undefined;
+				}
+				selectedTask.candidates.sort((a, b) => {
+					const aDistance = a.powerPadEvidence?.distanceMil
+						?? Number.POSITIVE_INFINITY;
+					const bDistance = b.powerPadEvidence?.distanceMil
+						?? Number.POSITIVE_INFINITY;
+					return aDistance - bDistance
+						|| a.designator.localeCompare(b.designator);
+				});
+			}
+		}
 
 		return {
 			analysis,
@@ -358,8 +368,7 @@ function renderTasks(
 	for (const node of taskList.querySelectorAll<HTMLButtonElement>('[data-task]')) {
 		node.addEventListener('click', () => {
 			selectedComponentId = node.dataset.task;
-			renderCurrentTask(tasks, model);
-			renderTasks(tasks, model);
+			void refresh();
 		});
 	}
 }
