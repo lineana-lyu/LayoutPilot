@@ -7,6 +7,7 @@ import { buildSemanticGatewayRequest, normalizeGatewayBaseUrl, parseSemanticGate
 import { collectCurrentConstraintSession } from './application/constraintSession';
 import { executePlacementTransaction } from './application/placementTransaction';
 import { validateStoredLayoutPlanCurrent } from './eda/layoutPlanRuntime';
+import { executeAcceptedLayoutPlan, preflightAcceptedLayoutPlan } from './eda/layoutPlanExecution';
 import { resolveAmbiguousCoreAssociations } from './domain/coreAssociation';
 import { resolveOwnershipRelations } from './domain/ownershipRelation';
 import { createHumanOwnershipDecision } from './domain/humanOwnershipDecision';
@@ -1609,403 +1610,81 @@ export async function previewLayoutConstraints(): Promise<void> {
 
 export async function applyDemoPlacement(): Promise<void> {
   try {
-    const current = await collectCurrentConstraintSession();
-    if (!current.ok) {
+    const preflight = await preflightAcceptedLayoutPlan();
+    if (!preflight.ok) {
       await eda.sys_Dialog.showInformationMessage(
-        current.message,
-        'LayoutPilot · 受控布局执行',
+        preflight.message,
+        'LayoutPilot · 物理预检未通过',
       );
       return;
     }
 
-    const {
-      snapshot,
-      evaluation,
-      boardFingerprint,
-    } = current.value;
-
-    const outstanding = getStoredLastPlacementCommand();
-    if (
-      outstanding?.status === 'applied'
-      && outstanding.boardFingerprint === boardFingerprint
-    ) {
-      const component = await eda.pcb_PrimitiveComponent.get(outstanding.componentId);
-      if (!component) {
-        await eda.sys_Dialog.showInformationMessage(
-          [
-            `上一次 LayoutPilot Command ${outstanding.id} 仍标记为 applied，`,
-            `但当前 PCB 已找不到 ${outstanding.componentDesignator}。`,
-            '',
-            '无法证明上一事务的最终状态，本次拒绝继续执行新的布局动作。',
-          ].join('\n'),
-          'LayoutPilot · 上一事务状态未知',
-        );
-        return;
-      }
-
-      const stillAtCommandTarget =
-        closeEnough(component.getState_X(), outstanding.to.x)
-        && closeEnough(component.getState_Y(), outstanding.to.y);
-
-      if (stillAtCommandTarget) {
-        await eda.sys_Dialog.showInformationMessage(
-          [
-            `仍有一条未关闭的受控布局 Command：${outstanding.id}`,
-            `${outstanding.componentDesignator} 仍位于该 Command 的目标位置。`,
-            '',
-            '当前版本只维护一个 outstanding command。',
-            '请先“撤销上次受控布局”，再执行下一条建议。',
-          ].join('\n'),
-          'LayoutPilot · 请先关闭上一事务',
-        );
-        return;
-      }
-
-      await setStoredLastPlacementCommand(
-        markPlacementCommandSuperseded(outstanding),
-      );
-      console.warn('[LayoutPilot] previous placement command superseded by later PCB edit', {
-        commandId: outstanding.id,
-        componentId: outstanding.componentId,
-      });
-    }
-
-    const executable = evaluation.entries.flatMap(item => {
-      if (!item.result || !item.humanOwnershipDecision) return [];
-      return item.result.proposals
-        .filter(proposal =>
-          proposal.type === 'near'
-          && proposal.execution === 'preview-eligible'
-          && proposal.role === 'decoupling-capacitor'
-        )
-        .map(proposal => ({ item, proposal }));
-    });
-
-    if (!executable.length) {
-      await eda.sys_Dialog.showInformationMessage(
-        [
-          '当前没有可进入物理预检的布局建议。',
-          '',
-          '进入物理预检要求：',
-          '• 去耦电容 near(owner) 约束；',
-          '• medium/high 置信，属于 preview-eligible；',
-          '• owner 已由用户显式确认；',
-          '• 后续物理检查全部通过。',
-        ].join('\n'),
-        'LayoutPilot · 受控布局执行',
-      );
-      return;
-    }
-
-    let chosen = executable[0];
-    if (executable.length > 1) {
-      const selected = await showSingleSelectDialog(
-        executable.map((candidate, index) => ({
-          value: String(index),
-          displayContent: `${candidate.proposal.subject} → ${candidate.proposal.target}`,
-        })),
-        '请选择本次只执行的一条布局建议。',
-        '当前版本每次只移动一个器件，避免批量变更扩大风险。',
-        'LayoutPilot · 选择执行建议',
-        '0',
-      );
-      if (selected === undefined) return;
-      const index = Number(selected);
-      if (!Number.isInteger(index) || !executable[index]) return;
-      chosen = executable[index];
-    }
-
-    const { item, proposal } = chosen;
-    const decision = item.humanOwnershipDecision;
-    if (!decision || !proposal.target) {
-      throw new Error('执行建议缺少人工 owner 证据。');
-    }
-
-    const physical = await collectPhysicalComponents(item.entry.componentId);
-    const subject = physical.find(component => component.id === item.entry.componentId);
-    const owner = physical.find(component => component.id === decision.ownerComponentId);
-    if (!subject || !owner) {
-      throw new Error('无法在 PCB 物理对象中定位 subject 或 owner。');
-    }
-
-    const powerNet = item.context.connectedNets.find(net =>
-      net.classification === 'global-power'
-      && net.coreDesignators.includes(owner.designator)
-    )?.netName;
-    const groundNet = item.context.connectedNets.find(net =>
-      net.classification === 'global-ground'
-      && net.coreDesignators.includes(owner.designator)
-    )?.netName;
-
-    if (!powerNet || !groundNet) {
-      throw new Error('缺少 owner 共享的电源/地物理网络，拒绝执行。');
-    }
-
-    const boardBoundary = await collectSimpleBoardBoundary();
-    if (!boardBoundary.ok) {
-      await eda.sys_Dialog.showInformationMessage(
-        [
-          '当前 PCB 板框不能被当前安全模型可靠解析。',
-          '',
-          boardBoundary.reason,
-          '',
-          '系统采用失败关闭策略：不能证明候选位置位于有效板内时，不执行移动。',
-        ].join('\n'),
-        'LayoutPilot · 板框校验未通过',
-      );
-      return;
-    }
-
-    const componentKeepouts = await collectSimpleComponentKeepouts();
-    if (!componentKeepouts.ok) {
-      await eda.sys_Dialog.showInformationMessage(
-        [
-          '当前 PCB 的器件 keepout 不能被当前安全模型可靠解析。',
-          '',
-          componentKeepouts.reason,
-          '',
-          '不能证明候选位置避开 NO_COMPONENTS 区域时，不执行移动。',
-        ].join('\n'),
-        'LayoutPilot · Keepout 校验未通过',
-      );
-      return;
-    }
-
-    const readiness = planDecouplingPlacement({
-      subject,
-      owner,
-      obstacles: physical,
-      board: boardBoundary.polygon,
-      componentKeepouts: componentKeepouts.polygons,
-      powerNet,
-      groundNet,
-    });
-
-    if (!readiness.ready || !readiness.plan) {
-      await eda.sys_Dialog.showInformationMessage(
-        [
-          `${subject.designator} 当前不满足安全执行条件。`,
-          '',
-          ...readiness.reasons.map(reason => `• ${reason}`),
-          '',
-          '系统不会为了演示效果绕过这些检查。',
-        ].join('\n'),
-        'LayoutPilot · 物理执行被阻止',
-      );
-      return;
-    }
-
-    const plan = readiness.plan;
+    const { plan, item, executionPlan } = preflight;
     const confirmed = await showConfirmationDialog(
       [
-        `即将移动：${plan.subjectDesignator}`,
-        `目标 owner：${plan.ownerDesignator}`,
-        `电源锚点：${plan.ownerDesignator}.${plan.ownerPowerPadNumber} / ${plan.powerNet}`,
-        `GND 参考：${plan.ownerDesignator}.${plan.ownerGroundPadNumber} / ${plan.groundNet}`,
-        `回路几何代理：${plan.estimatedLoopProxyMil.toFixed(2)} mil（仅用于候选排序）`,
-        `原坐标：(${plan.from.x.toFixed(2)}, ${plan.from.y.toFixed(2)}) mil`,
-        `目标坐标：(${plan.to.x.toFixed(2)}, ${plan.to.y.toFixed(2)}) mil`,
-        `近似避让：${plan.clearanceMil} mil`,
+        `LayoutPlan：${plan.id}`,
+        `即将应用：${item.subjectDesignator} → near(${item.ownerDesignator})`,
         '',
-        '执行后 LayoutPilot 会重新读取坐标并运行 DRC；若 DRC 失败，将自动回滚。',
-        '这仍是受控 Placement PoC，不等同于生产级自动布局器。',
+        `原坐标：(${item.from.x.toFixed(2)}, ${item.from.y.toFixed(2)}) mil`,
+        `目标坐标：(${item.to.x.toFixed(2)}, ${item.to.y.toFixed(2)}) mil`,
+        `移动距离：${item.movementMil.toFixed(2)} mil`,
+        `电源锚点：${item.ownerDesignator}.${item.ownerPowerPadNumber} / ${item.powerNet}`,
+        `GND 参考：${item.ownerDesignator}.${item.ownerGroundPadNumber} / ${item.groundNet}`,
+        `回路几何代理：${item.estimatedLoopProxyMil.toFixed(2)} mil`,
+        '',
+        '该坐标与已接受的 Ghost Preview 完全一致。',
+        '确认后会再次重验物理上下文；若位置不再一致，本次执行会被取消。',
+        '移动后会读取坐标并运行 DRC；失败时自动回滚。',
       ].join('\n'),
-      'LayoutPilot · 确认受控移动',
-      '移动并校验',
+      'LayoutPilot · 应用已接受布局方案',
+      '应用并校验',
     );
     if (!confirmed) return;
 
-    const refreshedConstraintSession = await collectCurrentConstraintSession();
-    if (
-      !refreshedConstraintSession.ok
-      || refreshedConstraintSession.value.snapshot.id !== snapshot.id
-    ) {
+    const execution = await executeAcceptedLayoutPlan(plan.id);
+    if (!execution.ok) {
       await eda.sys_Dialog.showInformationMessage(
         [
-          '确认期间 PCB 的语义输入发生了变化，当前 Semantic Snapshot 已不能作为执行依据。',
+          'LayoutPlan 没有提交。',
           '',
-          refreshedConstraintSession.ok
-            ? 'Snapshot 标识发生变化。'
-            : refreshedConstraintSession.message,
-          '',
-          '请重新运行分析/确认/预览后再执行。',
-        ].join('\n'),
-        'LayoutPilot · 语义计划已过期',
+          execution.message,
+          execution.rollbackAttempted === undefined
+            ? ''
+            : `已尝试回滚：${execution.rollbackAttempted ? '是' : '否'}`,
+          execution.rollbackVerified === undefined
+            ? ''
+            : `坐标回滚校验：${execution.rollbackVerified ? 'PASS' : 'FAIL'}`,
+          execution.rollbackDrcPassed === undefined
+            ? ''
+            : `回滚 DRC：${execution.rollbackDrcPassed ? 'PASS' : 'FAIL'}`,
+        ].filter(Boolean).join('\n'),
+        execution.rollbackVerified === false
+          ? 'LayoutPilot · 回滚需要人工检查'
+          : 'LayoutPilot · 布局方案未应用',
       );
       return;
     }
-
-    const refreshedConstraintEntry = refreshedConstraintSession.value.evaluation.entries
-      .find(entry => entry.entry.componentId === item.entry.componentId);
-    const refreshedProposal = refreshedConstraintEntry?.result?.proposals
-      .find(candidate => candidate.id === proposal.id);
-    const refreshedDecision = refreshedConstraintEntry?.humanOwnershipDecision;
-    if (
-      !refreshedProposal
-      || refreshedProposal.execution !== 'preview-eligible'
-      || refreshedDecision?.ownerComponentId !== decision.ownerComponentId
-    ) {
-      await eda.sys_Dialog.showInformationMessage(
-        [
-          '确认期间约束证据或人工 Owner 决策发生了变化。',
-          '',
-          '旧的 Constraint Proposal 不再满足执行条件，本次移动已取消。',
-        ].join('\n'),
-        'LayoutPilot · 约束计划已过期',
-      );
-      return;
-    }
-
-    const refreshedPhysical = await collectPhysicalComponents(plan.subjectId);
-    const refreshedSubject = refreshedPhysical.find(
-      component => component.id === plan.subjectId,
-    );
-    const refreshedOwner = refreshedPhysical.find(
-      component => component.id === plan.ownerId,
-    );
-    if (!refreshedSubject || !refreshedOwner) {
-      await eda.sys_Dialog.showInformationMessage(
-        '确认后无法重新定位 subject 或 owner，本次执行已取消。',
-        'LayoutPilot · 物理计划已过期',
-      );
-      return;
-    }
-
-    const refreshedBoardBoundary = await collectSimpleBoardBoundary();
-    if (!refreshedBoardBoundary.ok) {
-      await eda.sys_Dialog.showInformationMessage(
-        refreshedBoardBoundary.reason,
-        'LayoutPilot · 确认后板框状态不可验证',
-      );
-      return;
-    }
-
-    const refreshedKeepouts = await collectSimpleComponentKeepouts();
-    if (!refreshedKeepouts.ok) {
-      await eda.sys_Dialog.showInformationMessage(
-        refreshedKeepouts.reason,
-        'LayoutPilot · 确认后 Keepout 状态不可验证',
-      );
-      return;
-    }
-
-    const refreshedReadiness = planDecouplingPlacement({
-      subject: refreshedSubject,
-      owner: refreshedOwner,
-      obstacles: refreshedPhysical,
-      board: refreshedBoardBoundary.polygon,
-      componentKeepouts: refreshedKeepouts.polygons,
-      powerNet,
-      groundNet,
-    });
-
-    if (
-      !refreshedReadiness.ready
-      || !refreshedReadiness.plan
-      || !placementPlansEquivalent(plan, refreshedReadiness.plan)
-    ) {
-      await eda.sys_Dialog.showInformationMessage(
-        [
-          '确认窗口打开期间，PCB 的物理上下文发生了变化，或最佳合法候选已经改变。',
-          '',
-          'LayoutPilot 已重新读取器件 BBox、走线状态、板框和 keepout。',
-          '为避免执行过期计划，本次移动已取消。',
-          '',
-          '请重新点击“应用受控布局建议”查看新的候选位置。',
-        ].join('\n'),
-        'LayoutPilot · 物理计划已过期',
-      );
-      return;
-    }
-
-    const baselineDrcPassed = await eda.pcb_Drc.check(true, false, false);
-    if (!baselineDrcPassed) {
-      await eda.sys_Dialog.showInformationMessage(
-        [
-          '确认后重新检查发现当前 PCB 未通过 DRC。',
-          '',
-          '写入前必须存在干净 DRC 基线，本次不会移动器件。',
-        ].join('\n'),
-        'LayoutPilot · DRC 基线未通过',
-      );
-      return;
-    }
-
-    const executionPlan = refreshedReadiness.plan;
-
-    const command = createPlacementCommand({
-      snapshotId: snapshot.id,
-      boardFingerprint,
-      constraintId: proposal.id,
-      componentId: executionPlan.subjectId,
-      componentDesignator: executionPlan.subjectDesignator,
-      from: executionPlan.from,
-      to: executionPlan.to,
-    });
-
-    const transaction = await executePlacementTransaction(
-      {
-        componentId: executionPlan.subjectId,
-        from: executionPlan.from,
-        to: executionPlan.to,
-      },
-      {
-        moveAndVerify: async (componentId, point) => {
-          await moveComponentAndVerify(componentId, point.x, point.y);
-        },
-        checkDrc: () => eda.pcb_Drc.check(true, false, false),
-      },
-    );
-
-    if (!transaction.ok) {
-      await setStoredLastPlacementCommand(undefined);
-      await eda.sys_Dialog.showInformationMessage(
-        [
-          '受控移动没有提交。',
-          '',
-          `原因：${transaction.error}`,
-          `已尝试回滚：${transaction.rollbackAttempted ? '是' : '否'}`,
-          `坐标回滚校验：${transaction.rollbackVerified ? 'PASS' : 'FAIL / 未执行'}`,
-          transaction.rollbackDrcPassed === undefined
-            ? '回滚 DRC：未执行'
-            : `回滚 DRC：${transaction.rollbackDrcPassed ? 'PASS' : 'FAIL'}`,
-          '',
-          transaction.rollbackVerified
-            ? 'PCB 已恢复到执行前坐标，本次不记录成功 Command。'
-            : '无法证明 PCB 已恢复，请立即人工检查当前器件位置。',
-        ].join('\n'),
-        transaction.rollbackVerified
-          ? 'LayoutPilot · 已自动回滚'
-          : 'LayoutPilot · 回滚需要人工检查',
-      );
-      return;
-    }
-
-    const applied = markPlacementCommandApplied(command);
-    await setStoredLastPlacementCommand(applied);
 
     await eda.sys_Dialog.showInformationMessage(
       [
-        '受控布局动作已完成并通过校验。',
+        '已接受的 LayoutPlan 已应用并通过校验。',
         '',
-        `Command：${applied.id}`,
-        `${plan.subjectDesignator} → near(${plan.ownerDesignator})`,
-        `电源/GND 参考：${plan.ownerPowerPadNumber} / ${plan.ownerGroundPadNumber}`,
-        `回路几何代理：${plan.estimatedLoopProxyMil.toFixed(2)} mil`,
-        `坐标：(${plan.from.x.toFixed(2)}, ${plan.from.y.toFixed(2)}) → (${plan.to.x.toFixed(2)}, ${plan.to.y.toFixed(2)}) mil`,
+        `Command：${execution.command.id}`,
+        `${execution.item.subjectDesignator} → near(${execution.item.ownerDesignator})`,
+        `坐标：(${execution.item.from.x.toFixed(2)}, ${execution.item.from.y.toFixed(2)}) → (${execution.item.to.x.toFixed(2)}, ${execution.item.to.y.toFixed(2)}) mil`,
         '坐标回读：PASS',
         '移动后 DRC：PASS',
         '',
-        '可使用“撤销上次受控布局”恢复原坐标。',
+        '可以使用“撤销上次布局”恢复原坐标。',
       ].join('\n'),
-      'LayoutPilot · 受控布局执行',
+      'LayoutPilot · 布局方案已应用',
     );
   }
   catch (error) {
-    console.error('[LayoutPilot] Controlled placement failed', error);
+    console.error('[LayoutPilot] Accepted LayoutPlan execution failed', error);
     await eda.sys_Dialog.showInformationMessage(
-      `受控布局执行失败。\n\n${String(error)}\n\n请检查当前 PCB；系统不会继续执行后续动作。`,
-      'LayoutPilot · 受控布局执行',
+      `LayoutPlan 执行失败。\n\n${String(error)}\n\nPCB 不会继续执行后续动作。`,
+      'LayoutPilot · 布局执行失败',
     );
   }
 }
