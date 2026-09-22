@@ -1,4 +1,4 @@
-import type { BoardPolygon } from '../domain/boardBoundary';
+import type { BoardPolygon, BoardRegion } from '../domain/boardBoundary';
 import {
 	createLayoutPlan,
 	type LayoutPlan,
@@ -108,7 +108,7 @@ export function buildLocalLayoutPlan(input: {
 	physicalFingerprint: string;
 	candidates: LayoutPlanningCandidate[];
 	physicalComponents: PhysicalComponentSnapshot[];
-	board: BoardPolygon;
+	board: BoardRegion;
 	componentKeepouts: BoardPolygon[];
 	maxItems?: number;
 }): LocalLayoutPlanResult {
