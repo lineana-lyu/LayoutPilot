@@ -1251,84 +1251,128 @@ export async function confirmAmbiguousOwnership(): Promise<void> {
       return;
     }
 
+    const currentDecisions = getStoredHumanOwnershipDecisions(snapshot.id);
+    const decisionByComponentId = new Map(
+      currentDecisions.map(decision => [decision.componentId, decision]),
+    );
+    const selectable = eligible
+      .map(entry => ({
+        entry,
+        candidates: entry.context.ownership.hostDesignators
+          .map(designator => nodeByDesignator.get(designator))
+          .filter((node): node is NonNullable<typeof node> => Boolean(node)),
+      }))
+      .filter(item => item.candidates.length > 0);
+
+    if (!selectable.length) {
+      await eda.sys_Dialog.showInformationMessage(
+        '当前没有可供人工确认的确定性 Host 候选。',
+        'LayoutPilot · 人工确认 Owner',
+      );
+      return;
+    }
+
+    let selectedItem = selectable[0];
+    if (selectable.length > 1) {
+      const pendingFirst = [...selectable].sort((a, b) => {
+        const aConfirmed = decisionByComponentId.has(a.entry.componentId) ? 1 : 0;
+        const bConfirmed = decisionByComponentId.has(b.entry.componentId) ? 1 : 0;
+        return aConfirmed - bConfirmed
+          || a.entry.designator.localeCompare(b.entry.designator);
+      });
+      const selectedComponentId = await showSingleSelectDialog(
+        pendingFirst.map(item => {
+          const existing = decisionByComponentId.get(item.entry.componentId);
+          const rails = item.entry.context.ownership.railNets.length
+            ? item.entry.context.ownership.railNets.join('、')
+            : '未知电源域';
+          return {
+            value: item.entry.componentId,
+            displayContent: existing
+              ? `${item.entry.designator} · ${rails} · 已确认 → ${existing.ownerDesignator}`
+              : `${item.entry.designator} · ${rails} · 待确认`,
+          };
+        }),
+        [
+          `当前有 ${selectable.length} 个去耦电容存在 rail-domain 歧义。`,
+          '',
+          '每次只处理一个高价值问题，避免连续弹窗和误确认。',
+        ].join('\n'),
+        '请选择本次要确认的器件。',
+        'LayoutPilot · 选择待决器件',
+        pendingFirst[0].entry.componentId,
+      );
+      if (!selectedComponentId) return;
+      const matched = selectable.find(
+        item => item.entry.componentId === selectedComponentId,
+      );
+      if (!matched) return;
+      selectedItem = matched;
+    }
+
+    const { entry, candidates } = selectedItem;
+    const existing = decisionByComponentId.get(entry.componentId);
+    const clearValue = '__layoutpilot_unconfirmed__';
+    const options = [
+      ...candidates.map(node => ({
+        value: node.id,
+        displayContent: node.designator,
+      })),
+      {
+        value: clearValue,
+        displayContent: existing ? '清除已确认 owner' : '暂不处理',
+      },
+    ];
+    const rails = entry.context.ownership.railNets.length
+      ? entry.context.ownership.railNets.join('、')
+      : '未知';
+
+    const selected = await showSingleSelectDialog(
+      options,
+      [
+        `${entry.designator} · ${semanticRoleZh(entry.inference!.role)}`,
+        `AI 置信：${semanticConfidenceZh(entry.inference!.confidence)}`,
+        `确定性关系：${ownershipRelationZh(entry.context.ownership.relation)}`,
+        `电源域：${rails}`,
+        '',
+        'LayoutPilot 无法仅凭电源域安全确定唯一 owner。',
+        '请选择你确认的 Host；该选择会作为“人工证据”，不会改写 AI 结论。',
+      ].join('\n'),
+      '默认保持“暂不处理”；只有你明确知道归属时才选择 Host。',
+      `LayoutPilot · 确认 ${entry.designator} 的 Owner`,
+      existing?.ownerComponentId ?? clearValue,
+    );
+
     let confirmed = 0;
     let cleared = 0;
     let skipped = 0;
 
-    for (const entry of eligible) {
-      const existing = getStoredHumanOwnershipDecisions(snapshot.id)
-        .find(item => item.componentId === entry.componentId);
-      const candidates = entry.context.ownership.hostDesignators
-        .map(designator => nodeByDesignator.get(designator))
-        .filter((node): node is NonNullable<typeof node> => Boolean(node));
-
-      if (!candidates.length) {
-        skipped += 1;
-        continue;
-      }
-
-      const clearValue = '__layoutpilot_unconfirmed__';
-      const options = [
-        ...candidates.map(node => ({
-          value: node.id,
-          displayContent: node.designator,
-        })),
-        {
-          value: clearValue,
-          displayContent: existing ? '清除已确认 owner' : '暂不处理',
-        },
-      ];
-      const rails = entry.context.ownership.railNets.length
-        ? entry.context.ownership.railNets.join('、')
-        : '未知';
-      const selected = await showSingleSelectDialog(
-        options,
-        [
-          `${entry.designator} · ${semanticRoleZh(entry.inference!.role)}`,
-          `AI 置信：${semanticConfidenceZh(entry.inference!.confidence)}`,
-          `确定性关系：${ownershipRelationZh(entry.context.ownership.relation)}`,
-          `电源域：${rails}`,
-          '',
-          'LayoutPilot 无法仅凭电源域安全确定唯一 owner。',
-          '请选择你确认的 Host；该选择会作为“人工证据”，不会改写 AI 结论。',
-        ].join('\n'),
-        '如果不确定，请选择“暂不处理”。',
-        `LayoutPilot · 确认 ${entry.designator} 的 Owner`,
-        existing?.ownerComponentId ?? candidates[0].id,
-      );
-
-      if (!selected) {
-        skipped += 1;
-        continue;
-      }
-
-      if (selected === clearValue) {
+    if (!selected || selected === clearValue) {
+      if (existing && selected === clearValue) {
         await removeStoredHumanOwnershipDecision(snapshot.id, entry.componentId);
-        if (existing) {
-          cleared += 1;
-        }
-        else {
-          skipped += 1;
-        }
-        continue;
+        cleared = 1;
       }
-
+      else {
+        skipped = 1;
+      }
+    }
+    else {
       const owner = candidates.find(candidate => candidate.id === selected);
       if (!owner) {
-        skipped += 1;
-        continue;
+        skipped = 1;
       }
-
-      await upsertStoredHumanOwnershipDecision(
-        createHumanOwnershipDecision({
-          snapshotId: snapshot.id,
-          componentId: entry.componentId,
-          componentDesignator: entry.designator,
-          ownerComponentId: owner.id,
-          ownerDesignator: owner.designator,
-        }),
-      );
-      confirmed += 1;
+      else {
+        await upsertStoredHumanOwnershipDecision(
+          createHumanOwnershipDecision({
+            snapshotId: snapshot.id,
+            componentId: entry.componentId,
+            componentDesignator: entry.designator,
+            ownerComponentId: owner.id,
+            ownerDesignator: owner.designator,
+          }),
+        );
+        confirmed = 1;
+      }
     }
 
     const current = getStoredHumanOwnershipDecisions(snapshot.id);
