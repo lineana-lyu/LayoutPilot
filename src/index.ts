@@ -15,6 +15,7 @@ import { buildSemanticBoardFingerprint, createSemanticSnapshot, semanticSnapshot
 import { placementPlansEquivalent, planDecouplingPlacement, validatePlacementTarget, type PhysicalPlacementPlan } from './domain/physicalPlacement';
 import { createPlacementCommand, markPlacementCommandApplied, markPlacementCommandSuperseded, markPlacementCommandUndone } from './domain/placementCommand';
 import { markLayoutPlanApplied } from './domain/layoutPlan';
+import { formatLayoutPlanItemReview } from './domain/layoutPlanReview';
 import { filterOwnershipPropertyNames, findOwnershipFields, findOwnershipMemberNames } from './domain/ownershipCapabilityProbe';
 import { collectPhysicalComponents, collectSimpleBoardBoundary, collectSimpleComponentKeepouts, moveComponentAndVerify, readComponentPhysicalState } from './eda/pcbPhysicalAdapter';
 import { collectAnalysisState } from './eda/analysisAdapter';
@@ -1630,7 +1631,8 @@ export async function applyDemoPlacement(): Promise<void> {
         `移动距离：${item.movementMil.toFixed(2)} mil`,
         `电源锚点：${item.ownerDesignator}.${item.ownerPowerPadNumber} / ${item.powerNet}`,
         `GND 参考：${item.ownerDesignator}.${item.ownerGroundPadNumber} / ${item.groundNet}`,
-        `回路几何代理：${item.estimatedLoopProxyMil.toFixed(2)} mil`,
+        `回路几何代理（当前 → 建议）：${item.currentLoopProxyMil.toFixed(2)} → ${item.estimatedLoopProxyMil.toFixed(2)} mil`,
+        formatLayoutPlanItemReview(item),
         '',
         '该坐标与已接受的 Ghost Preview 完全一致。',
         '确认后会再次重验物理上下文；若位置不再一致，本次执行会被取消。',
