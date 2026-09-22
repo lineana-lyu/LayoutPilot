@@ -42,11 +42,17 @@ async function main(): Promise<void> {
 	if (!files.includes('dist/evidenceReview.js')) {
 		throw new Error('Packaged extension is missing dist/evidenceReview.js');
 	}
+	if (!files.includes('dist/layoutPreview.js')) {
+		throw new Error('Packaged extension is missing dist/layoutPreview.js');
+	}
 	if (!files.includes('iframe/workbench.html')) {
 		throw new Error('Packaged extension is missing iframe/workbench.html');
 	}
 	if (!files.includes('iframe/evidence-review.html')) {
 		throw new Error('Packaged extension is missing iframe/evidence-review.html');
+	}
+	if (!files.includes('iframe/layout-preview.html')) {
+		throw new Error('Packaged extension is missing iframe/layout-preview.html');
 	}
 
 	console.log('[LayoutPilot] package boundary verified', files);
