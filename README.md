@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.7 Interview MVP
+## Current stage — v0.8 Workbench Interview MVP
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -41,6 +41,19 @@ Commit or automatic rollback
   ↓
 Undo with concurrent-edit protection
 ```
+
+## Visual Workbench
+
+The primary product workflow now runs in a persistent EasyEDA `sys_IFrame` workbench rather than a chain of modal dialogs.
+
+The workbench keeps four stages visible at once:
+
+- **Understand** — Semantic Snapshot, model, board fingerprint and AI analysis count;
+- **Confirm** — rail-domain decoupling tasks and evidence-backed Host candidates;
+- **Plan** — generated constraints and concise blocking reasons when the result is still zero;
+- **Apply** — guarded placement and Undo state.
+
+Owner confirmation happens directly in the workbench. The only dialogs intentionally retained in the main path are settings/errors and the final confirmation before a real PCB mutation.
 
 ## AI authority boundary
 
