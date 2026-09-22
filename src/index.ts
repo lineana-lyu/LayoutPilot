@@ -4,7 +4,7 @@ import { buildCandidateGroups } from './domain/candidateGrouping';
 import { buildSemanticContexts, resolveComponentDisplayName, type SemanticComponentContext, type SemanticComponentMetadata } from './domain/semanticContext';
 import { allowedSemanticRolesForPrefix, buildSemanticEvidenceCatalog, validateSemanticInference } from './domain/semanticInference';
 import { buildSemanticGatewayRequest, normalizeGatewayBaseUrl, parseSemanticGatewayResponse } from './ai/gatewayClient';
-import { buildConstraintEvaluation } from './application/constraintEvaluation';
+import { collectCurrentConstraintSession } from './application/constraintSession';
 import { executePlacementTransaction } from './application/placementTransaction';
 import { resolveAmbiguousCoreAssociations } from './domain/coreAssociation';
 import { resolveOwnershipRelations } from './domain/ownershipRelation';
@@ -1386,65 +1386,6 @@ export async function confirmAmbiguousOwnership(): Promise<void> {
   }
 }
 
-
-interface CurrentConstraintSession {
-  analysisState: Awaited<ReturnType<typeof collectAnalysisState>>;
-  snapshot: SemanticSnapshot;
-  boardFingerprint: string;
-  evaluation: ReturnType<typeof buildConstraintEvaluation>;
-}
-
-async function collectCurrentConstraintSession(): Promise<
-  | { ok: true; value: CurrentConstraintSession }
-  | { ok: false; reason: 'missing-snapshot' | 'stale-snapshot'; message: string }
-> {
-  const analysisState = await collectAnalysisState();
-  const boardFingerprint = buildSemanticBoardFingerprint({
-    graph: analysisState.graph,
-    contexts: analysisState.contexts,
-  });
-  const snapshot = getStoredSemanticSnapshot();
-
-  if (!snapshot) {
-    return {
-      ok: false,
-      reason: 'missing-snapshot',
-      message: '当前没有可复用的 Semantic Snapshot。请先运行 AI 语义分析。',
-    };
-  }
-
-  if (!semanticSnapshotMatchesBoard(snapshot, boardFingerprint)) {
-    return {
-      ok: false,
-      reason: 'stale-snapshot',
-      message: [
-        '当前 PCB 的语义输入已经变化，旧 Snapshot 已过期。',
-        `Snapshot：${snapshot.id}`,
-        `旧 Fingerprint：${snapshot.boardFingerprint}`,
-        `当前 Fingerprint：${boardFingerprint}`,
-      ].join('\n'),
-    };
-  }
-
-  const evaluation = buildConstraintEvaluation({
-    snapshot,
-    graph: analysisState.graph,
-    features: analysisState.features,
-    grouping: analysisState.grouping,
-    semanticMetadata: analysisState.semanticMetadata,
-    humanOwnershipDecisions: getStoredHumanOwnershipDecisions(snapshot.id),
-  });
-
-  return {
-    ok: true,
-    value: {
-      analysisState,
-      snapshot,
-      boardFingerprint,
-      evaluation,
-    },
-  };
-}
 
 function showConfirmationDialog(
   content: string,
