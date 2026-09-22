@@ -9,7 +9,11 @@ import type { OwnershipRelationType } from './domain/ownershipRelation';
 import type { SemanticConfidence, SemanticRole } from './domain/semanticInference';
 import { buildClosestSharedRailPadEvidence, type SharedRailPadEvidence } from './domain/physicalEvidence';
 import { createEvidenceReviewSession } from './domain/evidenceReviewSession';
+import { createLayoutPreviewSession } from './domain/layoutPreviewSession';
+import type { LayoutPlan } from './domain/layoutPlan';
 import { collectAnalysisState, type AnalysisState } from './eda/analysisAdapter';
+import { generateCurrentLayoutPlan } from './eda/layoutPlanRuntime';
+import { showLayoutPlanGhost } from './eda/layoutPreviewAdapter';
 import { beginPcbEvidenceReview, collectPadEvidenceComponents, endPcbEvidenceReview } from './eda/pcbPhysicalAdapter';
 import {
 	getLayoutPilotWorkbenchSizeMode,
@@ -18,10 +22,12 @@ import {
 	type LayoutPilotWorkbenchSizeMode,
 } from './ui/workbenchWindow';
 import { openEvidenceReviewBar, retireEvidenceReviewBar } from './ui/evidenceReviewWindow';
+import { clearActiveLayoutPreviewCanvas, openLayoutPreviewBar } from './ui/layoutPreviewWindow';
 import {
 	getStoredHumanOwnershipDecisions,
 	inspectStoredWorkflowState,
 	setStoredEvidenceReviewSession,
+	setStoredLayoutPreviewSession,
 	removeStoredHumanOwnershipDecision,
 	upsertStoredHumanOwnershipDecision,
 } from './eda/workflowStore';
@@ -70,6 +76,7 @@ interface RuntimeModel {
 	constraintCount: number;
 	previewEligibleCount: number;
 	evaluation?: ReturnType<typeof buildConstraintEvaluation>;
+	layoutPlan?: LayoutPlan;
 }
 
 const el = <T extends HTMLElement>(id: string): T => {
@@ -86,6 +93,7 @@ const planPanel = el<HTMLDivElement>('planPanel');
 const loading = el<HTMLDivElement>('loading');
 const toast = el<HTMLDivElement>('toast');
 const analyzeBtn = el<HTMLButtonElement>('analyzeBtn');
+const previewPlanBtn = el<HTMLButtonElement>('previewPlanBtn');
 const applyBtn = el<HTMLButtonElement>('applyBtn');
 const undoBtn = el<HTMLButtonElement>('undoBtn');
 const refreshBtn = el<HTMLButtonElement>('refreshBtn');
@@ -112,6 +120,7 @@ function setBusy(value: boolean): void {
 	busy = value;
 	loading.classList.toggle('show', value);
 	analyzeBtn.disabled = value;
+	previewPlanBtn.disabled = value;
 	refreshBtn.disabled = value;
 	sizeCompactBtn.disabled = value;
 	sizeStandardBtn.disabled = value;
