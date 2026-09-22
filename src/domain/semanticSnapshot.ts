@@ -33,8 +33,6 @@ export interface SemanticBoardState {
 	contexts: SemanticComponentContext[];
 }
 
-let activeSnapshot: SemanticSnapshot | undefined;
-
 function hashText(value: string): string {
 	// FNV-1a 32-bit. This is an identity/staleness hash, not a security hash.
 	let hash = 0x811c9dc5;
@@ -195,18 +193,6 @@ export function createSemanticSnapshot(
 	};
 
 	return freezeDeep(snapshot);
-}
-
-export function setActiveSemanticSnapshot(snapshot: SemanticSnapshot): void {
-	activeSnapshot = snapshot;
-}
-
-export function getActiveSemanticSnapshot(): SemanticSnapshot | undefined {
-	return activeSnapshot;
-}
-
-export function clearActiveSemanticSnapshot(): void {
-	activeSnapshot = undefined;
 }
 
 export function semanticSnapshotMatchesBoard(
