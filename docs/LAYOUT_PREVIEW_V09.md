@@ -108,6 +108,24 @@ Apply accepted LayoutPlan = explicit mutation boundary
 No external editor framework is bundled into the extension.
 
 
+## v0.9.4 bounded local occupancy search
+
+The original MVP generated only four candidate directions at one pad-to-pad distance. That was safe but incomplete: a dense real PCB could have a legal nearby placement that simply did not lie on one of those four rays.
+
+v0.9.4 changes candidate enumeration without weakening validation:
+
+```
+confirmed Owner power pad
+→ bounded local occupancy grid
+→ existing board / keepout / measured-BBox hard gates
+→ power + ground loop proxy scoring
+→ deterministic best candidate
+```
+
+The pattern is adapted from KiCad's autoplacer architecture, which separates a placement matrix / free-cell test from cost evaluation. LayoutPilot intentionally does **not** copy KiCad code or perform full-board autoplacement: it searches only a bounded neighborhood appropriate to the semantic `near(owner)` constraint, then reuses the existing physical validator unchanged.
+
+The search step is derived from the configured clearance and clamped to 10–25 mil. The local radius is derived from subject / owner physical scale and clamped to 200–500 mil. When no candidate survives, the planner reports counts for component collision, board boundary, NO_COMPONENTS keepout and invalid geometry. This makes the next engineering decision evidence-based instead of encouraging clearance or geometry rules to be loosened blindly.
+
 ## Curved board boundary safety
 
 Real EasyEDA projects may store BOARD_OUTLINE as fragmented polylines, mixed lines/arcs, rounded rectangles, circles or Bézier-bearing paths.

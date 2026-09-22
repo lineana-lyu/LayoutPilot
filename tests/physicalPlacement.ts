@@ -83,6 +83,31 @@ function component(
 	};
 }
 
+function measuredObstacle(
+	id: string,
+	designator: string,
+	x: number,
+	y: number,
+	halfSize = 8,
+): PhysicalComponentSnapshot {
+	return {
+		id,
+		designator,
+		x,
+		y,
+		rotation: 0,
+		layer: 'TOP',
+		locked: true,
+		bounds: {
+			minX: x - halfSize,
+			minY: y - halfSize,
+			maxX: x + halfSize,
+			maxY: y + halfSize,
+		},
+		pads: [],
+	};
+}
+
 {
 	const subject = component('c1', 'C1', 300, 300, {
 		routed: 0,
@@ -229,10 +254,10 @@ function component(
 	});
 	const blockingKeepout = {
 		points: [
-			{ x: 150, y: 50 },
-			{ x: 300, y: 50 },
-			{ x: 300, y: 150 },
-			{ x: 150, y: 150 },
+			{ x: -1000, y: -1000 },
+			{ x: 1000, y: -1000 },
+			{ x: 1000, y: 1000 },
+			{ x: -1000, y: 1000 },
 		],
 	};
 	const result = planDecouplingPlacement({
@@ -247,6 +272,50 @@ function component(
 
 	assert.equal(result.ready, false);
 	assert.ok(result.reasons.some(reason => reason.includes('keepout')));
+}
+
+{
+	const subject = component('c-local', 'C_LOCAL', 500, 500, {
+		routed: 0,
+		powerPadX: 490,
+		groundPadX: 510,
+	});
+	const owner = component('u-local', 'U_LOCAL', 0, 0, {
+		powerPadX: 30,
+		powerPadY: 0,
+		groundPadX: -10,
+		groundPadY: 0,
+	});
+	const blockers = [
+		measuredObstacle('b-east', 'B_EAST', 84, 0),
+		measuredObstacle('b-north', 'B_NORTH', 40, 44),
+		measuredObstacle('b-south', 'B_SOUTH', 40, -44),
+		measuredObstacle('b-west', 'B_WEST', -4, 0),
+	];
+
+	const result = planDecouplingPlacement({
+		subject,
+		owner,
+		obstacles: [subject, owner, ...blockers],
+		board,
+		componentKeepouts: [],
+		powerNet: '3V3',
+		groundNet: 'GND',
+	});
+
+	assert.equal(
+		result.ready,
+		true,
+		'bounded local search must continue beyond the four nearest blocked placements',
+	);
+	assert.ok(result.plan);
+	assert.ok(
+		Math.hypot(
+			result.plan.to.x - owner.pads[0].x,
+			result.plan.to.y - owner.pads[0].y,
+		) > 44,
+		'selected placement should escape the blocked nearest ring',
+	);
 }
 
 {
