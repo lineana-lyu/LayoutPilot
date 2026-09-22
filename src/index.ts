@@ -9,12 +9,13 @@ import { buildConstraintEvaluation } from './application/constraintEvaluation';
 import { executePlacementTransaction } from './application/placementTransaction';
 import { resolveAmbiguousCoreAssociations } from './domain/coreAssociation';
 import { resolveOwnershipRelations } from './domain/ownershipRelation';
-import { clearHumanOwnershipDecisions, createHumanOwnershipDecision, getHumanOwnershipDecisions, removeHumanOwnershipDecision, upsertHumanOwnershipDecision } from './domain/humanOwnershipDecision';
-import { buildSemanticBoardFingerprint, clearActiveSemanticSnapshot, createSemanticSnapshot, getActiveSemanticSnapshot, semanticSnapshotMatchesBoard, setActiveSemanticSnapshot, type SemanticSnapshotEntry } from './domain/semanticSnapshot';
+import { createHumanOwnershipDecision } from './domain/humanOwnershipDecision';
+import { buildSemanticBoardFingerprint, createSemanticSnapshot, semanticSnapshotMatchesBoard, type SemanticSnapshot, type SemanticSnapshotEntry } from './domain/semanticSnapshot';
 import { placementPlansEquivalent, planDecouplingPlacement, validatePlacementTarget } from './domain/physicalPlacement';
-import { createPlacementCommand, getLastPlacementCommand, markPlacementCommandApplied, markPlacementCommandSuperseded, markPlacementCommandUndone, setLastPlacementCommand } from './domain/placementCommand';
+import { createPlacementCommand, markPlacementCommandApplied, markPlacementCommandSuperseded, markPlacementCommandUndone } from './domain/placementCommand';
 import { filterOwnershipPropertyNames, findOwnershipFields, findOwnershipMemberNames } from './domain/ownershipCapabilityProbe';
 import { collectPhysicalComponents, collectSimpleBoardBoundary, collectSimpleComponentKeepouts, moveComponentAndVerify, readComponentPhysicalState } from './eda/pcbPhysicalAdapter';
+import { clearStoredSemanticSnapshot, getStoredHumanOwnershipDecisions, getStoredLastPlacementCommand, getStoredSemanticSnapshot, removeStoredHumanOwnershipDecision, replaceStoredSemanticSnapshot, setStoredLastPlacementCommand, upsertStoredHumanOwnershipDecision } from './eda/workflowStore';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
 export function activate(status?: 'onStartupFinished', arg?: string): void {
@@ -1036,8 +1037,7 @@ export async function analyzeAmbiguousWithAi(): Promise<void> {
     });
 
     if (!contexts.length) {
-      clearActiveSemanticSnapshot();
-      clearHumanOwnershipDecisions();
+      await clearStoredSemanticSnapshot();
       await eda.sys_Dialog.showInformationMessage(
         '当前 PCB 没有需要 AI 补全语义的歧义器件。',
         'LayoutPilot · AI 批量语义分析',
@@ -1136,8 +1136,7 @@ export async function analyzeAmbiguousWithAi(): Promise<void> {
       boardFingerprint,
       snapshotEntries,
     );
-    clearHumanOwnershipDecisions();
-    setActiveSemanticSnapshot(snapshot);
+    await replaceStoredSemanticSnapshot(snapshot);
     console.log('[LayoutPilot] semantic snapshot frozen', snapshot);
 
     await eda.sys_Dialog.showInformationMessage(
@@ -1199,7 +1198,7 @@ function showSingleSelectDialog(
 
 export async function confirmAmbiguousOwnership(): Promise<void> {
   try {
-    const snapshot = getActiveSemanticSnapshot();
+    const snapshot = getStoredSemanticSnapshot();
     if (!snapshot) {
       await eda.sys_Dialog.showInformationMessage(
         [
@@ -1257,7 +1256,7 @@ export async function confirmAmbiguousOwnership(): Promise<void> {
     let skipped = 0;
 
     for (const entry of eligible) {
-      const existing = getHumanOwnershipDecisions(snapshot.id)
+      const existing = getStoredHumanOwnershipDecisions(snapshot.id)
         .find(item => item.componentId === entry.componentId);
       const candidates = entry.context.ownership.hostDesignators
         .map(designator => nodeByDesignator.get(designator))
@@ -1304,7 +1303,7 @@ export async function confirmAmbiguousOwnership(): Promise<void> {
       }
 
       if (selected === clearValue) {
-        removeHumanOwnershipDecision(snapshot.id, entry.componentId);
+        await removeStoredHumanOwnershipDecision(snapshot.id, entry.componentId);
         if (existing) {
           cleared += 1;
         }
@@ -1320,7 +1319,7 @@ export async function confirmAmbiguousOwnership(): Promise<void> {
         continue;
       }
 
-      upsertHumanOwnershipDecision(
+      await upsertStoredHumanOwnershipDecision(
         createHumanOwnershipDecision({
           snapshotId: snapshot.id,
           componentId: entry.componentId,
@@ -1332,7 +1331,7 @@ export async function confirmAmbiguousOwnership(): Promise<void> {
       confirmed += 1;
     }
 
-    const current = getHumanOwnershipDecisions(snapshot.id);
+    const current = getStoredHumanOwnershipDecisions(snapshot.id);
     const summary = current.length
       ? current
           .map(item => `${item.componentDesignator} → ${item.ownerDesignator}`)
@@ -1369,7 +1368,7 @@ export async function confirmAmbiguousOwnership(): Promise<void> {
 
 interface CurrentConstraintSession {
   analysisState: Awaited<ReturnType<typeof collectAnalysisState>>;
-  snapshot: NonNullable<ReturnType<typeof getActiveSemanticSnapshot>>;
+  snapshot: SemanticSnapshot;
   boardFingerprint: string;
   evaluation: ReturnType<typeof buildConstraintEvaluation>;
 }
@@ -1412,7 +1411,7 @@ async function collectCurrentConstraintSession(): Promise<
     features: analysisState.features,
     grouping: analysisState.grouping,
     semanticMetadata: analysisState.semanticMetadata,
-    humanOwnershipDecisions: getHumanOwnershipDecisions(snapshot.id),
+    humanOwnershipDecisions: getStoredHumanOwnershipDecisions(snapshot.id),
   });
 
   return {
@@ -1595,7 +1594,7 @@ export async function previewLayoutConstraints(): Promise<void> {
 
 export async function applyDemoPlacement(): Promise<void> {
   try {
-    const outstanding = getLastPlacementCommand();
+    const outstanding = getStoredLastPlacementCommand();
     if (outstanding?.status === 'applied') {
       const component = await eda.pcb_PrimitiveComponent.get(outstanding.componentId);
       if (!component) {
@@ -1629,7 +1628,7 @@ export async function applyDemoPlacement(): Promise<void> {
         return;
       }
 
-      setLastPlacementCommand(
+      await setStoredLastPlacementCommand(
         markPlacementCommandSuperseded(outstanding),
       );
       console.warn('[LayoutPilot] previous placement command superseded by later PCB edit', {
@@ -1935,7 +1934,7 @@ export async function applyDemoPlacement(): Promise<void> {
     );
 
     if (!transaction.ok) {
-      setLastPlacementCommand(undefined);
+      await setStoredLastPlacementCommand(undefined);
       await eda.sys_Dialog.showInformationMessage(
         [
           '受控移动没有提交。',
@@ -1959,7 +1958,7 @@ export async function applyDemoPlacement(): Promise<void> {
     }
 
     const applied = markPlacementCommandApplied(command);
-    setLastPlacementCommand(applied);
+    await setStoredLastPlacementCommand(applied);
 
     await eda.sys_Dialog.showInformationMessage(
       [
@@ -1989,7 +1988,7 @@ export async function applyDemoPlacement(): Promise<void> {
 
 export async function undoLastDemoPlacement(): Promise<void> {
   try {
-    const command = getLastPlacementCommand();
+    const command = getStoredLastPlacementCommand();
     if (!command || command.status !== 'applied') {
       await eda.sys_Dialog.showInformationMessage(
         '当前没有可撤销的 LayoutPilot 受控布局动作。',
@@ -2011,7 +2010,7 @@ export async function undoLastDemoPlacement(): Promise<void> {
       !closeEnough(current.x, command.to.x)
       || !closeEnough(current.y, command.to.y)
     ) {
-      setLastPlacementCommand(
+      await setStoredLastPlacementCommand(
         markPlacementCommandSuperseded(command),
       );
       await eda.sys_Dialog.showInformationMessage(
@@ -2052,7 +2051,7 @@ export async function undoLastDemoPlacement(): Promise<void> {
       !closeEnough(subject.x, command.to.x)
       || !closeEnough(subject.y, command.to.y)
     ) {
-      setLastPlacementCommand(markPlacementCommandSuperseded(command));
+      await setStoredLastPlacementCommand(markPlacementCommandSuperseded(command));
       await eda.sys_Dialog.showInformationMessage(
         '确认期间器件位置发生变化，旧 Command 已标记 superseded，本次不再自动 Undo。',
         'LayoutPilot · 撤销被阻止',
@@ -2076,7 +2075,7 @@ export async function undoLastDemoPlacement(): Promise<void> {
     );
     if (routingUnknown || routed) {
       if (routed) {
-        setLastPlacementCommand(markPlacementCommandSuperseded(command));
+        await setStoredLastPlacementCommand(markPlacementCommandSuperseded(command));
       }
       await eda.sys_Dialog.showInformationMessage(
         [
@@ -2183,7 +2182,7 @@ export async function undoLastDemoPlacement(): Promise<void> {
     }
 
     const undone = markPlacementCommandUndone(command);
-    setLastPlacementCommand(undone);
+    await setStoredLastPlacementCommand(undone);
 
     await eda.sys_Dialog.showInformationMessage(
       [
