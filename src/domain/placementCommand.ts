@@ -3,6 +3,7 @@ import type { PlacementPoint } from './physicalPlacement';
 export interface PlacementCommandRecord {
 	id: string;
 	snapshotId: string;
+	boardFingerprint: string;
 	constraintId: string;
 	componentId: string;
 	componentDesignator: string;
@@ -12,8 +13,6 @@ export interface PlacementCommandRecord {
 	verifiedAt?: string;
 	status: 'planned' | 'applied' | 'undone' | 'superseded';
 }
-
-let lastCommand: PlacementCommandRecord | undefined;
 
 function hashText(value: string): string {
 	let hash = 0x811c9dc5;
@@ -26,6 +25,7 @@ function hashText(value: string): string {
 
 export function createPlacementCommand(input: {
 	snapshotId: string;
+	boardFingerprint: string;
 	constraintId: string;
 	componentId: string;
 	componentDesignator: string;
@@ -36,6 +36,7 @@ export function createPlacementCommand(input: {
 	const createdAt = input.createdAt ?? new Date().toISOString();
 	const id = `placement-${hashText([
 		input.snapshotId,
+		input.boardFingerprint,
 		input.constraintId,
 		input.componentId,
 		input.from.x,
@@ -48,6 +49,7 @@ export function createPlacementCommand(input: {
 	return Object.freeze({
 		id,
 		snapshotId: input.snapshotId,
+		boardFingerprint: input.boardFingerprint,
 		constraintId: input.constraintId,
 		componentId: input.componentId,
 		componentDesignator: input.componentDesignator,
@@ -87,12 +89,3 @@ export function markPlacementCommandSuperseded(
 	});
 }
 
-export function setLastPlacementCommand(
-	command: PlacementCommandRecord | undefined,
-): void {
-	lastCommand = command;
-}
-
-export function getLastPlacementCommand(): PlacementCommandRecord | undefined {
-	return lastCommand;
-}
