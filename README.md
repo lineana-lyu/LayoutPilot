@@ -84,6 +84,18 @@ A semantic Constraint marked `preview-eligible` means only that it can enter phy
 
 Pad-distance evidence is loaded only for the currently selected task. Switching between tasks does not rebuild the full Circuit Graph / Semantic Context, which keeps the workbench responsive without caching potentially stale X/Y evidence.
 
+### Board region geometry
+
+v0.9.1 upgrades physical board parsing from a single-polygon assumption to a fail-closed board-region model:
+
+- largest compatible BOARD_OUTLINE contour = outer board boundary;
+- fully contained non-intersecting contours = board holes / cutouts;
+- disjoint outer contours, intersecting loops or nested ambiguous islands remain rejected;
+- placement BBoxes must be inside the outer contour and outside every hole;
+- board holes are included in the physical fingerprint, so changing a cutout invalidates a frozen LayoutPlan.
+
+This fixes real EasyEDA projects that legitimately contain multiple BOARD_OUTLINE polylines without weakening physical safety.
+
 ## Layout Preview MVP
 
 v0.9 introduces a real proposal-before-commit layer.
