@@ -445,6 +445,12 @@ export function boxInsideBoard(
 export interface BoardRegion {
 	outer: BoardPolygon;
 	holes: BoardPolygon[];
+	/**
+	 * Maximum Hausdorff-style geometric deviation introduced while flattening
+	 * native EasyEDA curves into line segments. Placement validation inflates
+	 * the component BBox by this amount before board-boundary checks.
+	 */
+	approximationToleranceMil: number;
 }
 
 export type BoardRegionBuildResult =
@@ -501,6 +507,7 @@ function polygonStrictlyInside(
 
 export function buildBoardRegionFromPolygons(
 	polygons: BoardPolygon[],
+	approximationToleranceMil = 0,
 ): BoardRegionBuildResult {
 	const valid = polygons.filter(polygon => polygon.points.length >= 3);
 	if (!valid.length) {
@@ -547,6 +554,7 @@ export function buildBoardRegionFromPolygons(
 		region: {
 			outer,
 			holes,
+			approximationToleranceMil: Math.max(0, approximationToleranceMil),
 		},
 	};
 }
@@ -726,8 +734,18 @@ export function boxInsideBoardRegion(
 	box: Box,
 	region: BoardRegion,
 ): boolean {
-	if (!boxInsideBoard(box, region.outer)) {
+	const margin = Math.max(0, region.approximationToleranceMil);
+	const conservativeBox = {
+		minX: box.minX - margin,
+		minY: box.minY - margin,
+		maxX: box.maxX + margin,
+		maxY: box.maxY + margin,
+	};
+
+	if (!boxInsideBoard(conservativeBox, region.outer)) {
 		return false;
 	}
-	return region.holes.every(hole => !boxIntersectsPolygon(box, hole));
+	return region.holes.every(
+		hole => !boxIntersectsPolygon(conservativeBox, hole),
+	);
 }
