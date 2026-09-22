@@ -1,36 +1,14 @@
 import extensionConfig from '../../extension.json' with { type: 'json' };
 
-const LEGACY_WORKBENCH_IDS = [
-	'layoutpilot-workbench',
-];
-
 function currentWorkbenchId(): string {
 	const version = String(extensionConfig.version ?? 'unknown')
 		.replace(/[^a-zA-Z0-9_-]/g, '-');
 	return `layoutpilot-workbench-${version}`;
 }
 
-async function retireLegacyWorkbenchWindows(
-	currentId: string,
-): Promise<void> {
-	for (const id of LEGACY_WORKBENCH_IDS) {
-		if (id === currentId) continue;
-		try {
-			await eda.sys_IFrame.closeIFrame(id);
-		}
-		catch (error) {
-			console.warn(
-				`[LayoutPilot] Unable to retire legacy iframe ${id}`,
-				error,
-			);
-		}
-	}
-}
-
 export async function openLayoutPilotWorkbench(): Promise<void> {
 	const workbenchId = currentWorkbenchId();
 
-	await retireLegacyWorkbenchWindows(workbenchId);
 
 	try {
 		const shown = await eda.sys_IFrame.showIFrame(workbenchId);
@@ -42,6 +20,16 @@ export async function openLayoutPilotWorkbench(): Promise<void> {
 		console.warn(
 			'[LayoutPilot] showIFrame failed; attempting a fresh open',
 			{ workbenchId, error },
+		);
+	}
+
+	try {
+		await eda.sys_IFrame.closeIFrame();
+	}
+	catch (error) {
+		console.warn(
+			'[LayoutPilot] Unable to retire stale extension iframes before open',
+			error,
 		);
 	}
 
