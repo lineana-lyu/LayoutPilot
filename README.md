@@ -84,6 +84,19 @@ A semantic Constraint marked `preview-eligible` means only that it can enter phy
 
 Pad-distance evidence is loaded only for the currently selected task. Switching between tasks does not rebuild the full Circuit Graph / Semantic Context, which keeps the workbench responsive without caching potentially stale X/Y evidence.
 
+### Curved board geometry
+
+v0.9.3 extends BoardRegion from straight-segment topology to bounded curved geometry:
+
+- EasyEDA `ARC` / `CARC`, cubic Bézier `C`, rounded/rotated `R`, and `CIRCLE` polygon sources are parsed;
+- standalone `pcb_PrimitiveArc` BOARD_OUTLINE primitives feed the same contour reconstruction pipeline;
+- curves are adaptively tessellated to a maximum 0.05 mil chord/sagitta-style approximation budget instead of a fixed segment count;
+- the approximation budget is persisted on BoardRegion and included in the physical fingerprint;
+- placement BBoxes are conservatively inflated by that budget before outer-boundary / hole checks, so approximation error can only make placement more conservative;
+- endpoint clustering and topology-degree validation remain in force after tessellation.
+
+The parser design was informed by EasyEDA's own open-source extension implementations, especially `easyeda/eext-export-design-report` and `easyeda/eext-kirouting-integration`, while LayoutPilot adds a stricter placement-safety error budget rather than copying fixed display tessellation.
+
 ### Board region geometry
 
 v0.9.2 upgrades physical board parsing from a single-polygon assumption to a fail-closed board-region model:
