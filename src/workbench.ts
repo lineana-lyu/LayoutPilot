@@ -120,7 +120,6 @@ function setBusy(value: boolean): void {
 	busy = value;
 	loading.classList.toggle('show', value);
 	analyzeBtn.disabled = value;
-	previewPlanBtn.disabled = value;
 	refreshBtn.disabled = value;
 	sizeCompactBtn.disabled = value;
 	sizeStandardBtn.disabled = value;
