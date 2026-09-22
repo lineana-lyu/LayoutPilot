@@ -7,11 +7,13 @@ import {
 	removeWorkflowHumanDecision,
 	replaceWorkflowSemanticSnapshot,
 	setWorkflowPlacementCommand,
+	setWorkflowEvidenceReviewSession,
 	upsertWorkflowHumanDecision,
 } from '../src/application/workflowState';
 import { createHumanOwnershipDecision } from '../src/domain/humanOwnershipDecision';
 import { createPlacementCommand } from '../src/domain/placementCommand';
 import { createSemanticSnapshot } from '../src/domain/semanticSnapshot';
+import { createEvidenceReviewSession } from '../src/domain/evidenceReviewSession';
 
 const t0 = '2026-09-22T01:00:00.000Z';
 const snapshotA = createSemanticSnapshot('sem-v1-board-a', [], t0);
@@ -81,6 +83,37 @@ state = setWorkflowPlacementCommand(
 );
 assert.equal(state.lastPlacementCommand?.boardFingerprint, 'sem-v1-board-a');
 
+const review = createEvidenceReviewSession(
+	{
+		snapshotId: snapshotA.id,
+		boardFingerprint: snapshotA.boardFingerprint,
+		subjectId: 'c14',
+		subjectDesignator: 'C14',
+		ownerId: 'u8',
+		ownerDesignator: 'U8',
+		railLabel: '+3.3V',
+		documentTabId: 'pcb-tab-1',
+		originalSelectionIds: ['r1', 'u2'],
+		powerEvidence: {
+			netName: '+3.3V',
+			subjectPadNumber: '1',
+			ownerPadNumber: '8',
+			subjectX: 100,
+			subjectY: 100,
+			ownerX: 200,
+			ownerY: 100,
+			distanceMil: 100,
+		},
+	},
+	'2026-09-22T01:04:30.000Z',
+);
+state = setWorkflowEvidenceReviewSession(
+	state,
+	review,
+	'2026-09-22T01:04:30.000Z',
+);
+assert.equal(state.evidenceReviewSession?.ownerDesignator, 'U8');
+
 const roundTrip = normalizeWorkflowState(
 	JSON.parse(JSON.stringify(state)),
 	'2026-09-22T01:05:00.000Z',
@@ -88,6 +121,8 @@ const roundTrip = normalizeWorkflowState(
 assert.equal(roundTrip.semanticSnapshot?.id, snapshotA.id);
 assert.equal(roundTrip.humanOwnershipDecisions[0].ownerDesignator, 'U8');
 assert.equal(roundTrip.lastPlacementCommand?.id, command.id);
+assert.equal(roundTrip.evidenceReviewSession?.subjectDesignator, 'C14');
+assert.deepEqual(roundTrip.evidenceReviewSession?.originalSelectionIds, ['r1', 'u2']);
 assert.equal(Object.isFrozen(roundTrip), true);
 assert.equal(Object.isFrozen(roundTrip.semanticSnapshot), true);
 
@@ -110,6 +145,11 @@ state = replaceWorkflowSemanticSnapshot(
 	'2026-09-22T01:08:00.000Z',
 );
 assert.equal(state.semanticSnapshot?.id, snapshotB.id);
+assert.equal(
+	state.evidenceReviewSession,
+	undefined,
+	'new Semantic Snapshot must retire old evidence review session',
+);
 assert.equal(
 	state.humanOwnershipDecisions.length,
 	0,
