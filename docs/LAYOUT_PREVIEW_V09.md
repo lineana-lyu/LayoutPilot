@@ -126,6 +126,22 @@ The pattern is adapted from KiCad's autoplacer architecture, which separates a p
 
 The search step is derived from the configured clearance and clamped to 10–25 mil. The local radius is derived from subject / owner physical scale and clamped to 200–500 mil. When no candidate survives, the planner reports counts for component collision, board boundary, NO_COMPONENTS keepout and invalid geometry. This makes the next engineering decision evidence-based instead of encouraging clearance or geometry rules to be loosened blindly.
 
+## v0.9.5 preview acceptance boundary
+
+Accepting a Ghost Preview is a metadata transition, not a physical PCB preflight and not a PCB mutation.
+
+```
+Preview
+→ Accept / Reject metadata
+→ return to Workbench
+→ explicit physical preflight
+→ Apply
+```
+
+The preview bar therefore does not re-read the whole PCB when the user presses **Accept**. Fresh physical-state validation remains mandatory immediately before Apply, where it protects the actual mutation boundary. This follows the editor pattern used by projects such as Excalidraw: transient preview interaction is kept separate from committed document changes.
+
+Physical fingerprints are also canonicalized for closed board / keepout rings. Equivalent geometry now hashes identically when the runtime returns the same polygon with a different starting vertex or reversed ring orientation. This prevents representation-order noise from being misclassified as a PCB edit while preserving stale-plan detection for real component, pad, routing, boundary or keepout changes.
+
 ## Curved board boundary safety
 
 Real EasyEDA projects may store BOARD_OUTLINE as fragmented polylines, mixed lines/arcs, rounded rectangles, circles or Bézier-bearing paths.

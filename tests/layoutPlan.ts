@@ -58,6 +58,52 @@ const fingerprintB = buildPhysicalBoardFingerprint({
 	board,
 	componentKeepouts: [],
 });
+
+const rotatedBoard = {
+	outer: {
+		points: [
+			{ x: 500, y: 0 },
+			{ x: 500, y: 500 },
+			{ x: 0, y: 500 },
+			{ x: 0, y: 0 },
+		],
+	},
+	holes: [],
+	approximationToleranceMil: 0,
+};
+
+const reversedBoard = {
+	outer: {
+		points: [
+			{ x: 0, y: 0 },
+			{ x: 0, y: 500 },
+			{ x: 500, y: 500 },
+			{ x: 500, y: 0 },
+		],
+	},
+	holes: [],
+	approximationToleranceMil: 0,
+};
+
+assert.equal(
+	fingerprintA,
+	buildPhysicalBoardFingerprint({
+		components,
+		board: rotatedBoard,
+		componentKeepouts: [],
+	}),
+	'equivalent board rings with a different start vertex must keep the same physical fingerprint',
+);
+
+assert.equal(
+	fingerprintA,
+	buildPhysicalBoardFingerprint({
+		components,
+		board: reversedBoard,
+		componentKeepouts: [],
+	}),
+	'equivalent board rings with reversed orientation must keep the same physical fingerprint',
+);
 assert.notEqual(
 	fingerprintA,
 	fingerprintB,
@@ -104,6 +150,16 @@ assert.equal(isLayoutPlan(JSON.parse(JSON.stringify(plan))), true);
 const accepted = markLayoutPlanAccepted(plan);
 assert.equal(accepted.status, 'accepted');
 assert.equal(plan.status, 'preview', 'LayoutPlan status update must be immutable');
+assert.equal(
+	accepted.physicalFingerprint,
+	plan.physicalFingerprint,
+	'accepting a preview must be a metadata-only state transition',
+);
+assert.deepEqual(
+	accepted.items,
+	plan.items,
+	'accepting a preview must not alter the frozen placement proposal',
+);
 
 assert.equal(
 	layoutPlanMatchesCurrentState(plan, {

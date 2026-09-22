@@ -2,7 +2,6 @@ import {
 	markLayoutPlanAccepted,
 	markLayoutPlanRejected,
 } from './domain/layoutPlan';
-import { validateStoredLayoutPlanCurrent } from './eda/layoutPlanRuntime';
 import {
 	getStoredLayoutPlan,
 	setStoredLayoutPlan,
@@ -82,12 +81,12 @@ acceptBtn.addEventListener('click', async () => {
 	setBusy(true);
 	status.textContent = '';
 	try {
-		const validation = await validateStoredLayoutPlanCurrent();
-		if (!validation.ok) {
-			throw new Error(validation.message);
+		const plan = getStoredLayoutPlan();
+		if (!plan) {
+			throw new Error('LayoutPlan 已不存在，请返回工作台重新生成。');
 		}
 
-		await setStoredLayoutPlan(markLayoutPlanAccepted(validation.plan));
+		await setStoredLayoutPlan(markLayoutPlanAccepted(plan));
 		await closeLayoutPreviewBarAndReturn();
 	}
 	catch (error) {
