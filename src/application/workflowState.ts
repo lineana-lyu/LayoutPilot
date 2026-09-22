@@ -367,6 +367,15 @@ export function archiveWorkflowReferencePlan(
 	});
 }
 
+export function setAndArchiveWorkflowReferencePlan(
+	state: LayoutPilotWorkflowState,
+	plan: LayoutPlan,
+	updatedAt = new Date().toISOString(),
+): LayoutPilotWorkflowState {
+	const withActivePlan = setWorkflowLayoutPlan(state, plan, updatedAt);
+	return archiveWorkflowReferencePlan(withActivePlan, plan, updatedAt);
+}
+
 export function setWorkflowLayoutPreviewSession(
 	state: LayoutPilotWorkflowState,
 	session: LayoutPreviewSession | undefined,
