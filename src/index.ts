@@ -1696,7 +1696,7 @@ export async function previewLayoutConstraints(): Promise<void> {
         '',
         ...displayRows,
         '',
-        '安全边界：'
+        '安全边界：',
         '• Preview 与 Apply 消费同一个 Constraint Evaluation，不复制两套业务逻辑；',
         '• Constraint Preview 不重新调用 AI；',
         '• 人工 Owner 选择作为 ExplicitOwnershipHint 单独叠加；',
