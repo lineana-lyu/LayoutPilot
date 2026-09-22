@@ -392,7 +392,7 @@ function renderConstraintArea(model: RuntimeModel): string {
 				<div class="block-title">布局约束</div>
 				<div class="constraint-summary">
 					<span class="badge ok">${proposals.length} 条已生成</span>
-					<span class="badge info">${evaluation.merged.previewEligibleCount} 条可进入执行</span>
+					<span class="badge info">${evaluation.merged.previewEligibleCount} 条可进入物理预检</span>
 				</div>
 				${proposals.map(({ proposal, humanDecision }) => `
 					<div class="constraint-card">
@@ -400,7 +400,7 @@ function renderConstraintArea(model: RuntimeModel): string {
 						<div class="constraint-meta">
 							${escapeHtml(layoutConstraintTypeZh(proposal.type))} ·
 							${escapeHtml(semanticConfidenceZh(proposal.confidence))} ·
-							${proposal.execution === 'preview-eligible' ? '可进入受控执行' : '仅复核'}
+							${proposal.execution === 'preview-eligible' ? '可进入物理预检' : '仅复核'}
 							${humanDecision ? ` · Owner 来源：人工确认` : ''}
 						</div>
 					</div>
@@ -422,7 +422,7 @@ function renderConstraintArea(model: RuntimeModel): string {
 		<div class="constraint-area">
 			<div class="block-title">布局约束</div>
 			<div class="blocked">
-				<strong>当前 0 条可执行约束</strong><br/>
+				<strong>当前 0 条可进入物理预检的约束</strong><br/>
 				${pending ? `${pending} 个去耦电容只有 rail-domain 证据，还没有唯一 Owner。` : '现有证据尚未满足 Constraint Policy。'}
 				${sharedSignal ? `<br/>${sharedSignal} 个去耦器件属于 shared-signal / 多 Host，系统不会强制归属。` : ''}
 				${unsupported ? `<br/>${unsupported} 个语义角色尚未建立可执行布局策略。` : ''}
@@ -457,7 +457,7 @@ function renderPlanPanel(model?: RuntimeModel): void {
 			</div>
 			<div class="plan-stat">
 				<strong>${model.previewEligibleCount}</strong>
-				<span>可进入执行</span>
+				<span>可进入物理预检</span>
 			</div>
 		</div>
 		${renderConstraintArea(model)}
@@ -674,7 +674,7 @@ async function refresh(): Promise<void> {
 			el<HTMLDivElement>('stageOwnerMeta').textContent = '等待重新分析';
 			el<HTMLDivElement>('stageConstraintMeta').textContent = '不可复用';
 			el<HTMLDivElement>('stageExecuteMeta').textContent = '执行已阻止';
-			planPanel.innerHTML = '<div class="blocked"><strong>Semantic Snapshot 已过期</strong><br/>当前 PCB 语义发生变化，旧约束不再展示为可执行计划。</div>';
+			planPanel.innerHTML = '<div class="blocked"><strong>Semantic Snapshot 已过期</strong><br/>当前 PCB 语义发生变化，旧约束不能进入物理预检。</div>';
 			el<HTMLDivElement>('metricPending').textContent = '—';
 			el<HTMLDivElement>('metricConstraints').textContent = '—';
 			el<HTMLDivElement>('taskCount').textContent = 'Snapshot 已过期';
@@ -697,7 +697,7 @@ async function refresh(): Promise<void> {
 		const confirmed = model.tasks.length - pending;
 		el<HTMLDivElement>('stageAnalyzeMeta').textContent = `${workflow.semanticSnapshot.entries.length} 个语义器件`;
 		el<HTMLDivElement>('stageOwnerMeta').textContent = `${confirmed}/${model.tasks.length} 已确认`;
-		el<HTMLDivElement>('stageConstraintMeta').textContent = `${model.constraintCount} 条 · ${model.previewEligibleCount} 可执行`;
+		el<HTMLDivElement>('stageConstraintMeta').textContent = `${model.constraintCount} 条 · ${model.previewEligibleCount} 可预检`;
 		el<HTMLDivElement>('metricPending').textContent = String(pending);
 		el<HTMLDivElement>('metricConstraints').textContent = String(model.constraintCount);
 		renderTasks(model.tasks, model);
@@ -717,8 +717,8 @@ async function refresh(): Promise<void> {
 			: command?.status === 'undone'
 				? `${command.componentDesignator} 已撤销`
 				: model.previewEligibleCount > 0
-					? `${model.previewEligibleCount} 条建议待执行`
-					: '尚无可执行建议';
+					? `${model.previewEligibleCount} 条建议待预检`
+					: '尚无可预检建议';
 		setStage(
 			'stageExecute',
 			command?.status === 'applied'
