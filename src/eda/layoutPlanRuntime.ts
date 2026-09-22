@@ -156,17 +156,9 @@ export type ValidateStoredLayoutPlanResult =
 		message: string;
 	};
 
-export async function validateStoredLayoutPlanCurrent(): Promise<
-	ValidateStoredLayoutPlanResult
-> {
-	const plan = getStoredLayoutPlan();
-	if (!plan) {
-		return {
-			ok: false,
-			message: '当前没有 LayoutPlan。请先生成布局预览。',
-		};
-	}
-
+export async function validateLayoutPlanCurrent(
+	plan: LayoutPlan,
+): Promise<ValidateStoredLayoutPlanResult> {
 	const session = await collectCurrentConstraintSession();
 	if (!session.ok) {
 		return {
@@ -228,4 +220,17 @@ export async function validateStoredLayoutPlanCurrent(): Promise<
 		plan,
 		physicalFingerprint,
 	};
+}
+
+export async function validateStoredLayoutPlanCurrent(): Promise<
+	ValidateStoredLayoutPlanResult
+> {
+	const plan = getStoredLayoutPlan();
+	if (!plan) {
+		return {
+			ok: false,
+			message: '当前没有 LayoutPlan。请先生成布局预览。',
+		};
+	}
+	return validateLayoutPlanCurrent(plan);
 }
