@@ -45,7 +45,8 @@ A placement action is blocked when any of the following is true:
 - the capacitor has no ground pad;
 - the owner has no pad on the shared power net;
 - pad geometry is missing or invalid;
-- no collision-free candidate can be found using the current conservative approximation;
+- EasyEDA cannot provide a valid measured BBox for the subject or a relevant obstacle;
+- no collision-free candidate can be found from the measured component bounds;
 - the board boundary cannot be parsed as one simple reliable outline;
 - the candidate would leave the board boundary;
 - a `NO_COMPONENTS` keepout cannot be parsed reliably or the candidate intersects it;
@@ -62,11 +63,11 @@ For a decoupling capacitor:
 3. search first in the outward direction from the owner body, then orthogonal alternatives;
 4. preserve the capacitor's current rotation;
 5. translate the capacitor so its power pad is adjacent to the owner power pad;
-6. maintain a conservative 20 mil pad-envelope clearance in the MVP;
-7. reject candidates that overlap another component's pad-derived envelope, leave the verified board outline, or intersect a parseable `NO_COMPONENTS` keepout;
+6. maintain a conservative 20 mil clearance around the subject's measured component BBox in the MVP;
+7. reject candidates that overlap another component's EasyEDA-measured BBox, leave the verified board outline, or intersect a parseable `NO_COMPONENTS` keepout;
 8. rank remaining candidates by `power-pad distance + nearest ground-return distance`, with a small relocation penalty.
 
-The component envelope is estimated from member pad geometry. This is intentionally conservative but incomplete.
+Pad geometry and component occupancy are deliberately separate concepts: pads define electrical anchors; `pcb_Primitive.getPrimitivesBBox()` defines the current runtime occupancy envelope used by the collision gate.
 
 ## Why routed components are blocked
 
@@ -102,11 +103,11 @@ This is not a database transaction, but it provides the same product property: a
 
 A successful move stores an auditable `PlacementCommandRecord` with the Semantic Snapshot ID, Constraint ID, component identity, before/after coordinates, timestamps, and command status.
 
-Undo first checks whether the component is still at the command's recorded after-position. If the engineer manually moved it later, LayoutPilot refuses to overwrite that newer edit. This is an optimistic-concurrency guard.
+Undo first checks whether the component is still at the command's recorded after-position. It then re-reads routing state, measured BBoxes, board outline, keepouts and DRC. If the component was routed after placement, automatic Undo is retired as `superseded`; if the historical target is no longer safe, Undo is blocked. A permitted Undo runs through the same placement transaction so a failed inverse DRC rolls back to the LayoutPilot target position. This is both an optimistic-concurrency guard and a guarded inverse transaction.
 
 ## Current physical limitations
 
-This is a controlled execution PoC, not a production placement engine. The current planner does **not** yet prove courtyard/assembly-body clearance, silkscreen or 3D body collision, board-edge/mechanical keepout clearance independently of DRC, thermal constraints, high-speed return-path quality, via placement, differential-pair or length-matching preservation, full multi-component optimization, or routed-board re-placement.
+This is a controlled execution PoC, not a production placement engine. Runtime BBox improves 2D occupancy fidelity, but the current planner does **not** yet prove manufacturer courtyard rules, 3D body/height collision, all mechanical-rule semantics, thermal constraints, high-speed return-path quality, via placement, differential-pair or length-matching preservation, full multi-component optimization, or routed-board re-placement.
 
 For interview/demo use, the intended board is a clean, unrouted or partially unrouted test PCB with a valid DRC baseline.
 
