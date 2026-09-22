@@ -110,7 +110,7 @@ export async function generateCurrentLayoutPlan(
 
 	const physicalFingerprint = buildPhysicalBoardFingerprint({
 		components: physical,
-		board: board.polygon,
+		board: board.region,
 		componentKeepouts: keepouts.polygons,
 	});
 
@@ -120,7 +120,7 @@ export async function generateCurrentLayoutPlan(
 		physicalFingerprint,
 		candidates,
 		physicalComponents: physical,
-		board: board.polygon,
+		board: board.region,
 		componentKeepouts: keepouts.polygons,
 		maxItems,
 	});
@@ -195,7 +195,7 @@ export async function validateStoredLayoutPlanCurrent(): Promise<
 
 	const physicalFingerprint = buildPhysicalBoardFingerprint({
 		components: physical,
-		board: board.polygon,
+		board: board.region,
 		componentKeepouts: keepouts.polygons,
 	});
 
