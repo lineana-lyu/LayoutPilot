@@ -3,6 +3,7 @@ import type { PlacementCommandRecord } from '../domain/placementCommand';
 import { isEvidenceReviewSession, type EvidenceReviewSession } from '../domain/evidenceReviewSession';
 import type { SemanticSnapshot } from '../domain/semanticSnapshot';
 import { isLayoutPlan, type LayoutPlan } from '../domain/layoutPlan';
+import { isLayoutPreviewSession, type LayoutPreviewSession } from '../domain/layoutPreviewSession';
 
 export interface LayoutPilotWorkflowState {
 	schemaVersion: 1;
@@ -10,6 +11,7 @@ export interface LayoutPilotWorkflowState {
 	humanOwnershipDecisions: HumanOwnershipDecision[];
 	lastPlacementCommand?: PlacementCommandRecord;
 	layoutPlan?: LayoutPlan;
+	layoutPreviewSession?: LayoutPreviewSession;
 	evidenceReviewSession?: EvidenceReviewSession;
 	updatedAt: string;
 }
@@ -107,6 +109,15 @@ export function normalizeWorkflowState(
 		&& rawLayoutPlan.semanticFingerprint === semanticSnapshot.boardFingerprint
 			? rawLayoutPlan
 			: undefined;
+	const rawLayoutPreviewSession = isLayoutPreviewSession(value.layoutPreviewSession)
+		? value.layoutPreviewSession
+		: undefined;
+	const layoutPreviewSession =
+		layoutPlan
+		&& rawLayoutPreviewSession?.planId === layoutPlan.id
+			? rawLayoutPreviewSession
+			: undefined;
+
 	const evidenceReviewSession = isEvidenceReviewSession(value.evidenceReviewSession)
 		? value.evidenceReviewSession
 		: undefined;
@@ -129,6 +140,7 @@ export function normalizeWorkflowState(
 		humanOwnershipDecisions: validDecisions,
 		lastPlacementCommand,
 		layoutPlan,
+		layoutPreviewSession,
 		evidenceReviewSession: validEvidenceReviewSession,
 		updatedAt:
 			typeof value.updatedAt === 'string'
@@ -147,6 +159,7 @@ export function replaceWorkflowSemanticSnapshot(
 		semanticSnapshot: snapshot,
 		humanOwnershipDecisions: [],
 		layoutPlan: undefined,
+		layoutPreviewSession: undefined,
 		evidenceReviewSession: undefined,
 		updatedAt,
 	});
@@ -160,6 +173,7 @@ export function clearWorkflowSemanticSnapshot(
 		semanticSnapshot: _semanticSnapshot,
 		humanOwnershipDecisions: _humanOwnershipDecisions,
 		layoutPlan: _layoutPlan,
+		layoutPreviewSession: _layoutPreviewSession,
 		evidenceReviewSession: _evidenceReviewSession,
 		...rest
 	} = state;
@@ -194,6 +208,7 @@ export function upsertWorkflowHumanDecision(
 		...state,
 		humanOwnershipDecisions,
 		layoutPlan: undefined,
+		layoutPreviewSession: undefined,
 		updatedAt,
 	});
 }
@@ -207,6 +222,7 @@ export function removeWorkflowHumanDecision(
 	return freezeDeep({
 		...state,
 		layoutPlan: undefined,
+		layoutPreviewSession: undefined,
 		humanOwnershipDecisions: state.humanOwnershipDecisions.filter(item =>
 			!(
 				item.snapshotId === snapshotId
@@ -282,9 +298,39 @@ export function setWorkflowLayoutPlan(
 
 	if (plan) {
 		next.layoutPlan = plan;
+		next.layoutPreviewSession = undefined;
 	}
 	else {
 		delete next.layoutPlan;
+		delete next.layoutPreviewSession;
+	}
+
+	return freezeDeep(next);
+}
+
+
+export function setWorkflowLayoutPreviewSession(
+	state: LayoutPilotWorkflowState,
+	session: LayoutPreviewSession | undefined,
+	updatedAt = new Date().toISOString(),
+): LayoutPilotWorkflowState {
+	if (
+		session
+		&& (!state.layoutPlan || session.planId !== state.layoutPlan.id)
+	) {
+		throw new Error('Layout preview session does not belong to the active LayoutPlan.');
+	}
+
+	const next = {
+		...state,
+		updatedAt,
+	} as LayoutPilotWorkflowState;
+
+	if (session) {
+		next.layoutPreviewSession = session;
+	}
+	else {
+		delete next.layoutPreviewSession;
 	}
 
 	return freezeDeep(next);
