@@ -94,12 +94,15 @@ async function retirePreviouslyActiveWorkbench(nextId: string): Promise<void> {
 
 async function openWorkbenchFrame(
 	mode: LayoutPilotWorkbenchSizeMode,
+	options?: { retirePrevious?: boolean },
 ): Promise<boolean> {
 	const id = workbenchId(mode);
 	const viewport = eda.sys_Window.getViewportSize();
 	const size = dimensionsFor(mode, viewport);
 
-	await retirePreviouslyActiveWorkbench(id);
+	if (options?.retirePrevious !== false) {
+		await retirePreviouslyActiveWorkbench(id);
+	}
 
 	try {
 		const shown = await eda.sys_IFrame.showIFrame(id);
@@ -177,7 +180,7 @@ export async function resizeLayoutPilotWorkbench(
 	const previousId = workbenchId(currentMode);
 	await setLayoutPilotWorkbenchSizeMode(mode);
 
-	const opened = await openWorkbenchFrame(mode);
+	const opened = await openWorkbenchFrame(mode, { retirePrevious: false });
 	if (!opened) {
 		await setLayoutPilotWorkbenchSizeMode(currentMode);
 		throw new Error(`无法切换到“${mode}”窗口规格。`);
