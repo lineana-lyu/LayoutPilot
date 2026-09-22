@@ -1,4 +1,4 @@
-# v0.8.4 EasyEDA Runtime Smoke Test
+# v0.8.5 EasyEDA Runtime Smoke Test
 
 This checklist validates the real EasyEDA Pro runtime path. It is intentionally separate from automated tests.
 
@@ -16,16 +16,41 @@ Use a disposable PCB with:
 - components whose runtime BBoxes can be read successfully;
 - no intentional overlap around the test area.
 
-For the first positive-path run, avoid curved board edges and complex keepout geometry. Those cases are expected to fail closed in v0.8.4.
+For the first positive-path run, avoid curved board edges and complex keepout geometry. Those cases are expected to fail closed in v0.8.5.
 
 ## Pre-flight
 
-1. Install the package built from `feat/v0.8.4-interview-mvp`.
+1. Install the package built from `feat/v0.8.5-interview-mvp`.
 2. Open the disposable PCB.
 3. Run EasyEDA DRC manually and confirm it passes.
 4. Record the test capacitor's X/Y position.
 5. Confirm the test capacitor is not locked and has no routed track/fill contact.
 6. Start the configured local AI Gateway.
+
+## UI/runtime compatibility checks
+
+### Workbench native UI / sizing
+
+1. Open the Workbench with the default **标准** size.
+2. Switch to **紧凑**, **宽屏**, then back to **标准**.
+
+Expected:
+
+- the newly sized workbench opens before the previous iframe is retired;
+- WorkflowState / selected task / Owner decisions remain intact;
+- only one workbench remains visible after each switch;
+- stage 2 is the only active stage while unresolved Owners remain;
+- stage 3 stays neutral rather than showing a warning/active color merely because constraints are not ready.
+
+### PCB selection API compatibility
+
+With one or more PCB primitives selected before evidence review, click **定位核对**.
+
+Expected:
+
+- no `getSelectedPrimitives_PrimitiveId is not a function` runtime error;
+- LayoutPilot uses the available runtime selection API;
+- returning from evidence review restores the previous PCB selection when the runtime exposes selection readback.
 
 ## Positive path
 
@@ -146,7 +171,7 @@ Expected: blocked before mutation.
 
 Route at least one test-capacitor pad and attempt Apply.
 
-Expected: blocked because v0.8.4 does not reposition routed components.
+Expected: blocked because v0.8.5 does not reposition routed components.
 
 ### Dirty DRC baseline
 
