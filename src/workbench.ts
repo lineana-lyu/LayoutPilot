@@ -216,25 +216,42 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 								entry.context.ownership.railNets,
 							)
 							: undefined;
-						const evidenceLines = entry.context.connectedNets
+						const connectedToCandidate = entry.context.connectedNets
 							.filter(net =>
 								net.peerEndpoints.some(
 									peer => peer.designator === node.designator,
 								),
-							)
+							);
+						const evidenceLines = connectedToCandidate
+							.sort((a, b) => {
+								const aRail = entry.context.ownership.railNets.includes(a.netName)
+									? 0
+									: a.classification === 'global-ground' ? 1 : 2;
+								const bRail = entry.context.ownership.railNets.includes(b.netName)
+									? 0
+									: b.classification === 'global-ground' ? 1 : 2;
+								return aRail - bRail || a.netName.localeCompare(b.netName);
+							})
 							.map(net => {
 								const selfPads = net.selfPads.length
 									? net.selfPads
+										.slice(0, 2)
 										.map(pad => `${entry.designator}.${pad}`)
 										.join('/')
 									: entry.designator;
-								const peerPads = net.peerEndpoints
-									.filter(peer => peer.designator === node.designator)
-									.map(peer => `${peer.designator}.${peer.padNumber}`)
-									.join('/');
+								const peerEndpoints = net.peerEndpoints
+									.filter(peer => peer.designator === node.designator);
+								const visiblePeers = peerEndpoints
+									.slice(0, 3)
+									.map(peer => `${peer.designator}.${peer.padNumber}`);
+								const hiddenCount = Math.max(0, peerEndpoints.length - visiblePeers.length);
+								const peerPads = [
+									...visiblePeers,
+									hiddenCount ? `+${hiddenCount} pads` : '',
+								].filter(Boolean).join('/');
 								return `${net.netName}：${selfPads} ↔ ${peerPads || node.designator}`;
 							})
-							.slice(0, 4);
+							.slice(0, 3);
 
 						return {
 							id: node.id,
@@ -473,7 +490,7 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 			</div>
 			<div class="block">
 				<div class="block-title">选择实际服务的 Host</div>
-				<div class="note">候选来自确定性拓扑，不是 AI 推荐。${escapeHtml(task.ownershipExplanation)} 只有你能确认实际服务关系时才补充 Owner；不确定就保持待确认。</div>
+				<div class="note">候选来自确定性拓扑，不是 AI 推荐。${escapeHtml(task.ownershipExplanation)} 卡片按最近共享电源 Pad 的直线几何距离排列，仅用于核对顺序，不代表 Owner 推荐；该距离也不是走线长度或 SI/PI 指标。只有你能确认实际服务关系时才补充 Owner。</div>
 				<div class="host-grid">
 					${task.candidates.map(candidate => {
 						const selected = candidate.id === task.selectedOwnerId;
@@ -498,7 +515,7 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 										${escapeHtml(task.designator)}.${escapeHtml(distance.subjectPadNumber)}
 										↔
 										${escapeHtml(candidate.designator)}.${escapeHtml(distance.ownerPadNumber)}
-										· ${distance.distanceMil.toFixed(1)} mil
+										· ${distance.distanceMil.toFixed(1)} mil 直线距离
 									</div>` : ''}
 								<div class="host-evidence">
 									<strong>拓扑证据</strong>
