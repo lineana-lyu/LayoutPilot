@@ -175,7 +175,9 @@ export async function validateStoredLayoutPlanCurrent(): Promise<
 		};
 	}
 
-	const physical = await collectPhysicalComponents();
+	const physical = await collectPhysicalComponents(
+		plan.items.map(item => item.subjectId),
+	);
 	const board = await collectSimpleBoardBoundary();
 	if (!board.ok) {
 		return {
