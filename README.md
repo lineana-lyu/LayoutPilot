@@ -44,7 +44,7 @@ Undo with concurrent-edit protection
 
 ## Visual Workbench
 
-The primary product workflow now runs in a persistent EasyEDA `sys_IFrame` workbench rather than a chain of modal dialogs.
+The primary product workflow now runs in a persistent EasyEDA `sys_IFrame` workbench rather than a chain of modal dialogs. Workbench windows are version-bound and managed as a single extension-owned iframe instance so hot upgrades cannot reuse a stale window registration.
 
 The workbench keeps four stages visible at once and uses a responsive three-pane decision layout on wide screens: task queue, component/topology evidence, and Constraint Plan.
 
