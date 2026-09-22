@@ -405,6 +405,7 @@ function measuredObstacle(
 		subjectPowerPadNumber: '1',
 		ownerGroundPadNumber: '2',
 		subjectGroundPadNumber: '2',
+		currentLoopProxyMil: 120,
 		estimatedLoopProxyMil: 80,
 		from: { x: 100, y: 200 },
 		to: { x: 120, y: 220 },
