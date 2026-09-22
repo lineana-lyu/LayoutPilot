@@ -13,6 +13,7 @@ Use a disposable PCB with:
 - a simple closed board outline made from straight segments or one simple non-curved polyline;
 - a clean DRC baseline;
 - enough free space around the owner power pin;
+- components whose runtime BBoxes can be read successfully;
 - no intentional overlap around the test area.
 
 For the first positive-path run, avoid curved board edges and complex keepout geometry. Those cases are expected to fail closed in v0.7.
@@ -81,7 +82,8 @@ Before accepting the confirmation dialog, verify it displays:
 - owner GND reference;
 - loop geometry proxy;
 - before/after coordinates;
-- approximate clearance.
+- approximate clearance;
+- that physical collision checks use EasyEDA measured component BBoxes.
 
 Accept the move.
 
@@ -140,6 +142,24 @@ Expected: board-boundary gate rejects automatic execution.
 Create a `NO_COMPONENTS` region covering all valid nearby positions.
 
 Expected: planner reports no legal candidate or blocks on unsupported keepout geometry.
+
+### Routed-after-apply Undo
+
+1. Apply a successful LayoutPilot move on the disposable board.
+2. Add a real track or copper connection to the moved capacitor without moving the capacitor.
+3. Run Undo.
+
+Expected:
+
+- Undo is blocked before mutation;
+- the routed capacitor does not move;
+- the old Placement Command is marked `superseded` because the engineer has materially continued the design.
+
+### Dirty Undo baseline
+
+After a successful LayoutPilot move, introduce an unrelated DRC violation and run Undo.
+
+Expected: Undo is blocked before mutation because a clean inverse-transaction baseline cannot be established.
 
 ### Concurrent manual edit before Undo
 
