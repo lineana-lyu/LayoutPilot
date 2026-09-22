@@ -28,16 +28,18 @@ async function cleanupReviewSession(): Promise<void> {
 	}
 }
 
-export async function openEvidenceReviewBar(): Promise<void> {
-	const reviewBarId = currentReviewBarId();
-
+export async function retireEvidenceReviewBar(): Promise<void> {
+	await cleanupReviewSession();
 	try {
-		await eda.sys_IFrame.closeIFrame(reviewBarId);
+		await eda.sys_IFrame.closeIFrame(currentReviewBarId());
 	}
 	catch {
 		// No existing review window is a normal state.
 	}
+}
 
+export async function openEvidenceReviewBar(): Promise<void> {
+	const reviewBarId = currentReviewBarId();
 	const viewport = eda.sys_Window.getViewportSize();
 	const width = Math.max(560, Math.min(760, viewport.width - 80));
 	const height = 142;
