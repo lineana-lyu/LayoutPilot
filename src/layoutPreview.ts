@@ -6,10 +6,10 @@ import {
 import { formatLayoutPlanItemReview } from './domain/layoutPlanReview';
 import { validateStoredLayoutPlanCurrent } from './eda/layoutPlanRuntime';
 import {
-	archiveStoredReferencePlan,
 	getStoredLayoutPlan,
 	getStoredLayoutPlanById,
 	getStoredLayoutPreviewSession,
+	setAndArchiveStoredReferencePlan,
 	setStoredLayoutPlan,
 } from './eda/workflowStore';
 import { closeLayoutPreviewBarAndReturn } from './ui/layoutPreviewWindow';
@@ -143,9 +143,11 @@ acceptBtn.addEventListener('click', async () => {
 		}
 
 		const accepted = markLayoutPlanAccepted(validation.plan);
-		await setStoredLayoutPlan(accepted);
 		if (layoutPlanAcceptanceMode(accepted) === 'reference-only') {
-			await archiveStoredReferencePlan(accepted);
+			await setAndArchiveStoredReferencePlan(accepted);
+		}
+		else {
+			await setStoredLayoutPlan(accepted);
 		}
 		await closeLayoutPreviewBarAndReturn();
 	}
