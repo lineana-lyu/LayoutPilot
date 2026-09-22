@@ -116,7 +116,7 @@ export async function collectSimpleComponentKeepouts(): Promise<
 		return {
 			ok: false,
 			reason:
-				'检测到 FOLLOW_REGION_RULE 区域；v0.7 尚未解析其自定义规则，不能证明该区域允许放置器件。',
+				'检测到 FOLLOW_REGION_RULE 区域；当前版本尚未解析其自定义规则，不能证明该区域允许放置器件。',
 		};
 	}
 
@@ -323,6 +323,50 @@ export async function collectPadEvidenceComponents(
 	return result;
 }
 
+async function getSelectedPrimitiveIdsCompat(): Promise<string[]> {
+	const control = eda.pcb_SelectControl as unknown as {
+		getAllSelectedPrimitives_PrimitiveId?: () => Promise<string[]>;
+		getSelectedPrimitives_PrimitiveId?: () => Promise<string[]>;
+		getAllSelectedPrimitives?: () => Promise<Array<{
+			getState_PrimitiveId?: () => string;
+		}>>;
+		getSelectedPrimitives?: () => Promise<Array<Record<string, unknown>>>;
+	};
+
+	if (typeof control.getAllSelectedPrimitives_PrimitiveId === 'function') {
+		return await control.getAllSelectedPrimitives_PrimitiveId();
+	}
+
+	if (typeof control.getAllSelectedPrimitives === 'function') {
+		const primitives = await control.getAllSelectedPrimitives();
+		return primitives
+			.map(primitive => primitive.getState_PrimitiveId?.())
+			.filter((id): id is string => typeof id === 'string' && id.length > 0);
+	}
+
+	if (typeof control.getSelectedPrimitives_PrimitiveId === 'function') {
+		return await control.getSelectedPrimitives_PrimitiveId();
+	}
+
+	if (typeof control.getSelectedPrimitives === 'function') {
+		const primitives = await control.getSelectedPrimitives();
+		return primitives
+			.map(primitive => {
+				const candidate = primitive as Record<string, unknown>;
+				const stateId = candidate.primitiveId
+					?? candidate.PrimitiveId
+					?? candidate.id;
+				return typeof stateId === 'string' ? stateId : undefined;
+			})
+			.filter((id): id is string => Boolean(id));
+	}
+
+	console.warn(
+		'[LayoutPilot] PCB selection read API is unavailable; evidence review will not restore prior selection.',
+	);
+	return [];
+}
+
 export interface PcbEvidenceReviewContext {
 	documentTabId: string;
 	originalSelectionIds: string[];
@@ -351,8 +395,7 @@ export async function beginPcbEvidenceReview(input: {
 		throw new Error('当前活动文档不是 PCB，无法执行画布定位。');
 	}
 
-	const originalSelectionIds =
-		await eda.pcb_SelectControl.getSelectedPrimitives_PrimitiveId();
+	const originalSelectionIds = await getSelectedPrimitiveIdsCompat();
 
 	await focusPcbEvidence(input);
 
