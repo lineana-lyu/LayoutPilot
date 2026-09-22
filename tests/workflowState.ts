@@ -16,7 +16,7 @@ import { createHumanOwnershipDecision } from '../src/domain/humanOwnershipDecisi
 import { createPlacementCommand } from '../src/domain/placementCommand';
 import { createSemanticSnapshot } from '../src/domain/semanticSnapshot';
 import { createEvidenceReviewSession } from '../src/domain/evidenceReviewSession';
-import { createLayoutPlan } from '../src/domain/layoutPlan';
+import { createLayoutPlan, markLayoutPlanAccepted } from '../src/domain/layoutPlan';
 import { createLayoutPreviewSession } from '../src/domain/layoutPreviewSession';
 
 const t0 = '2026-09-22T01:00:00.000Z';
@@ -165,6 +165,18 @@ state = setWorkflowLayoutPreviewSession(
 );
 assert.equal(state.layoutPlan?.id, layoutPlan.id);
 assert.equal(state.layoutPreviewSession?.planId, layoutPlan.id);
+
+state = setWorkflowLayoutPlan(
+	state,
+	markLayoutPlanAccepted(layoutPlan),
+	'2026-09-22T01:04:47.000Z',
+);
+assert.equal(state.layoutPlan?.status, 'accepted');
+assert.equal(
+	state.layoutPreviewSession?.planId,
+	layoutPlan.id,
+	'status update for the same LayoutPlan must preserve preview cleanup context',
+);
 
 const roundTrip = normalizeWorkflowState(
 	JSON.parse(JSON.stringify(state)),
