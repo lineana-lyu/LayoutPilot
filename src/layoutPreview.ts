@@ -56,9 +56,11 @@ function render(): void {
 	)];
 	title.textContent = archived
 		? `历史参考方案 · ${plan.id}`
-		: acceptanceMode === 'reference-only'
-			? `参考布局建议 · ${plan.id}`
-			: `布局预览 · ${plan.id}`;
+		: acceptanceMode === 'reference-only' && plan.status === 'accepted'
+			? `已保存参考方案 · ${plan.id}`
+			: acceptanceMode === 'reference-only'
+				? `参考布局建议 · ${plan.id}`
+				: `布局预览 · ${plan.id}`;
 	meta.innerHTML = [
 		`${plan.items.length} 个器件`,
 		`${plan.items.length - blocked} 个当前可进入物理预检`,
