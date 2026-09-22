@@ -53,7 +53,17 @@ The workbench keeps four stages visible at once and uses a responsive three-pane
 - **Plan** — generated constraints and concise blocking reasons when the result is still zero;
 - **Apply** — guarded placement and Undo state.
 
-Owner confirmation happens directly in the workbench. The only dialogs intentionally retained in the main path are settings/errors and the final confirmation before a real PCB mutation.\n\n### Canvas evidence review\n\nBefore confirming an Owner, a Host card can show the closest shared power-pad pair and its current straight-line distance in mil. The engineer can use **在 PCB 中定位** to select the subject/Host on the real PCB canvas, zoom to them and mark the relevant pads. This is review evidence only: distance never becomes an automatic Owner rule.
+Owner confirmation happens directly in the workbench. The only dialogs intentionally retained in the main path are settings/errors and the final confirmation before a real PCB mutation.
+
+### Canvas evidence review
+
+Before confirming an Owner, a Host card can show the closest shared power-pad pair and its current straight-line distance in mil. The engineer can use **定位核对** to select the subject/Host on the real PCB canvas, zoom to them and mark the relevant pads. A compact Evidence Review Bar stays visible with **返回工作台** and **确认 Owner** actions, so the engineer never has to reopen LayoutPilot from the menu. Exiting review clears LayoutPilot markers and restores the engineer's previous PCB selection. Distance is review evidence only and never becomes an automatic Owner rule.
+
+### Physical preflight boundary
+
+A semantic Constraint marked `preview-eligible` means only that it can enter physical preflight. The workbench therefore labels it **可进入物理预检**, not **可执行**. Real movement is allowed only after the runtime path re-checks routing state, measured component BBoxes, board outline, keepouts, collision candidates and a clean DRC baseline.
+
+Pad-distance evidence is loaded only for the currently selected task. Switching between tasks does not rebuild the full Circuit Graph / Semantic Context, which keeps the workbench responsive without caching potentially stale X/Y evidence.
 
 ## AI authority boundary
 
