@@ -801,30 +801,36 @@ async function refresh(): Promise<void> {
 		renderPlanPanel(model);
 
 		setStage('stageAnalyze', 'done');
-		setStage('stageOwner', pending > 0 ? 'active' : 'done');
-		setStage(
-			'stageConstraint',
-			model.constraintCount > 0 ? 'done' : (pending > 0 ? 'blocked' : 'active'),
-		);
 
 		const command = workflow.lastPlacementCommand;
 		el<HTMLDivElement>('stageExecuteMeta').textContent = command?.status === 'applied'
-			? `${command.componentDesignator} 已移动 · 可撤销`
+			? `${command.componentDesignator} 已应用 · 可撤销`
 			: command?.status === 'undone'
 				? `${command.componentDesignator} 已撤销`
 				: model.previewEligibleCount > 0
-					? `${model.previewEligibleCount} 条建议待预检`
-					: '尚无可预检建议';
-		setStage(
-			'stageExecute',
-			command?.status === 'applied'
-				? 'active'
-				: command?.status === 'undone'
-					? 'done'
-					: model.previewEligibleCount > 0
-						? 'active'
-						: 'idle',
-		);
+					? `${model.previewEligibleCount} 条建议可预检`
+					: '尚未进入';
+
+		if (pending > 0) {
+			setStage('stageOwner', 'active');
+			setStage('stageConstraint', 'idle');
+			setStage('stageExecute', 'idle');
+		}
+		else {
+			setStage('stageOwner', 'done');
+			if (command?.status === 'applied') {
+				setStage('stageConstraint', 'done');
+				setStage('stageExecute', 'done');
+			}
+			else if (model.previewEligibleCount > 0) {
+				setStage('stageConstraint', 'done');
+				setStage('stageExecute', 'active');
+			}
+			else {
+				setStage('stageConstraint', 'active');
+				setStage('stageExecute', 'idle');
+			}
+		}
 
 		applyBtn.disabled = model.previewEligibleCount === 0;
 		undoBtn.disabled = command?.status !== 'applied';
@@ -874,6 +880,32 @@ gatewayBtn.addEventListener('click', () => {
 	configureAiGateway();
 });
 
+async function changeWorkbenchSize(
+	mode: LayoutPilotWorkbenchSizeMode,
+): Promise<void> {
+	if (busy || getLayoutPilotWorkbenchSizeMode() === mode) return;
+	setBusy(true);
+	try {
+		await resizeLayoutPilotWorkbench(mode);
+	}
+	catch (error) {
+		console.error('[LayoutPilot Workbench] resize failed', error);
+		showToast(`窗口切换失败：${String(error)}`);
+		syncWindowSizeButtons();
+		setBusy(false);
+	}
+}
+
+sizeCompactBtn.addEventListener('click', () => {
+	void changeWorkbenchSize('compact');
+});
+sizeStandardBtn.addEventListener('click', () => {
+	void changeWorkbenchSize('standard');
+});
+sizeWideBtn.addEventListener('click', () => {
+	void changeWorkbenchSize('wide');
+});
+
 applyBtn.addEventListener('click', async () => {
 	if (busy || applyBtn.disabled) return;
 	setBusy(true);
@@ -902,7 +934,8 @@ window.setInterval(() => {
 	if (busy) return;
 	const workflow = inspectStoredWorkflowState();
 	if (workflow.updatedAt !== lastWorkflowUpdatedAt) {
-		void refresh();
+		syncWindowSizeButtons();
+void refresh();
 	}
 }, 1500);
 
