@@ -87,3 +87,8 @@ This is intentional. The interview MVP needs consistency between analysis and pr
 5. A snapshot can be JSON serialized.
 6. Runtime-only EDA metadata cannot leak into the snapshot.
 7. Existing Validator and deterministic ownership boundaries remain unchanged.
+
+
+## Cross-menu workflow state
+
+Semantic Snapshot continuity between EasyEDA menu actions uses `eda.sys_Storage`. Consumers still recompute the PCB semantic fingerprint before reuse.
