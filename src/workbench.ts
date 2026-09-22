@@ -532,12 +532,15 @@ function renderPlanPanel(model?: RuntimeModel): void {
 	const preflightEligibleItems = plan?.items.filter(
 		item => item.executionBlockers.length === 0,
 	).length ?? 0;
+	const archivedReferences = model.referencePlans
+		.filter(reference => reference.id !== plan?.id)
+		.slice(0, 6);
 
 	const planArtifact = plan
 		? `
 			<div class="constraint-area" style="border-bottom:1px solid var(--line)">
 				<div class="constraint-summary">
-					<span>LayoutPlan · ${escapeHtml(planStatus)}</span>
+					<span>当前 LayoutPlan · ${escapeHtml(planStatus)}</span>
 					<span class="constraint-state">${plan.items.length} 个位置 · ${preflightEligibleItems} 个可预检</span>
 				</div>
 				<div class="constraint-list">
@@ -546,13 +549,44 @@ function renderPlanPanel(model?: RuntimeModel): void {
 							<div class="constraint-title">${escapeHtml(item.subjectDesignator)} → near(${escapeHtml(item.ownerDesignator)})</div>
 							<div class="constraint-meta">
 								移动 ${item.movementMil.toFixed(1)} mil ·
-								回路几何代理 ${item.estimatedLoopProxyMil.toFixed(1)} mil ·
+								${escapeHtml(formatLayoutPlanItemReview(item))} ·
 								${item.executionBlockers.length
 									? `仅预览：${escapeHtml(item.executionBlockers[0])}`
 									: '可进入物理预检'}
 							</div>
 						</div>
 					`).join('')}
+				</div>
+			</div>`
+		: '';
+
+	const referenceHistory = archivedReferences.length
+		? `
+			<div class="constraint-area reference-history">
+				<div class="constraint-summary">
+					<span>已保存参考方案</span>
+					<span class="constraint-state">${model.referencePlans.length} 条历史</span>
+				</div>
+				<div class="constraint-list">
+					${archivedReferences.map(reference => {
+						const first = reference.items[0];
+						return `
+							<div class="constraint-row">
+								<div class="constraint-title">
+									${escapeHtml(first?.subjectDesignator ?? 'Unknown')}
+									→ near(${escapeHtml(first?.ownerDesignator ?? 'Unknown')})
+								</div>
+								<div class="constraint-meta">
+									${first ? escapeHtml(formatLayoutPlanItemReview(first)) : '无可显示项'} ·
+									${escapeHtml(new Date(reference.createdAt).toLocaleString())}
+								</div>
+								<div style="margin-top:6px">
+									<button class="btn small" data-view-reference-plan="${escapeHtml(reference.id)}">
+										查看参考方案
+									</button>
+								</div>
+							</div>`;
+					}).join('')}
 				</div>
 			</div>`
 		: '';
@@ -565,12 +599,45 @@ function renderPlanPanel(model?: RuntimeModel): void {
 			</div>
 			<div class="plan-stat">
 				<strong>${plan?.items.length ?? 0}</strong>
-				<span>布局预览位置</span>
+				<span>当前布局位置</span>
+			</div>
+			<div class="plan-stat">
+				<strong>${model.referencePlans.length}</strong>
+				<span>参考方案历史</span>
 			</div>
 		</div>
 		${planArtifact}
+		${referenceHistory}
 		${renderConstraintArea(model)}
 	`;
+
+	for (const node of planPanel.querySelectorAll<HTMLButtonElement>(
+		'[data-view-reference-plan]',
+	)) {
+		node.addEventListener('click', async () => {
+			if (busy) return;
+			const planId = node.dataset.viewReferencePlan;
+			const reference = model.referencePlans.find(item => item.id === planId);
+			if (!reference) return;
+
+			setBusy(true);
+			try {
+				const validation = await validateLayoutPlanCurrent(reference);
+				if (!validation.ok) {
+					showToast('参考方案已保留，但当前 PCB / Snapshot 已变化，不能叠加旧 Ghost。');
+					return;
+				}
+				await presentLayoutPlanPreview(reference);
+			}
+			catch (error) {
+				console.error('[LayoutPilot Workbench] reference preview failed', error);
+				showToast(`参考方案查看失败：${String(error)}`);
+			}
+			finally {
+				setBusy(false);
+			}
+		});
+	}
 }
 
 function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
