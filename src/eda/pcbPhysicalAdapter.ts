@@ -280,3 +280,123 @@ export async function moveComponentAndVerify(
 
 	return actual;
 }
+
+
+export interface PcbPadEvidenceComponent {
+	id: string;
+	designator: string;
+	pads: Array<{
+		padNumber: string;
+		net?: string;
+		x: number;
+		y: number;
+	}>;
+}
+
+export async function collectPadEvidenceComponents(
+	componentIds: string[],
+): Promise<PcbPadEvidenceComponent[]> {
+	const uniqueIds = [...new Set(componentIds.filter(Boolean))];
+	const result: PcbPadEvidenceComponent[] = [];
+
+	for (const id of uniqueIds) {
+		const component = await eda.pcb_PrimitiveComponent.get(id);
+		if (!component) continue;
+
+		const designator = component.getState_Designator()
+			?? component.getState_Name()
+			?? id;
+		const pads = await eda.pcb_PrimitiveComponent.getAllPinsByPrimitiveId(id);
+
+		result.push({
+			id,
+			designator,
+			pads: (pads ?? []).map(pad => ({
+				padNumber: String(pad.getState_PadNumber() ?? '?'),
+				net: pad.getState_Net(),
+				x: pad.getState_X(),
+				y: pad.getState_Y(),
+			})),
+		});
+	}
+
+	return result;
+}
+
+export async function focusPcbEvidence(input: {
+	subjectId: string;
+	subjectDesignator: string;
+	ownerId: string;
+	ownerDesignator: string;
+	powerEvidence?: {
+		netName: string;
+		subjectPadNumber: string;
+		ownerPadNumber: string;
+		subjectX: number;
+		subjectY: number;
+		ownerX: number;
+		ownerY: number;
+	};
+}): Promise<void> {
+	const document = await eda.dmt_SelectControl.getCurrentDocumentInfo();
+	if (!document) {
+		throw new Error('无法获取当前 PCB 文档信息。');
+	}
+
+	await eda.dmt_EditorControl.activateDocument(document.tabId);
+	await eda.pcb_SelectControl.clearSelected();
+
+	const selected = await eda.pcb_SelectControl.doSelectPrimitives([
+		input.subjectId,
+		input.ownerId,
+	]);
+	if (!selected) {
+		throw new Error('嘉立创EDA未能选中目标器件。');
+	}
+
+	const zoomed = await eda.dmt_EditorControl.zoomToSelectedPrimitives(
+		document.tabId,
+	);
+	if (zoomed === false) {
+		throw new Error('嘉立创EDA未能定位到选中的器件。');
+	}
+
+	await eda.dmt_EditorControl.removeIndicatorMarkers(document.tabId);
+
+	if (input.powerEvidence) {
+		const {
+			subjectX,
+			subjectY,
+			ownerX,
+			ownerY,
+		} = input.powerEvidence;
+
+		await eda.dmt_EditorControl.generateIndicatorMarkers(
+			[
+				{
+					type: EDMT_IndicatorMarkerType.CIRCLE,
+					x: subjectX,
+					y: subjectY,
+					r: 24,
+				},
+				{
+					type: EDMT_IndicatorMarkerType.CIRCLE,
+					x: ownerX,
+					y: ownerY,
+					r: 24,
+				},
+				{
+					type: EDMT_IndicatorMarkerType.LINE,
+					startX: subjectX,
+					startY: subjectY,
+					endX: ownerX,
+					endY: ownerY,
+				},
+			],
+			{ r: 23, g: 111, b: 189, alpha: 0.92 },
+			2,
+			false,
+			document.tabId,
+		);
+	}
+}
