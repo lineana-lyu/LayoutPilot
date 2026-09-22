@@ -264,7 +264,10 @@ function renderEmpty(
 		</div>`;
 }
 
-function renderTasks(tasks: OwnerTask[]): void {
+function renderTasks(
+	tasks: OwnerTask[],
+	model?: RuntimeModel,
+): void {
 	const pending = tasks.filter(task => !task.selectedOwnerId).length;
 	el<HTMLDivElement>('taskCount').textContent = `${pending} 待确认 / ${tasks.length}`;
 
@@ -294,8 +297,8 @@ function renderTasks(tasks: OwnerTask[]): void {
 	for (const node of taskList.querySelectorAll<HTMLButtonElement>('[data-task]')) {
 		node.addEventListener('click', () => {
 			selectedComponentId = node.dataset.task;
-			renderCurrentTask(tasks);
-			renderTasks(tasks);
+			renderCurrentTask(tasks, model);
+			renderTasks(tasks, model);
 		});
 	}
 }
@@ -368,6 +371,26 @@ function renderConstraintArea(model: RuntimeModel): string {
 		</div>`;
 }
 
+function renderPlanPanel(model?: RuntimeModel): void {
+	if (!model?.evaluation) {
+		planPanel.innerHTML = '<div class="empty"><div><strong>暂无布局计划</strong><span>完成分析和必要的 Owner 确认后，这里会显示 Constraint。</span></div></div>';
+		return;
+	}
+
+	planPanel.innerHTML = `
+		<div class="plan-overview">
+			<div class="plan-stat">
+				<strong>${model.constraintCount}</strong>
+				<span>已生成约束</span>
+			</div>
+			<div class="plan-stat">
+				<strong>${model.previewEligibleCount}</strong>
+				<span>可进入执行</span>
+			</div>
+		</div>
+		${renderConstraintArea(model)}
+	`;
+}
 function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 	const task = tasks.find(item => item.componentId === selectedComponentId);
 	if (!task) {
@@ -517,8 +540,9 @@ async function refresh(): Promise<void> {
 		const pending = model.tasks.filter(task => !task.selectedOwnerId).length;
 		el<HTMLDivElement>('metricPending').textContent = String(pending);
 		el<HTMLDivElement>('metricConstraints').textContent = String(model.constraintCount);
-		renderTasks(model.tasks);
+		renderTasks(model.tasks, model);
 		renderCurrentTask(model.tasks, model);
+		renderPlanPanel(model);
 
 		setStage('stageAnalyze', 'done');
 		setStage('stageOwner', pending > 0 ? 'active' : 'done');
