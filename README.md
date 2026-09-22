@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.0 Layout Preview MVP
+## Current stage — v0.9.4 Layout Preview MVP
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -111,6 +111,12 @@ v0.9.2 upgrades physical board parsing from a single-polygon assumption to a fai
 - board holes are included in the physical fingerprint, so changing a cutout invalidates a frozen LayoutPlan.
 
 This fixes real EasyEDA projects that legitimately contain multiple BOARD_OUTLINE polylines without weakening physical safety.
+
+## Local occupancy search
+
+v0.9.4 replaces the previous four-direction / single-distance placement sampling with a bounded local occupancy-grid search around the confirmed Owner power pad. The safety model is unchanged: every generated coordinate still passes the same measured-BBox collision, board-region and NO_COMPONENTS keepout gates before it can enter a LayoutPlan.
+
+The design adapts the mature separation used by KiCad's autoplacer: candidate-space enumeration is distinct from hard legality checks and placement-cost ranking. LayoutPilot keeps the search local because a decoupling `near(owner)` constraint should fail rather than drift arbitrarily across the board. Rejected candidates are counted by collision / board / keepout reason so a failed preview is diagnosable instead of collapsing into one generic message.
 
 ## Layout Preview MVP
 
