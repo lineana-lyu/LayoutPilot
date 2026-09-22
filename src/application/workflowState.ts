@@ -1,5 +1,6 @@
 import type { HumanOwnershipDecision } from '../domain/humanOwnershipDecision';
 import type { PlacementCommandRecord } from '../domain/placementCommand';
+import { isEvidenceReviewSession, type EvidenceReviewSession } from '../domain/evidenceReviewSession';
 import type { SemanticSnapshot } from '../domain/semanticSnapshot';
 
 export interface LayoutPilotWorkflowState {
@@ -7,6 +8,7 @@ export interface LayoutPilotWorkflowState {
 	semanticSnapshot?: SemanticSnapshot;
 	humanOwnershipDecisions: HumanOwnershipDecision[];
 	lastPlacementCommand?: PlacementCommandRecord;
+	evidenceReviewSession?: EvidenceReviewSession;
 	updatedAt: string;
 }
 
@@ -94,6 +96,9 @@ export function normalizeWorkflowState(
 	const lastPlacementCommand = isPlacementCommand(value.lastPlacementCommand)
 		? value.lastPlacementCommand
 		: undefined;
+	const evidenceReviewSession = isEvidenceReviewSession(value.evidenceReviewSession)
+		? value.evidenceReviewSession
+		: undefined;
 
 	const validDecisions = semanticSnapshot
 		? humanOwnershipDecisions.filter(
@@ -106,6 +111,7 @@ export function normalizeWorkflowState(
 		semanticSnapshot,
 		humanOwnershipDecisions: validDecisions,
 		lastPlacementCommand,
+		evidenceReviewSession,
 		updatedAt:
 			typeof value.updatedAt === 'string'
 				? value.updatedAt
@@ -202,6 +208,27 @@ export function setWorkflowPlacementCommand(
 	}
 	else {
 		delete next.lastPlacementCommand;
+	}
+
+	return freezeDeep(next);
+}
+
+
+export function setWorkflowEvidenceReviewSession(
+	state: LayoutPilotWorkflowState,
+	session: EvidenceReviewSession | undefined,
+	updatedAt = new Date().toISOString(),
+): LayoutPilotWorkflowState {
+	const next = {
+		...state,
+		updatedAt,
+	} as LayoutPilotWorkflowState;
+
+	if (session) {
+		next.evidenceReviewSession = session;
+	}
+	else {
+		delete next.evidenceReviewSession;
 	}
 
 	return freezeDeep(next);
