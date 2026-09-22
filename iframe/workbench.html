@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LayoutPilot · PCB 布局工作台</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg:#f4f6f8; --panel:#ffffff; --panel-2:#f8fafb; --line:#dde3e8;
+      --text:#17212b; --muted:#64717d; --subtle:#8a96a1; --accent:#146ebe;
+      --accent-soft:#eaf3fb; --ok:#147d64; --ok-soft:#eaf7f3; --warn:#a86600;
+      --warn-soft:#fff5df; --danger:#b63a3a; --danger-soft:#fff0f0;
+      --shadow:0 8px 28px rgba(20,34,48,.12);
+      --radius:10px;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;height:100%;font-family:Inter,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text)}
+    button{font:inherit}
+    #app{height:100%;display:grid;grid-template-rows:auto auto 1fr auto;overflow:hidden}
+    .topbar{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+    .brand{font-size:15px;font-weight:700;letter-spacing:.1px}
+    .tag{font-size:11px;padding:3px 7px;border:1px solid var(--line);border-radius:999px;color:var(--muted);background:var(--panel-2)}
+    .grow{flex:1}
+    .icon-btn,.btn{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:7px;cursor:pointer}
+    .icon-btn{width:30px;height:30px;display:grid;place-items:center}
+    .btn{padding:7px 10px;font-weight:600}
+    .btn:hover,.icon-btn:hover{border-color:#b9c5ce;background:#fafcfd}
+    .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+    .btn.primary:hover{background:#105d9f}
+    .btn.danger{color:var(--danger)}
+    .btn:disabled{opacity:.45;cursor:not-allowed}
+    .statusbar{display:grid;grid-template-columns:repeat(4,1fr);gap:0;background:var(--panel);border-bottom:1px solid var(--line)}
+    .stage{position:relative;padding:10px 12px;border-right:1px solid var(--line)}
+    .stage:last-child{border-right:0}
+    .stage-kicker{font-size:10px;color:var(--subtle);text-transform:uppercase;letter-spacing:.5px}
+    .stage-main{display:flex;align-items:center;gap:6px;margin-top:3px;font-size:12px;font-weight:700}
+    .dot{width:7px;height:7px;border-radius:50%;background:#c8d0d6}
+    .stage.done .dot{background:var(--ok)}
+    .stage.active .dot{background:var(--accent)}
+    .stage.blocked .dot{background:var(--warn)}
+    .content{min-height:0;display:grid;grid-template-columns:220px 1fr;gap:10px;padding:10px;overflow:hidden}
+    .sidebar,.main{min-height:0;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+    .sidebar{display:grid;grid-template-rows:auto auto 1fr}
+    .section-head{display:flex;align-items:center;gap:8px;padding:11px 12px;border-bottom:1px solid var(--line)}
+    .section-title{font-size:13px;font-weight:700}
+    .count{font-size:11px;color:var(--muted);margin-left:auto}
+    .summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px;border-bottom:1px solid var(--line)}
+    .metric{background:var(--panel-2);border:1px solid #e9edf0;border-radius:7px;padding:7px}
+    .metric strong{display:block;font-size:16px;line-height:18px}
+    .metric span{font-size:10px;color:var(--muted)}
+    .task-list{overflow:auto;padding:6px}
+    .task{width:100%;text-align:left;border:1px solid transparent;background:transparent;border-radius:7px;padding:8px 9px;cursor:pointer;margin-bottom:3px}
+    .task:hover{background:#f6f9fb}
+    .task.active{background:var(--accent-soft);border-color:#c7deef}
+    .task-row{display:flex;align-items:center;gap:7px}
+    .task-name{font-size:12px;font-weight:700}
+    .task-rail{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}
+    .badge{font-size:10px;border-radius:999px;padding:2px 6px;white-space:nowrap}
+    .badge.pending{background:var(--warn-soft);color:var(--warn)}
+    .badge.ok{background:var(--ok-soft);color:var(--ok)}
+    .badge.info{background:var(--accent-soft);color:var(--accent)}
+    .main{overflow:auto}
+    .empty{height:100%;display:grid;place-items:center;padding:28px;text-align:center;color:var(--muted)}
+    .empty strong{display:block;color:var(--text);font-size:16px;margin-bottom:6px}
+    .detail{padding:14px}
+    .hero{display:flex;gap:12px;align-items:flex-start;padding-bottom:12px;border-bottom:1px solid var(--line)}
+    .ref{font-size:22px;font-weight:800;line-height:1}
+    .hero-copy{flex:1}
+    .hero-title{font-size:13px;font-weight:700}
+    .hero-sub{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.55}
+    .facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+    .fact{border:1px solid var(--line);border-radius:8px;padding:8px 9px;background:var(--panel-2)}
+    .fact-label{font-size:10px;color:var(--muted)}
+    .fact-value{font-size:12px;font-weight:650;margin-top:2px;word-break:break-word}
+    .block{margin-top:14px}
+    .block-title{font-size:12px;font-weight:750;margin-bottom:7px}
+    .note{font-size:11px;line-height:1.55;color:var(--muted);padding:8px 9px;border-left:3px solid #cfd8df;background:#f8fafb;border-radius:4px}
+    .host-grid{display:grid;gap:7px;margin-top:8px}
+    .host{border:1px solid var(--line);border-radius:9px;background:var(--panel);padding:10px;cursor:pointer;text-align:left}
+    .host:hover{border-color:#aacbe4;background:#fbfdff}
+    .host.selected{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset;background:#f7fbff}
+    .host-top{display:flex;align-items:center;gap:8px}
+    .host-ref{font-weight:800;font-size:13px}
+    .host-name{font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .host-meta{font-size:10px;color:var(--muted);margin-top:5px;line-height:1.45}
+    .host-evidence{font-size:10px;color:var(--warn);margin-top:5px}
+    .constraint-area{margin-top:15px;border-top:1px solid var(--line);padding-top:12px}
+    .constraint-summary{display:flex;gap:6px;flex-wrap:wrap}
+    .constraint-card{margin-top:8px;border:1px solid var(--line);border-radius:8px;padding:9px}
+    .constraint-title{font-size:12px;font-weight:750}
+    .constraint-meta{font-size:10px;color:var(--muted);margin-top:4px}
+    .blocked{padding:9px;border-radius:8px;background:var(--warn-soft);color:#694611;font-size:11px;line-height:1.55;margin-top:8px}
+    .footer{display:flex;align-items:center;gap:7px;padding:10px 12px;background:var(--panel);border-top:1px solid var(--line)}
+    .footer-note{font-size:10px;color:var(--muted);margin-left:auto;max-width:240px;text-align:right}
+    .loading{position:absolute;inset:0;background:rgba(244,246,248,.82);display:none;place-items:center;z-index:30}
+    .loading.show{display:grid}
+    .spinner{width:24px;height:24px;border:3px solid #d8e0e6;border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .toast{position:fixed;left:50%;bottom:64px;transform:translateX(-50%);background:#1f2a33;color:#fff;padding:8px 11px;border-radius:7px;font-size:11px;opacity:0;pointer-events:none;transition:.18s;z-index:50;box-shadow:var(--shadow)}
+    .toast.show{opacity:1}
+    details{margin-top:8px}
+    summary{cursor:pointer;font-size:11px;color:var(--muted)}
+    .diagnostics{font-size:10px;line-height:1.5;color:var(--muted);white-space:pre-wrap;margin-top:6px}
+  </style>
+</head>
+<body>
+<div id="app">
+  <div class="topbar">
+    <div class="brand">LayoutPilot</div>
+    <div class="tag">PCB Layout Copilot</div>
+    <div class="grow"></div>
+    <button class="icon-btn" id="gatewayBtn" title="配置 AI Gateway">⚙</button>
+    <button class="icon-btn" id="refreshBtn" title="刷新工作台">↻</button>
+  </div>
+  <div class="statusbar">
+    <div class="stage" id="stageAnalyze"><div class="stage-kicker">01 UNDERSTAND</div><div class="stage-main"><span class="dot"></span><span>电路理解</span></div></div>
+    <div class="stage" id="stageOwner"><div class="stage-kicker">02 CONFIRM</div><div class="stage-main"><span class="dot"></span><span>Owner 确认</span></div></div>
+    <div class="stage" id="stageConstraint"><div class="stage-kicker">03 PLAN</div><div class="stage-main"><span class="dot"></span><span>布局约束</span></div></div>
+    <div class="stage" id="stageExecute"><div class="stage-kicker">04 APPLY</div><div class="stage-main"><span class="dot"></span><span>受控执行</span></div></div>
+  </div>
+  <div class="content">
+    <aside class="sidebar">
+      <div class="section-head"><div class="section-title">待决器件</div><div class="count" id="taskCount">—</div></div>
+      <div class="summary-grid">
+        <div class="metric"><strong id="metricAnalyzed">—</strong><span>AI 语义</span></div>
+        <div class="metric"><strong id="metricPending">—</strong><span>待确认</span></div>
+        <div class="metric"><strong id="metricConstraints">—</strong><span>约束</span></div>
+      </div>
+      <div class="task-list" id="taskList"></div>
+    </aside>
+    <main class="main" id="mainPanel">
+      <div class="empty"><div><strong>正在读取当前 PCB</strong><span>LayoutPilot 会在这里持续展示分析结果，不再用连续弹窗打断工作流。</span></div></div>
+    </main>
+  </div>
+  <div class="footer">
+    <button class="btn primary" id="analyzeBtn">重新分析</button>
+    <button class="btn" id="applyBtn" disabled>应用受控建议</button>
+    <button class="btn danger" id="undoBtn" disabled>撤销上次布局</button>
+    <div class="footer-note" id="footerNote">执行前仍会进行最终确认、物理重验和 DRC。</div>
+  </div>
+</div>
+<div class="loading" id="loading"><div><div class="spinner"></div></div></div>
+<div class="toast" id="toast"></div>
+<script src="/dist/workbench.js"></script>
+</body>
+</html>
