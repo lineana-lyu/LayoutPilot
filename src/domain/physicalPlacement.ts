@@ -13,6 +13,13 @@ export interface PhysicalPadSnapshot {
 	connectedPrimitiveCount?: number;
 }
 
+export interface PhysicalBounds {
+	minX: number;
+	minY: number;
+	maxX: number;
+	maxY: number;
+}
+
 export interface PhysicalComponentSnapshot {
 	id: string;
 	designator: string;
@@ -21,6 +28,7 @@ export interface PhysicalComponentSnapshot {
 	rotation: number;
 	layer: string;
 	locked: boolean;
+	bounds?: PhysicalBounds;
 	pads: PhysicalPadSnapshot[];
 }
 
@@ -92,16 +100,19 @@ function padBox(pad: PhysicalPadSnapshot): BBox {
 }
 
 function componentBox(component: PhysicalComponentSnapshot): BBox | undefined {
-	if (!component.pads.length) {
+	const bounds = component.bounds;
+	if (
+		!bounds
+		|| !Number.isFinite(bounds.minX)
+		|| !Number.isFinite(bounds.minY)
+		|| !Number.isFinite(bounds.maxX)
+		|| !Number.isFinite(bounds.maxY)
+		|| bounds.maxX <= bounds.minX
+		|| bounds.maxY <= bounds.minY
+	) {
 		return undefined;
 	}
-	const boxes = component.pads.map(padBox);
-	return {
-		minX: Math.min(...boxes.map(box => box.minX)),
-		minY: Math.min(...boxes.map(box => box.minY)),
-		maxX: Math.max(...boxes.map(box => box.maxX)),
-		maxY: Math.max(...boxes.map(box => box.maxY)),
-	};
+	return { ...bounds };
 }
 
 function translatedBox(
@@ -202,6 +213,11 @@ function validateComponentGeometry(
 	}
 	if (!component.pads.length) {
 		reasons.push(`${component.designator} 没有可用于物理规划的焊盘`);
+	}
+	if (!componentBox(component)) {
+		reasons.push(
+			`${component.designator} 缺少可信的 EasyEDA 实测器件 BBox`,
+		);
 	}
 	for (const pad of component.pads) {
 		if (
@@ -437,7 +453,7 @@ export function planDecouplingPlacement(input: {
 					to,
 					clearanceMil,
 					rationale:
-						'以 owner 的同电源网焊盘为锚点生成合法候选，再用 power-pad 距离 + 最近 ground 返回距离作为去耦回路几何代理排序；该指标用于候选优选，不等同于 SI/PI 证明。',
+						'以 owner 的同电源网焊盘为锚点生成合法候选，碰撞检查使用 EasyEDA 运行时实测器件 BBox；再用 power-pad 距离 + 最近 ground 返回距离作为去耦回路几何代理排序。该指标用于候选优选，不等同于 SI/PI 证明。',
 				},
 			});
 		}
