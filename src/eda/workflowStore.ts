@@ -6,6 +6,7 @@ import {
 	replaceWorkflowSemanticSnapshot,
 	setWorkflowPlacementCommand,
 	setWorkflowEvidenceReviewSession,
+	setWorkflowLayoutPlan,
 	upsertWorkflowHumanDecision,
 	type LayoutPilotWorkflowState,
 } from '../application/workflowState';
@@ -13,6 +14,7 @@ import type { HumanOwnershipDecision } from '../domain/humanOwnershipDecision';
 import type { PlacementCommandRecord } from '../domain/placementCommand';
 import type { SemanticSnapshot } from '../domain/semanticSnapshot';
 import type { EvidenceReviewSession } from '../domain/evidenceReviewSession';
+import type { LayoutPlan } from '../domain/layoutPlan';
 
 const WORKFLOW_STORAGE_KEY = 'layoutpilot.workflow-state.v1';
 
@@ -102,4 +104,15 @@ export async function setStoredEvidenceReviewSession(
 	session: EvidenceReviewSession | undefined,
 ): Promise<void> {
 	await saveState(setWorkflowEvidenceReviewSession(loadState(), session));
+}
+
+
+export function getStoredLayoutPlan(): LayoutPlan | undefined {
+	return loadState().layoutPlan;
+}
+
+export async function setStoredLayoutPlan(
+	plan: LayoutPlan | undefined,
+): Promise<void> {
+	await saveState(setWorkflowLayoutPlan(loadState(), plan));
 }
