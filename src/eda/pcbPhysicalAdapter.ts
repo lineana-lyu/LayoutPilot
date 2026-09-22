@@ -3,6 +3,7 @@ import {
 	buildBoardRegionFromPolygons,
 	parseBoardOutlineSource,
 	parseSimpleBoardPolygon,
+	tessellateBoardArc,
 	type BoardPolygon,
 	type BoardRegion,
 } from '../domain/boardBoundary';
@@ -51,15 +52,8 @@ export async function collectSimpleBoardBoundary(): Promise<
 		primitive => primitive.getState_Layer() === EPCB_LayerId.BOARD_OUTLINE,
 	);
 
-	if (outlineArcs.length) {
-		return {
-			ok: false,
-			reason:
-				'当前 BOARD_OUTLINE 含独立圆弧。为避免把圆角/弧形板框离散化错误，当前版本仍按安全策略拒绝物理规划。',
-		};
-	}
-
 	const contours: BoardPolygon[] = [];
+	let approximationToleranceMil = 0;
 	const outlineSegments = outlineLines.map(line => ({
 		start: {
 			x: line.getState_StartX(),
@@ -89,6 +83,40 @@ export async function collectSimpleBoardBoundary(): Promise<
 		}
 		contours.push(...parsed.closedPolygons);
 		outlineSegments.push(...parsed.segments);
+		approximationToleranceMil = Math.max(
+			approximationToleranceMil,
+			parsed.approximationToleranceMil,
+		);
+	}
+
+	for (const arc of outlineArcs) {
+		const tessellated = tessellateBoardArc(
+			{
+				x: arc.getState_StartX(),
+				y: arc.getState_StartY(),
+			},
+			{
+				x: arc.getState_EndX(),
+				y: arc.getState_EndY(),
+			},
+			arc.getState_ArcAngle(),
+		);
+		if (!tessellated.ok) {
+			return {
+				ok: false,
+				reason: `BOARD_OUTLINE 独立圆弧无法安全解析：${tessellated.reason}`,
+			};
+		}
+		for (let index = 1; index < tessellated.points.length; index += 1) {
+			outlineSegments.push({
+				start: tessellated.points[index - 1],
+				end: tessellated.points[index],
+			});
+		}
+		approximationToleranceMil = Math.max(
+			approximationToleranceMil,
+			tessellated.approximationToleranceMil,
+		);
 	}
 
 	const reconstructed = buildBoardPolygonsFromSegments(outlineSegments);
@@ -104,7 +132,10 @@ export async function collectSimpleBoardBoundary(): Promise<
 		};
 	}
 
-	return buildBoardRegionFromPolygons(contours);
+	return buildBoardRegionFromPolygons(
+		contours,
+		approximationToleranceMil,
+	);
 }
 
 export async function collectSimpleComponentKeepouts(): Promise<
