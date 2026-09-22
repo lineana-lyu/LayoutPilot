@@ -1,5 +1,4 @@
 import {
-	archiveWorkflowReferencePlan,
 	clearWorkflowSemanticSnapshot,
 	createEmptyWorkflowState,
 	normalizeWorkflowState,
@@ -124,12 +123,6 @@ export async function setStoredLayoutPlan(
 
 export function getStoredReferencePlans(): LayoutPlan[] {
 	return loadState().referencePlans;
-}
-
-export async function archiveStoredReferencePlan(
-	plan: LayoutPlan,
-): Promise<void> {
-	await saveState(archiveWorkflowReferencePlan(loadState(), plan));
 }
 
 export async function setAndArchiveStoredReferencePlan(
