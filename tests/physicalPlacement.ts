@@ -25,10 +25,20 @@ function component(
 		routed?: number;
 		powerPadX?: number;
 		powerPadY?: number;
+		groundPadX?: number;
+		groundPadY?: number;
 	},
 ): PhysicalComponentSnapshot {
-	const powerPadX = options?.powerPadX ?? x + 40;
+	const powerPadX = options?.powerPadX ?? x + 10;
 	const powerPadY = options?.powerPadY ?? y;
+	const groundPadX = options?.groundPadX ?? x - 10;
+	const groundPadY = options?.groundPadY ?? y;
+	const padHalf = 12;
+	const minX = Math.min(powerPadX, groundPadX) - padHalf;
+	const maxX = Math.max(powerPadX, groundPadX) + padHalf;
+	const minY = Math.min(powerPadY, groundPadY) - padHalf;
+	const maxY = Math.max(powerPadY, groundPadY) + padHalf;
+
 	return {
 		id,
 		designator,
@@ -37,6 +47,7 @@ function component(
 		rotation: 0,
 		layer: options?.layer ?? 'TOP',
 		locked: options?.locked ?? false,
+		bounds: { minX, minY, maxX, maxY },
 		pads: [
 			{
 				componentId: id,
@@ -55,8 +66,8 @@ function component(
 				designator,
 				padNumber: '2',
 				net: 'GND',
-				x: x - 40,
-				y,
+				x: groundPadX,
+				y: groundPadY,
 				width: 24,
 				height: 24,
 				rotation: 0,
@@ -67,10 +78,15 @@ function component(
 }
 
 {
-	const subject = component('c1', 'C1', 300, 300, { routed: 0 });
+	const subject = component('c1', 'C1', 300, 300, {
+		routed: 0,
+		powerPadX: 290,
+		groundPadX: 310,
+	});
 	const owner = component('u1', 'U1', 100, 100, {
-		powerPadX: 160,
+		powerPadX: 130,
 		powerPadY: 100,
+		groundPadX: 90,
 	});
 	const result = planDecouplingPlacement({
 		subject,
@@ -195,10 +211,15 @@ function component(
 }
 
 {
-	const subject = component('c1', 'C1', 300, 300, { routed: 0 });
+	const subject = component('c1', 'C1', 300, 300, {
+		routed: 0,
+		powerPadX: 290,
+		groundPadX: 310,
+	});
 	const owner = component('u1', 'U1', 100, 100, {
-		powerPadX: 160,
+		powerPadX: 130,
 		powerPadY: 100,
+		groundPadX: 90,
 	});
 	const blockingKeepout = {
 		points: [
