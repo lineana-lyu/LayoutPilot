@@ -45,6 +45,7 @@ const board = {
 		],
 	},
 	holes: [],
+	approximationToleranceMil: 0,
 };
 
 const fingerprintA = buildPhysicalBoardFingerprint({
