@@ -1,83 +1,90 @@
 import path from 'node:path';
 import fs from 'fs-extra';
-import ignore from 'ignore';
 import JSZip from 'jszip';
 
 import * as extensionConfig from '../extension.json';
 
-function multiLineStrToArray(str: string): Array<string> {
-	return str.split(/[\r\n]+/);
-}
+const PACKAGE_ROOT = path.join(__dirname, '../');
+const RUNTIME_ROOT_FILES = ['extension.json'] as const;
+const RUNTIME_DIRECTORIES = ['dist'] as const;
 
 function testUuid(uuid?: string): uuid is string {
 	const regExp = /^[a-z0-9]{32}$/;
-	if (uuid && uuid !== '00000000000000000000000000000000') {
-		return regExp.test(uuid.trim());
-	}
-	return false;
+	return Boolean(
+		uuid
+		&& uuid !== '00000000000000000000000000000000'
+		&& regExp.test(uuid.trim()),
+	);
 }
 
-function fixUuid(uuid?: string): string {
-	uuid = uuid?.trim() || undefined;
-	if (testUuid(uuid)) {
-		return uuid.trim();
+function listFilesRecursively(directory: string): string[] {
+	if (!fs.existsSync(directory)) {
+		throw new Error(`Required package directory is missing: ${directory}`);
 	}
-	return crypto.randomUUID().replaceAll('-', '');
+
+	const result: string[] = [];
+	for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+		const absolute = path.join(directory, entry.name);
+		if (entry.isDirectory()) {
+			result.push(...listFilesRecursively(absolute));
+			continue;
+		}
+		if (entry.isFile()) {
+			result.push(absolute);
+		}
+	}
+	return result;
 }
 
-function main() {
+function toArchivePath(absolutePath: string): string {
+	return path.relative(PACKAGE_ROOT, absolutePath).replace(/\\/g, '/');
+}
+
+async function main(): Promise<void> {
 	if (!testUuid(extensionConfig.uuid)) {
-		const newExtensionConfig = { ...extensionConfig };
-		// @ts-expect-error Removing the synthetic default property when present.
-		delete newExtensionConfig.default;
-		newExtensionConfig.uuid = fixUuid(extensionConfig.uuid);
-		fs.writeJsonSync(
-			path.join(__dirname, '../extension.json'),
-			newExtensionConfig,
-			{ spaces: '\t', EOL: '\n', encoding: 'utf-8' },
+		throw new Error(
+			'extension.json must contain one stable non-zero 32-character lowercase UUID before packaging.',
 		);
 	}
 
-	const filepathListWithoutFilter = fs.readdirSync(
-		path.join(__dirname, '../'),
-		{ encoding: 'utf-8', recursive: true },
-	);
-	const edaignoreListWithoutResolve = multiLineStrToArray(
-		fs.readFileSync(path.join(__dirname, '../.edaignore'), { encoding: 'utf-8' }),
-	);
-	const edaignoreList: Array<string> = [];
-	for (const edaignoreLine of edaignoreListWithoutResolve) {
-		if (edaignoreLine.endsWith('/') || edaignoreLine.endsWith('\\')) {
-			edaignoreList.push(edaignoreLine.slice(0, edaignoreLine.length - 1));
-		}
-		else {
-			edaignoreList.push(edaignoreLine);
-		}
-	}
-	const edaignore = ignore().add(edaignoreList);
-	const filepathListWithoutResolve = edaignore.filter(filepathListWithoutFilter);
-	const fileList: Array<string> = [];
-	for (const filepath of filepathListWithoutResolve) {
-		if (fs.lstatSync(filepath).isFile()) {
-			fileList.push(filepath.replace(/\\/g, '/'));
+	const runtimeFiles = [
+		...RUNTIME_ROOT_FILES.map(file => path.join(PACKAGE_ROOT, file)),
+		...RUNTIME_DIRECTORIES.flatMap(directory =>
+			listFilesRecursively(path.join(PACKAGE_ROOT, directory)),
+		),
+	];
+
+	for (const file of runtimeFiles) {
+		if (!fs.existsSync(file) || !fs.lstatSync(file).isFile()) {
+			throw new Error(`Required runtime file is missing: ${file}`);
 		}
 	}
 
 	const zip = new JSZip();
-	for (const file of fileList) {
-		zip.file(file, fs.createReadStream(path.join(__dirname, '../', file)));
+	for (const file of runtimeFiles) {
+		zip.file(toArchivePath(file), fs.createReadStream(file));
 	}
 
-	zip.generateNodeStream({
+	const outputDirectory = path.join(__dirname, 'dist');
+	await fs.ensureDir(outputDirectory);
+	const outputPath = path.join(
+		outputDirectory,
+		`${extensionConfig.name}_v${extensionConfig.version}.eext`,
+	);
+	const buffer = await zip.generateAsync({
 		type: 'nodebuffer',
-		streamFiles: true,
 		compression: 'DEFLATE',
 		compressionOptions: { level: 9 },
-	}).pipe(
-		fs.createWriteStream(
-			path.join(__dirname, 'dist', `${extensionConfig.name}_v${extensionConfig.version}.eext`),
-		),
-	);
+	});
+	await fs.writeFile(outputPath, buffer);
+
+	console.log('[LayoutPilot] packaged runtime allowlist', {
+		outputPath,
+		files: runtimeFiles.map(toArchivePath),
+	});
 }
 
-main();
+main().catch(error => {
+	console.error(error);
+	process.exitCode = 1;
+});
