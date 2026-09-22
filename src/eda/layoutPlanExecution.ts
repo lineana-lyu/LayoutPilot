@@ -166,7 +166,7 @@ export async function preflightAcceptedLayoutPlan(): Promise<
 		subject,
 		owner,
 		obstacles: physical,
-		board: board.polygon,
+		board: board.region,
 		componentKeepouts: keepouts.polygons,
 		powerNet: item.powerNet,
 		groundNet: item.groundNet,
