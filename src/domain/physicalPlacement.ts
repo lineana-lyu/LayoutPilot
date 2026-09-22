@@ -436,7 +436,21 @@ export function planDecouplingPlacement(input: {
 	if (!subjectBox) {
 		return {
 			ready: false,
-			reasons: [`${subject.designator} 无法建立焊盘外接框`],
+			reasons: [`${subject.designator} 无法建立 EasyEDA 实测器件 BBox`],
+		};
+	}
+
+	const invalidObstacle = obstacles.find(component =>
+		component.id !== subject.id
+		&& component.layer === subject.layer
+		&& validateMeasuredBounds(component).length > 0
+	);
+	if (invalidObstacle) {
+		return {
+			ready: false,
+			reasons: [
+				`无法确认 ${invalidObstacle.designator} 的 EasyEDA 实测 BBox，不能证明候选位置无碰撞`,
+			],
 		};
 	}
 
