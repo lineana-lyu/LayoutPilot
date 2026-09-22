@@ -25,7 +25,8 @@
     "test:physical-placement": "ts-node ./tests/physicalPlacement.ts",
     "test:placement-command": "ts-node ./tests/placementCommand.ts",
     "test:board-boundary": "ts-node ./tests/boardBoundary.ts",
-    "test:placement-transaction": "ts-node ./tests/placementTransaction.ts"
+    "test:placement-transaction": "ts-node ./tests/placementTransaction.ts",
+    "verify:package": "ts-node ./build/verifyPackage.ts"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^5.4.1",
@@ -34,7 +35,6 @@
     "esbuild": "^0.24.2",
     "eslint": "^9.37.0",
     "fs-extra": "^11.3.0",
-    "ignore": "^7.0.3",
     "jszip": "^3.10.1",
     "rimraf": "^6.0.1",
     "ts-node": "^10.9.2",
