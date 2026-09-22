@@ -1382,7 +1382,7 @@ async function collectCurrentConstraintSession(): Promise<
     graph: analysisState.graph,
     contexts: analysisState.contexts,
   });
-  const snapshot = getActiveSemanticSnapshot();
+  const snapshot = getStoredSemanticSnapshot();
 
   if (!snapshot) {
     return {
@@ -1594,8 +1594,26 @@ export async function previewLayoutConstraints(): Promise<void> {
 
 export async function applyDemoPlacement(): Promise<void> {
   try {
+    const current = await collectCurrentConstraintSession();
+    if (!current.ok) {
+      await eda.sys_Dialog.showInformationMessage(
+        current.message,
+        'LayoutPilot · 受控布局执行',
+      );
+      return;
+    }
+
+    const {
+      snapshot,
+      evaluation,
+      boardFingerprint,
+    } = current.value;
+
     const outstanding = getStoredLastPlacementCommand();
-    if (outstanding?.status === 'applied') {
+    if (
+      outstanding?.status === 'applied'
+      && outstanding.boardFingerprint === boardFingerprint
+    ) {
       const component = await eda.pcb_PrimitiveComponent.get(outstanding.componentId);
       if (!component) {
         await eda.sys_Dialog.showInformationMessage(
@@ -1637,16 +1655,6 @@ export async function applyDemoPlacement(): Promise<void> {
       });
     }
 
-    const current = await collectCurrentConstraintSession();
-    if (!current.ok) {
-      await eda.sys_Dialog.showInformationMessage(
-        current.message,
-        'LayoutPilot · 受控布局执行',
-      );
-      return;
-    }
-
-    const { snapshot, evaluation } = current.value;
     const executable = evaluation.entries.flatMap(item => {
       if (!item.result || !item.humanOwnershipDecision) return [];
       return item.result.proposals
@@ -1912,6 +1920,7 @@ export async function applyDemoPlacement(): Promise<void> {
 
     const command = createPlacementCommand({
       snapshotId: snapshot.id,
+      boardFingerprint,
       constraintId: proposal.id,
       componentId: executionPlan.subjectId,
       componentDesignator: executionPlan.subjectDesignator,
@@ -1993,6 +2002,27 @@ export async function undoLastDemoPlacement(): Promise<void> {
       await eda.sys_Dialog.showInformationMessage(
         '当前没有可撤销的 LayoutPilot 受控布局动作。',
         'LayoutPilot · 撤销',
+      );
+      return;
+    }
+
+    const analysisState = await collectAnalysisState();
+    const currentBoardFingerprint = buildSemanticBoardFingerprint({
+      graph: analysisState.graph,
+      contexts: analysisState.contexts,
+    });
+    if (command.boardFingerprint !== currentBoardFingerprint) {
+      await eda.sys_Dialog.showInformationMessage(
+        [
+          '上一次 LayoutPilot Command 属于另一份 PCB 语义状态。',
+          '',
+          `Command Fingerprint：${command.boardFingerprint}`,
+          `当前 PCB Fingerprint：${currentBoardFingerprint}`,
+          '',
+          '为避免跨 PCB 恢复坐标，本次 Undo 被阻止。',
+          '切回原 PCB 后仍可继续处理这条 Command；当前 PCB 不会发生修改。',
+        ].join('\n'),
+        'LayoutPilot · Undo PCB 不匹配',
       );
       return;
     }
