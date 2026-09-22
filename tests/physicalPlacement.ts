@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import {
+	placementPlansEquivalent,
 	planDecouplingPlacement,
 	type PhysicalComponentSnapshot,
 } from '../src/domain/physicalPlacement';
@@ -241,6 +242,41 @@ function component(
 
 	assert.equal(result.ready, false);
 	assert.ok(result.reasons.some(reason => reason.includes('keepout')));
+}
+
+{
+	const a = {
+		subjectId: 'c1',
+		subjectDesignator: 'C1',
+		ownerId: 'u1',
+		ownerDesignator: 'U1',
+		powerNet: '3V3',
+		groundNet: 'GND',
+		ownerPowerPadNumber: '1',
+		subjectPowerPadNumber: '1',
+		ownerGroundPadNumber: '2',
+		subjectGroundPadNumber: '2',
+		estimatedLoopProxyMil: 80,
+		from: { x: 100, y: 200 },
+		to: { x: 120, y: 220 },
+		clearanceMil: 20,
+		rationale: 'test',
+	};
+	assert.equal(placementPlansEquivalent(a, { ...a }), true);
+	assert.equal(
+		placementPlansEquivalent(a, {
+			...a,
+			to: { x: 125, y: 220 },
+		}),
+		false,
+	);
+	assert.equal(
+		placementPlansEquivalent(a, {
+			...a,
+			ownerPowerPadNumber: '3',
+		}),
+		false,
+	);
 }
 
 console.log('Physical placement planner tests passed.');
