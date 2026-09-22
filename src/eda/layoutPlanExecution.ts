@@ -57,6 +57,7 @@ function itemAsPhysicalPlan(item: LayoutPlanItem): PhysicalPlacementPlan {
 		subjectPowerPadNumber: item.subjectPowerPadNumber,
 		ownerGroundPadNumber: item.ownerGroundPadNumber,
 		subjectGroundPadNumber: item.subjectGroundPadNumber,
+		currentLoopProxyMil: item.currentLoopProxyMil,
 		estimatedLoopProxyMil: item.estimatedLoopProxyMil,
 		from: { ...item.from },
 		to: { ...item.to },
