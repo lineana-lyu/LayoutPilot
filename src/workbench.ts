@@ -483,19 +483,32 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 						const evidenceLines = candidate.evidenceLines.length
 							? candidate.evidenceLines
 							: [`${task.rail}：与 ${task.designator} 同处 rail-domain`];
+						const distance = candidate.powerPadEvidence;
 						return `
-							<button class="host ${selected ? 'selected' : ''}" data-owner="${escapeHtml(candidate.id)}">
+							<div class="host ${selected ? 'selected' : ''}">
 								<div class="host-top">
 									<span class="host-ref">${escapeHtml(candidate.designator)}</span>
 									<span class="host-name">${escapeHtml(primaryName)}</span>
 									${selected ? '<span class="badge ok" style="margin-left:auto">当前 Owner</span>' : ''}
 								</div>
 								<div class="host-meta">${escapeHtml([candidate.manufacturer, candidate.footprint].filter(Boolean).join(' · ') || '制造商 / 封装信息不足')}</div>
+								${distance ? `
+									<div class="host-distance">
+										${escapeHtml(distance.netName)} ·
+										${escapeHtml(task.designator)}.${escapeHtml(distance.subjectPadNumber)}
+										↔
+										${escapeHtml(candidate.designator)}.${escapeHtml(distance.ownerPadNumber)}
+										· ${distance.distanceMil.toFixed(1)} mil
+									</div>` : ''}
 								<div class="host-evidence">
 									<strong>拓扑证据</strong>
 									${evidenceLines.map(line => `<span class="evidence-line">${escapeHtml(line)}</span>`).join('')}
 								</div>
-							</button>`;
+								<div class="host-actions">
+									<button class="btn small" data-locate-owner="${escapeHtml(candidate.id)}">在 PCB 中定位</button>
+									<button class="btn small ${selected ? '' : 'primary'}" data-confirm-owner="${escapeHtml(candidate.id)}">${selected ? '已确认 Owner' : '确认 Owner'}</button>
+								</div>
+							</div>`;
 					}).join('')}
 				</div>
 				${task.selectedOwnerId ? '<div style="margin-top:8px"><button class="btn danger" id="clearOwnerBtn">清除人工确认</button></div>' : ''}
@@ -503,9 +516,9 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 			<div class="inline-plan">${model ? renderConstraintArea(model) : ''}</div>
 		</div>`;
 
-	for (const node of mainPanel.querySelectorAll<HTMLButtonElement>('[data-owner]')) {
+	for (const node of mainPanel.querySelectorAll<HTMLButtonElement>('[data-confirm-owner]')) {
 		node.addEventListener('click', async () => {
-			const ownerId = node.dataset.owner;
+			const ownerId = node.dataset.confirmOwner;
 			const candidate = task.candidates.find(item => item.id === ownerId);
 			const workflow = inspectStoredWorkflowState();
 			const snapshot = workflow.semanticSnapshot;
@@ -522,6 +535,33 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 			);
 			showToast(`${task.designator} → ${candidate.designator} 已记录为人工证据`);
 			await refresh();
+		});
+	}
+
+	for (const node of mainPanel.querySelectorAll<HTMLButtonElement>('[data-locate-owner]')) {
+		node.addEventListener('click', async () => {
+			const ownerId = node.dataset.locateOwner;
+			const candidate = task.candidates.find(item => item.id === ownerId);
+			if (!candidate) return;
+
+			setBusy(true);
+			try {
+				await focusPcbEvidence({
+					subjectId: task.componentId,
+					subjectDesignator: task.designator,
+					ownerId: candidate.id,
+					ownerDesignator: candidate.designator,
+					powerEvidence: candidate.powerPadEvidence,
+				});
+				await hideLayoutPilotWorkbench();
+			}
+			catch (error) {
+				console.error('[LayoutPilot Workbench] PCB evidence focus failed', error);
+				showToast(`PCB 定位失败：${String(error)}`);
+			}
+			finally {
+				setBusy(false);
+			}
 		});
 	}
 
