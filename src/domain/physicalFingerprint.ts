@@ -70,6 +70,7 @@ export function buildPhysicalBoardFingerprint(input: {
 		components,
 		board: {
 			outer: canonicalPolygon(input.board.outer),
+			approximationToleranceMil: numeric(input.board.approximationToleranceMil),
 			holes: input.board.holes
 				.map(canonicalPolygon)
 				.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
