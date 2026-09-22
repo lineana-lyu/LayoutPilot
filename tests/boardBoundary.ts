@@ -206,3 +206,33 @@ console.log('Board boundary tests passed.');
 		assert.equal(twoPointPath.closedPolygons.length, 0);
 	}
 }
+
+
+{
+	const tolerant = buildBoardPolygonsFromSegments([
+		{ start: { x: 0, y: 0 }, end: { x: 100, y: 0 } },
+		{ start: { x: 100.005, y: 0.004 }, end: { x: 100, y: 100 } },
+		{ start: { x: 100, y: 100 }, end: { x: 0, y: 100 } },
+		{ start: { x: 0, y: 100 }, end: { x: 0.004, y: 0.003 } },
+	]);
+	assert.equal(
+		tolerant.ok,
+		true,
+		'EasyEDA endpoint serialization noise within 0.01 mil should still close the contour',
+	);
+}
+
+{
+	const branched = buildBoardPolygonsFromSegments([
+		{ start: { x: 0, y: 0 }, end: { x: 100, y: 0 } },
+		{ start: { x: 100, y: 0 }, end: { x: 100, y: 100 } },
+		{ start: { x: 100, y: 100 }, end: { x: 0, y: 100 } },
+		{ start: { x: 0, y: 100 }, end: { x: 0, y: 0 } },
+		{ start: { x: 100, y: 0 }, end: { x: 150, y: 0 } },
+	]);
+	assert.equal(
+		branched.ok,
+		false,
+		'branched board-outline topology must remain fail-closed',
+	);
+}
