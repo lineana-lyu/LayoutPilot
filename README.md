@@ -118,6 +118,10 @@ v0.9.4 replaces the previous four-direction / single-distance placement sampling
 
 The design adapts the mature separation used by KiCad's autoplacer: candidate-space enumeration is distinct from hard legality checks and placement-cost ranking. LayoutPilot keeps the search local because a decoupling `near(owner)` constraint should fail rather than drift arbitrarily across the board. Rejected candidates are counted by collision / board / keepout reason so a failed preview is diagnosable instead of collapsing into one generic message.
 
+## Preview acceptance consistency
+
+v0.9.5 makes **Accept** a metadata-only LayoutPlan transition. Physical freshness is still checked before Apply, but preview acceptance no longer performs an unrelated full-board preflight. Board and keepout rings are canonicalized before physical fingerprinting so equivalent closed geometry is independent of ring start vertex and orientation.
+
 ## Layout Preview MVP
 
 v0.9 introduces a real proposal-before-commit layer.
