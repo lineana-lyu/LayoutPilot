@@ -12,7 +12,7 @@ import { resolveOwnershipRelations } from './domain/ownershipRelation';
 import { clearHumanOwnershipDecisions, createHumanOwnershipDecision, getHumanOwnershipDecisions, removeHumanOwnershipDecision, upsertHumanOwnershipDecision } from './domain/humanOwnershipDecision';
 import { buildSemanticBoardFingerprint, clearActiveSemanticSnapshot, createSemanticSnapshot, getActiveSemanticSnapshot, semanticSnapshotMatchesBoard, setActiveSemanticSnapshot, type SemanticSnapshotEntry } from './domain/semanticSnapshot';
 import { buildSimpleBoardPolygonFromSegments, parseSimpleBoardPolygon, type BoardPolygon } from './domain/boardBoundary';
-import { placementPlansEquivalent, planDecouplingPlacement, type PhysicalComponentSnapshot } from './domain/physicalPlacement';
+import { placementPlansEquivalent, planDecouplingPlacement, validatePlacementTarget, type PhysicalComponentSnapshot } from './domain/physicalPlacement';
 import { createPlacementCommand, getLastPlacementCommand, markPlacementCommandApplied, markPlacementCommandSuperseded, markPlacementCommandUndone, setLastPlacementCommand } from './domain/placementCommand';
 import { filterOwnershipPropertyNames, findOwnershipFields, findOwnershipMemberNames } from './domain/ownershipCapabilityProbe';
 import extensionConfig from '../extension.json' with { type: 'json' };
@@ -2259,28 +2259,164 @@ export async function undoLastDemoPlacement(): Promise<void> {
         `恢复 ${command.componentDesignator} 到执行前位置？`,
         `当前：(${command.to.x.toFixed(2)}, ${command.to.y.toFixed(2)}) mil`,
         `恢复：(${command.from.x.toFixed(2)}, ${command.from.y.toFixed(2)}) mil`,
+        '',
+        '确认后会重新检查走线、BBox、板框、keepout 与 DRC，再决定是否执行。',
       ].join('\n'),
       'LayoutPilot · 撤销上次受控布局',
       '恢复原位置',
     );
     if (!confirmed) return;
 
-    await moveComponentAndVerify(
-      command.componentId,
-      command.from.x,
-      command.from.y,
+    const physical = await collectPhysicalComponents(command.componentId);
+    const subject = physical.find(item => item.id === command.componentId);
+    if (!subject) {
+      throw new Error(`无法重新读取器件 ${command.componentDesignator}`);
+    }
+
+    if (
+      !closeEnough(subject.x, command.to.x)
+      || !closeEnough(subject.y, command.to.y)
+    ) {
+      setLastPlacementCommand(markPlacementCommandSuperseded(command));
+      await eda.sys_Dialog.showInformationMessage(
+        '确认期间器件位置发生变化，旧 Command 已标记 superseded，本次不再自动 Undo。',
+        'LayoutPilot · 撤销被阻止',
+      );
+      return;
+    }
+
+    if (subject.locked) {
+      await eda.sys_Dialog.showInformationMessage(
+        `${command.componentDesignator} 当前已锁定。请先确认锁定意图；LayoutPilot 不会自动解锁后移动。`,
+        'LayoutPilot · 撤销被阻止',
+      );
+      return;
+    }
+
+    const routingUnknown = subject.pads.some(
+      pad => pad.connectedPrimitiveCount === undefined,
     );
-    const drcPassed = await eda.pcb_Drc.check(true, false, false);
+    const routed = subject.pads.some(
+      pad => (pad.connectedPrimitiveCount ?? 0) > 0,
+    );
+    if (routingUnknown || routed) {
+      if (routed) {
+        setLastPlacementCommand(markPlacementCommandSuperseded(command));
+      }
+      await eda.sys_Dialog.showInformationMessage(
+        [
+          routingUnknown
+            ? '无法确认当前器件是否已有铜连接。'
+            : `${command.componentDesignator} 在 LayoutPilot 移动后已经产生走线/铜连接。`,
+          '',
+          '移动已布线器件可能拉伸或破坏现有连接，因此本次 Undo 被阻止。',
+          routed
+            ? '该 Command 已标记 superseded，不再作为可自动撤销事务。'
+            : '当前状态保持不变，请人工检查。',
+        ].join('\n'),
+        'LayoutPilot · 撤销被阻止',
+      );
+      return;
+    }
+
+    const boardBoundary = await collectSimpleBoardBoundary();
+    if (!boardBoundary.ok) {
+      await eda.sys_Dialog.showInformationMessage(
+        boardBoundary.reason,
+        'LayoutPilot · Undo 板框状态不可验证',
+      );
+      return;
+    }
+
+    const componentKeepouts = await collectSimpleComponentKeepouts();
+    if (!componentKeepouts.ok) {
+      await eda.sys_Dialog.showInformationMessage(
+        componentKeepouts.reason,
+        'LayoutPilot · Undo Keepout 状态不可验证',
+      );
+      return;
+    }
+
+    const targetValidation = validatePlacementTarget({
+      subject,
+      obstacles: physical,
+      board: boardBoundary.polygon,
+      componentKeepouts: componentKeepouts.polygons,
+      target: command.from,
+    });
+    if (!targetValidation.valid) {
+      await eda.sys_Dialog.showInformationMessage(
+        [
+          '执行前的原位置在当前 PCB 上已经不能被证明安全。',
+          '',
+          ...targetValidation.reasons.map(reason => `• ${reason}`),
+          '',
+          'LayoutPilot 不会机械地把历史坐标覆盖到新的板状态上。',
+        ].join('\n'),
+        'LayoutPilot · Undo 目标位置不再安全',
+      );
+      return;
+    }
+
+    const baselineDrcPassed = await eda.pcb_Drc.check(true, false, false);
+    if (!baselineDrcPassed) {
+      await eda.sys_Dialog.showInformationMessage(
+        [
+          '当前 PCB 在 Undo 前没有通过 DRC。',
+          '',
+          '无法建立干净基线，本次不执行自动恢复。',
+        ].join('\n'),
+        'LayoutPilot · Undo DRC 基线未通过',
+      );
+      return;
+    }
+
+    const transaction = await executePlacementTransaction(
+      {
+        componentId: command.componentId,
+        from: command.to,
+        to: command.from,
+      },
+      {
+        moveAndVerify: async (componentId, point) => {
+          await moveComponentAndVerify(componentId, point.x, point.y);
+        },
+        checkDrc: () => eda.pcb_Drc.check(true, false, false),
+      },
+    );
+
+    if (!transaction.ok) {
+      await eda.sys_Dialog.showInformationMessage(
+        [
+          'Undo 没有提交。',
+          '',
+          `原因：${transaction.error}`,
+          `已回到 LayoutPilot 目标位：${transaction.rollbackVerified ? 'PASS' : '无法确认'}`,
+          transaction.rollbackDrcPassed === undefined
+            ? '回滚 DRC：未执行'
+            : `回滚 DRC：${transaction.rollbackDrcPassed ? 'PASS' : 'FAIL'}`,
+          '',
+          transaction.rollbackVerified
+            ? '原 Command 仍保持 applied，可在问题消除后再次尝试 Undo。'
+            : '最终状态无法证明，请立即人工检查。',
+        ].join('\n'),
+        transaction.rollbackVerified
+          ? 'LayoutPilot · Undo 已回滚'
+          : 'LayoutPilot · Undo 需要人工检查',
+      );
+      return;
+    }
+
     const undone = markPlacementCommandUndone(command);
     setLastPlacementCommand(undone);
 
     await eda.sys_Dialog.showInformationMessage(
       [
-        '已恢复执行前坐标。',
+        '已安全恢复执行前坐标。',
         '',
         `Command：${command.id}`,
-        `坐标回读：PASS`,
-        `恢复后 DRC：${drcPassed ? 'PASS' : '未通过，请人工检查'}`,
+        '坐标回读：PASS',
+        '恢复后 DRC：PASS',
       ].join('\n'),
       'LayoutPilot · 撤销完成',
     );
@@ -2293,7 +2429,6 @@ export async function undoLastDemoPlacement(): Promise<void> {
     );
   }
 }
-
 
 export async function about(): Promise<void> {
   await eda.sys_Dialog.showInformationMessage(
