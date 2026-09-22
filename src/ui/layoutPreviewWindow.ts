@@ -67,8 +67,8 @@ export async function openLayoutPreviewBar(): Promise<void> {
 	const previousId = getStoredPreviewWindowId();
 	const id = createPreviewWindowId();
 	const viewport = eda.sys_Window.getViewportSize();
-	const width = Math.max(560, Math.min(760, viewport.width - 80));
-	const height = 124;
+	const width = Math.max(540, Math.min(720, viewport.width - 80));
+	const height = 116;
 	const x = Math.max(16, Math.round((viewport.width - width) / 2));
 	const y = Math.max(44, viewport.height - height - 72);
 
