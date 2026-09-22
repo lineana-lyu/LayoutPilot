@@ -507,11 +507,14 @@ function renderPlanPanel(model?: RuntimeModel): void {
 	}
 
 	const plan = model.layoutPlan;
+	const planMode = plan ? layoutPlanAcceptanceMode(plan) : undefined;
 	const planStatus = plan
 		? plan.status === 'preview'
 			? '待确认'
 			: plan.status === 'accepted'
-				? '已接受'
+				? planMode === 'reference-only'
+					? '参考方案已保存'
+					: '已接受'
 				: plan.status === 'rejected'
 					? '已放弃'
 					: plan.status === 'applied'
