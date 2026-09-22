@@ -55,6 +55,19 @@ The workbench keeps four stages visible at once and uses a responsive three-pane
 
 Owner confirmation happens directly in the workbench. The only dialogs intentionally retained in the main path are settings/errors and the final confirmation before a real PCB mutation.
 
+### Native engineering workbench
+
+v0.8.5 removes the dashboard/card-wall presentation in favor of a dense EasyEDA-style engineering inspector:
+
+- thin workflow strip with only the current stage highlighted;
+- native-density task list and property rows;
+- Host candidates rendered as a table: Host / device / shared power Pad / distance / topology / actions;
+- flat Constraint list instead of card tiles;
+- Microsoft YaHei UI / Segoe UI typography, restrained borders and 120–160 ms state transitions;
+- three real iframe size presets: compact / standard / wide. The EasyEDA iframe API does not expose arbitrary drag-resize, so LayoutPilot recreates the workbench transactionally at the selected size while preserving WorkflowState.
+
+PCB selection capture is runtime-capability based: LayoutPilot prefers `getAllSelectedPrimitives_PrimitiveId`, falls back to `getAllSelectedPrimitives`, and only uses deprecated selection APIs when necessary.
+
 ### Canvas evidence review
 
 Before confirming an Owner, a Host card can show the closest shared power-pad pair and its current straight-line distance in mil. The engineer can use **定位核对** to select the subject/Host on the real PCB canvas, zoom to them and mark the relevant pads. A compact Evidence Review Bar stays visible with **返回工作台** and **确认 Owner** actions, so the engineer never has to reopen LayoutPilot from the menu. Exiting review clears LayoutPilot markers and restores the engineer's previous PCB selection. Distance is review evidence only and never becomes an automatic Owner rule.
