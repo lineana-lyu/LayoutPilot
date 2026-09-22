@@ -86,6 +86,7 @@ export interface PlacementTargetValidation {
 export interface PlacementReadiness {
 	ready: boolean;
 	reasons: string[];
+	executionBlockers: string[];
 	plan?: PhysicalPlacementPlan;
 }
 
@@ -364,6 +365,7 @@ export function planDecouplingPlacement(input: {
 	powerNet: string;
 	groundNet: string;
 	clearanceMil?: number;
+	mode?: 'preview' | 'execution';
 }): PlacementReadiness {
 	const {
 		subject,
@@ -375,13 +377,20 @@ export function planDecouplingPlacement(input: {
 		groundNet,
 	} = input;
 	const clearanceMil = input.clearanceMil ?? DEFAULT_CLEARANCE_MIL;
+	const mode = input.mode ?? 'execution';
 	const reasons = [
 		...validateComponentGeometry(subject),
 		...validateComponentGeometry(owner),
 	];
+	const executionBlockers: string[] = [];
+
+	const blockExecution = (reason: string) => {
+		if (mode === 'execution') reasons.push(reason);
+		else executionBlockers.push(reason);
+	};
 
 	if (subject.locked) {
-		reasons.push(`${subject.designator} 已锁定，不允许自动移动`);
+		blockExecution(`${subject.designator} 已锁定，不允许自动移动`);
 	}
 	if (subject.layer !== owner.layer) {
 		reasons.push(
@@ -389,13 +398,13 @@ export function planDecouplingPlacement(input: {
 		);
 	}
 	if (subject.pads.some(pad => pad.connectedPrimitiveCount === undefined)) {
-		reasons.push(
-			`${subject.designator} 的已有布线状态无法确认，按失败关闭策略拒绝移动`,
+		blockExecution(
+			`${subject.designator} 的已有布线状态无法确认，执行阶段按失败关闭策略拒绝移动`,
 		);
 	}
 	else if (subject.pads.some(pad => (pad.connectedPrimitiveCount ?? 0) > 0)) {
-		reasons.push(
-			`${subject.designator} 已有布线/铜连接，v0.7 不执行器件移动`,
+		blockExecution(
+			`${subject.designator} 已有布线/铜连接，当前只允许预览，不执行器件移动`,
 		);
 	}
 
@@ -429,7 +438,7 @@ export function planDecouplingPlacement(input: {
 	}
 
 	if (reasons.length) {
-		return { ready: false, reasons };
+		return { ready: false, reasons, executionBlockers };
 	}
 
 	const subjectBox = componentBox(subject);
@@ -437,6 +446,7 @@ export function planDecouplingPlacement(input: {
 		return {
 			ready: false,
 			reasons: [`${subject.designator} 无法建立 EasyEDA 实测器件 BBox`],
+			executionBlockers,
 		};
 	}
 
@@ -451,6 +461,7 @@ export function planDecouplingPlacement(input: {
 			reasons: [
 				`无法确认 ${invalidObstacle.designator} 的 EasyEDA 实测 BBox，不能证明候选位置无碰撞`,
 			],
+			executionBlockers,
 		};
 	}
 
@@ -564,6 +575,7 @@ export function planDecouplingPlacement(input: {
 		return {
 			ready: true,
 			reasons: [],
+			executionBlockers,
 			plan: candidates[0].plan,
 		};
 	}
@@ -573,5 +585,6 @@ export function planDecouplingPlacement(input: {
 		reasons: [
 			`未找到同时满足板框、器件 keepout 与 ${clearanceMil} mil 近似器件避让条件的候选位置`,
 		],
+		executionBlockers,
 	};
 }
