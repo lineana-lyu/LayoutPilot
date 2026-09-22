@@ -126,6 +126,41 @@ function setStage(
 	if (state !== 'idle') node.classList.add(state);
 }
 
+async function hydrateTaskPowerEvidence(task: OwnerTask): Promise<void> {
+	const evidenceIds = [
+		task.componentId,
+		...task.candidates.map(candidate => candidate.id),
+	];
+	const padEvidenceComponents = await collectPadEvidenceComponents(evidenceIds);
+	const padEvidenceById = new Map(
+		padEvidenceComponents.map(component => [component.id, component]),
+	);
+	const subjectPhysical = padEvidenceById.get(task.componentId);
+	if (!subjectPhysical) {
+		return;
+	}
+
+	for (const candidate of task.candidates) {
+		const ownerPhysical = padEvidenceById.get(candidate.id);
+		candidate.powerPadEvidence = ownerPhysical
+			? buildClosestSharedRailPadEvidence(
+				subjectPhysical,
+				ownerPhysical,
+				task.railNets,
+			)
+			: undefined;
+	}
+
+	task.candidates.sort((a, b) => {
+		const aDistance = a.powerPadEvidence?.distanceMil
+			?? Number.POSITIVE_INFINITY;
+		const bDistance = b.powerPadEvidence?.distanceMil
+			?? Number.POSITIVE_INFINITY;
+		return aDistance - bDistance
+			|| a.designator.localeCompare(b.designator);
+	});
+}
+
 function buildRuntimeModel(): Promise<RuntimeModel> {
 	return (async () => {
 		const workflow = inspectStoredWorkflowState();
@@ -276,38 +311,7 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 
 		if (selectedTask) {
 			selectedComponentId = selectedTask.componentId;
-			const evidenceIds = [
-				selectedTask.componentId,
-				...selectedTask.candidates.map(candidate => candidate.id),
-			];
-			const padEvidenceComponents = await collectPadEvidenceComponents(
-				evidenceIds,
-			);
-			const padEvidenceById = new Map(
-				padEvidenceComponents.map(component => [component.id, component]),
-			);
-			const subjectPhysical = padEvidenceById.get(selectedTask.componentId);
-
-			if (subjectPhysical) {
-				for (const candidate of selectedTask.candidates) {
-					const ownerPhysical = padEvidenceById.get(candidate.id);
-					candidate.powerPadEvidence = ownerPhysical
-						? buildClosestSharedRailPadEvidence(
-							subjectPhysical,
-							ownerPhysical,
-							selectedTask.railNets,
-						)
-						: undefined;
-				}
-				selectedTask.candidates.sort((a, b) => {
-					const aDistance = a.powerPadEvidence?.distanceMil
-						?? Number.POSITIVE_INFINITY;
-					const bDistance = b.powerPadEvidence?.distanceMil
-						?? Number.POSITIVE_INFINITY;
-					return aDistance - bDistance
-						|| a.designator.localeCompare(b.designator);
-				});
-			}
+			await hydrateTaskPowerEvidence(selectedTask);
 		}
 
 		return {
@@ -368,9 +372,22 @@ function renderTasks(
 	}).join('');
 
 	for (const node of taskList.querySelectorAll<HTMLButtonElement>('[data-task]')) {
-		node.addEventListener('click', () => {
+		node.addEventListener('click', async () => {
 			selectedComponentId = node.dataset.task;
-			void refresh();
+			const selectedTask = tasks.find(
+				task => task.componentId === selectedComponentId,
+			);
+			if (!selectedTask) return;
+
+			setBusy(true);
+			try {
+				await hydrateTaskPowerEvidence(selectedTask);
+				renderCurrentTask(tasks, model);
+				renderTasks(tasks, model);
+			}
+			finally {
+				setBusy(false);
+			}
 		});
 	}
 }
