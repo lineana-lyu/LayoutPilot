@@ -342,6 +342,9 @@ export async function focusPcbEvidence(input: {
 	if (!document) {
 		throw new Error('无法获取当前 PCB 文档信息。');
 	}
+	if (document.documentType !== EDMT_EditorDocumentType.PCB) {
+		throw new Error('当前活动文档不是 PCB，无法执行画布定位。');
+	}
 
 	await eda.dmt_EditorControl.activateDocument(document.tabId);
 	await eda.pcb_SelectControl.clearSelected();
