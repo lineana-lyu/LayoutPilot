@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LayoutPilot · 布局预览</title>
+  <style>
+    :root{
+      --bg:#f3f4f6;--panel:#fff;--line:#d9dee5;--text:#252a30;
+      --muted:#68717b;--accent:#4f7fdc;--ok:#23825f;--danger:#c13f3f;
+      --font:"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif;
+      --mono:"Cascadia Mono","SFMono-Regular",Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;height:100%;font-family:var(--font);background:var(--bg);color:var(--text)}
+    body{padding:8px}
+    .bar{height:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center;background:var(--panel);border:1px solid var(--line);padding:9px 11px}
+    .title{font-size:12px;font-weight:600}
+    .meta{font-size:10px;color:var(--muted);margin-top:4px}
+    .items{font-family:var(--mono);font-size:10px;color:#40505f;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .status{font-size:9px;color:var(--danger);margin-top:4px}
+    .actions{display:flex;gap:6px;align-items:center}
+    button{height:28px;padding:0 10px;border:1px solid #cfd5dc;background:#fff;color:var(--text);font:11px var(--font);cursor:pointer}
+    button:hover{background:#f3f5f8}
+    button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+    button.danger{color:var(--danger)}
+    button:disabled{opacity:.45;cursor:not-allowed}
+    .legend{display:inline-flex;gap:10px;margin-left:8px;color:var(--muted);font-size:9px}
+    .swatch{display:inline-block;width:10px;height:2px;vertical-align:middle;margin-right:3px}
+    .blue{background:#407edc}.amber{background:#c48426}
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <div>
+      <div class="title" id="title">正在读取 LayoutPlan...</div>
+      <div class="meta" id="meta"></div>
+      <div class="items" id="items"></div>
+      <div class="status" id="status"></div>
+    </div>
+    <div class="actions">
+      <button id="returnBtn">返回工作台</button>
+      <button id="rejectBtn" class="danger">放弃方案</button>
+      <button id="acceptBtn" class="primary">接受方案</button>
+    </div>
+  </div>
+  <script src="/dist/layoutPreview.js"></script>
+</body>
+</html>
