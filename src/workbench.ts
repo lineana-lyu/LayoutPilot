@@ -432,22 +432,23 @@ function renderConstraintArea(model: RuntimeModel): string {
 	if (proposals.length) {
 		return `
 			<div class="constraint-area">
-				<div class="block-title">布局约束</div>
 				<div class="constraint-summary">
-					<span class="badge ok">${proposals.length} 条已生成</span>
-					<span class="badge info">${evaluation.merged.previewEligibleCount} 条可进入物理预检</span>
+					<span>${proposals.length} 条约束</span>
+					<span class="constraint-state">${evaluation.merged.previewEligibleCount} 条可进入物理预检</span>
 				</div>
-				${proposals.map(({ proposal, humanDecision }) => `
-					<div class="constraint-card">
-						<div class="constraint-title">${escapeHtml(proposal.subject)} → ${escapeHtml(proposal.target ?? '—')}</div>
-						<div class="constraint-meta">
-							${escapeHtml(layoutConstraintTypeZh(proposal.type))} ·
-							${escapeHtml(semanticConfidenceZh(proposal.confidence))} ·
-							${proposal.execution === 'preview-eligible' ? '可进入物理预检' : '仅复核'}
-							${humanDecision ? ` · Owner 来源：人工确认` : ''}
+				<div class="constraint-list">
+					${proposals.map(({ proposal, humanDecision }) => `
+						<div class="constraint-row">
+							<div class="constraint-title">${escapeHtml(proposal.subject)} → ${escapeHtml(proposal.target ?? '—')}</div>
+							<div class="constraint-meta">
+								${escapeHtml(layoutConstraintTypeZh(proposal.type))} ·
+								${escapeHtml(semanticConfidenceZh(proposal.confidence))} ·
+								${proposal.execution === 'preview-eligible' ? '可进入物理预检' : '仅复核'}
+								${humanDecision ? ' · Owner：人工确认' : ''}
+							</div>
 						</div>
-					</div>
-				`).join('')}
+					`).join('')}
+				</div>
 			</div>`;
 	}
 
@@ -463,15 +464,14 @@ function renderConstraintArea(model: RuntimeModel): string {
 
 	return `
 		<div class="constraint-area">
-			<div class="block-title">布局约束</div>
 			<div class="blocked">
-				<strong>当前 0 条可进入物理预检的约束</strong><br/>
-				${pending ? `${pending} 个去耦电容只有 rail-domain 证据，还没有唯一 Owner。` : '现有证据尚未满足 Constraint Policy。'}
+				<strong>尚无可进入物理预检的约束</strong><br/>
+				${pending ? `${pending} 个去耦电容只有 rail-domain 证据，尚未确认唯一 Owner。` : '当前证据尚未满足 Constraint Policy。'}
 				${sharedSignal ? `<br/>${sharedSignal} 个去耦器件属于 shared-signal / 多 Host，系统不会强制归属。` : ''}
-				${unsupported ? `<br/>${unsupported} 个语义角色尚未建立可执行布局策略。` : ''}
+				${unsupported ? `<br/>${unsupported} 个语义角色尚未建立可落地布局策略。` : ''}
 			</div>
 			<details>
-				<summary>查看完整策略诊断</summary>
+				<summary>策略诊断</summary>
 				<div class="diagnostics">${escapeHtml(
 					evaluation.entries
 						.filter(item => item.result?.skipped.length)
@@ -488,7 +488,7 @@ function renderConstraintArea(model: RuntimeModel): string {
 
 function renderPlanPanel(model?: RuntimeModel): void {
 	if (!model?.evaluation) {
-		planPanel.innerHTML = '<div class="empty"><div><strong>暂无布局计划</strong><span>完成分析和必要的 Owner 确认后，这里会显示 Constraint。</span></div></div>';
+		planPanel.innerHTML = '<div class="empty"><div><strong>暂无布局约束</strong><span>完成必要的 Owner 确认后，这里会显示约束。</span></div></div>';
 		return;
 	}
 
@@ -506,6 +506,7 @@ function renderPlanPanel(model?: RuntimeModel): void {
 		${renderConstraintArea(model)}
 	`;
 }
+
 function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 	const task = tasks.find(item => item.componentId === selectedComponentId);
 	if (!task) {
