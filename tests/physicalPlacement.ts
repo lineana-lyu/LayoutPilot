@@ -8,12 +8,15 @@ import {
 } from '../src/domain/physicalPlacement';
 
 const board = {
-	points: [
-		{ x: -1000, y: -1000 },
-		{ x: 1000, y: -1000 },
-		{ x: 1000, y: 1000 },
-		{ x: -1000, y: 1000 },
-	],
+	outer: {
+		points: [
+			{ x: -1000, y: -1000 },
+			{ x: 1000, y: -1000 },
+			{ x: 1000, y: 1000 },
+			{ x: -1000, y: 1000 },
+		],
+	},
+	holes: [],
 };
 
 function component(
@@ -356,3 +359,31 @@ function component(
 }
 
 console.log('Physical placement planner tests passed.');
+
+
+{
+	const boardWithHole = {
+		outer: board.outer,
+		holes: [
+			{
+				points: [
+					{ x: 250, y: 250 },
+					{ x: 450, y: 250 },
+					{ x: 450, y: 450 },
+					{ x: 250, y: 450 },
+				],
+			},
+		],
+	};
+	const subject = component('c-hole', 'C_HOLE', 700, 700, { routed: 0 });
+	const obstacle = component('u-hole', 'U_HOLE', -500, -500);
+	const invalid = validatePlacementTarget({
+		subject,
+		obstacles: [subject, obstacle],
+		board: boardWithHole,
+		componentKeepouts: [],
+		target: { x: 350, y: 350 },
+	});
+	assert.equal(invalid.valid, false);
+	assert.ok(invalid.reasons.some(reason => reason.includes('板框')));
+}
