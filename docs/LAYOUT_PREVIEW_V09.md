@@ -1,0 +1,108 @@
+# Layout Preview v0.9
+
+## Goal
+
+LayoutPilot must let the engineer inspect a proposed placement before any PCB primitive is mutated.
+
+The v0.9 workflow is:
+
+```
+Constraint Evaluation
+→ deterministic Local Geometry Planner
+→ immutable LayoutPlan
+→ transient Ghost Preview
+→ user Accept / Reject
+→ physical preflight
+→ apply the exact accepted coordinates
+→ read-back + DRC
+→ rollback / Undo
+```
+
+## Authority boundary
+
+The LLM does not output PCB coordinates.
+
+- AI: semantic role inference.
+- deterministic topology: electrical ownership candidates.
+- human: explicit Owner confirmation when topology cannot prove a unique owner.
+- Constraint Policy: semantic placement intent such as `near(owner)`.
+- Local Geometry Planner: concrete legal coordinates.
+- Physical Preflight: whether those exact coordinates are still safe to apply.
+
+## LayoutPlan artifact
+
+A LayoutPlan is serializable and immutable. It records:
+
+- Semantic Snapshot ID and semantic fingerprint;
+- physical board fingerprint;
+- Constraint ID;
+- subject / owner;
+- current and proposed coordinates;
+- current and proposed measured BBoxes;
+- power/GND pad anchors;
+- movement distance and loop-geometry proxy;
+- execution blockers known at preview time;
+- status: preview / accepted / rejected / applied / superseded.
+
+Any Owner change or Semantic Snapshot replacement invalidates the active LayoutPlan.
+
+Physical changes are detected through a dedicated physical fingerprint that includes component positions, rotations, measured BBoxes, pad geometry/routing evidence, board outline and component keepouts.
+
+## Ghost Preview
+
+Ghost Preview is transient UI state, not a PCB edit.
+
+The EasyEDA canvas receives indicator markers only:
+
+- target component outline;
+- original-to-target movement line;
+- target centre marker.
+
+Blue means the item currently has no known execution blocker. Amber means the geometry can be previewed but the current PCB state blocks Apply, for example because the subject is already routed.
+
+Closing Preview removes the markers.
+
+## Preview vs execution
+
+Planning has two distinct gates:
+
+1. **Preview geometry** — board outline, measured BBox, keepout, collision and electrical pad anchors must be sufficient to calculate a legal candidate.
+2. **Execution** — additionally requires unlocked/unrouted subject, a clean DRC baseline and a fresh physical context.
+
+This permits a routed design to demonstrate a hypothetical placement without weakening the rule that routed components are never moved automatically.
+
+## Same-plan guarantee
+
+Apply never chooses a new coordinate.
+
+Before mutation LayoutPilot:
+
+1. validates that Semantic Snapshot and physical fingerprint still match the accepted LayoutPlan;
+2. re-runs the strict execution planner;
+3. requires the newly computed legal candidate to be equivalent to the frozen LayoutPlan coordinate;
+4. cancels if the candidate changed.
+
+The engineer therefore applies exactly the placement they reviewed.
+
+## v0.9 MVP scope
+
+v0.9 intentionally previews one local placement item per LayoutPlan. The artifact and planner support multiple items internally, but one-to-one Preview → Apply keeps the first production-like demo auditable and rollback-safe.
+
+A future multi-component release can add a group transaction with group rollback semantics.
+
+## Transferable editor patterns
+
+The implementation adapts ideas rather than dependencies:
+
+- **tldraw**: an interaction has a clear history/commit boundary; transient interaction state is not equivalent to a committed edit.
+- **Excalidraw**: preview/transient scene state is distinct from history-capturing document changes.
+
+LayoutPilot maps these ideas onto PCB safety:
+
+```
+transient Ghost Preview ≠ PCB mutation
+Accept LayoutPlan ≠ PCB mutation
+Apply accepted LayoutPlan = explicit mutation boundary
+```
+
+No external editor framework is bundled into the extension.
