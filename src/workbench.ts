@@ -11,7 +11,12 @@ import { buildClosestSharedRailPadEvidence, type SharedRailPadEvidence } from '.
 import { createEvidenceReviewSession } from './domain/evidenceReviewSession';
 import { collectAnalysisState, type AnalysisState } from './eda/analysisAdapter';
 import { beginPcbEvidenceReview, collectPadEvidenceComponents, endPcbEvidenceReview } from './eda/pcbPhysicalAdapter';
-import { hideLayoutPilotWorkbench } from './ui/workbenchWindow';
+import {
+	getLayoutPilotWorkbenchSizeMode,
+	hideLayoutPilotWorkbench,
+	resizeLayoutPilotWorkbench,
+	type LayoutPilotWorkbenchSizeMode,
+} from './ui/workbenchWindow';
 import { openEvidenceReviewBar, retireEvidenceReviewBar } from './ui/evidenceReviewWindow';
 import {
 	getStoredHumanOwnershipDecisions,
@@ -85,6 +90,9 @@ const applyBtn = el<HTMLButtonElement>('applyBtn');
 const undoBtn = el<HTMLButtonElement>('undoBtn');
 const refreshBtn = el<HTMLButtonElement>('refreshBtn');
 const gatewayBtn = el<HTMLButtonElement>('gatewayBtn');
+const sizeCompactBtn = el<HTMLButtonElement>('sizeCompactBtn');
+const sizeStandardBtn = el<HTMLButtonElement>('sizeStandardBtn');
+const sizeWideBtn = el<HTMLButtonElement>('sizeWideBtn');
 const footerNote = el<HTMLDivElement>('footerNote');
 
 let selectedComponentId: string | undefined;
@@ -105,6 +113,22 @@ function setBusy(value: boolean): void {
 	loading.classList.toggle('show', value);
 	analyzeBtn.disabled = value;
 	refreshBtn.disabled = value;
+	sizeCompactBtn.disabled = value;
+	sizeStandardBtn.disabled = value;
+	sizeWideBtn.disabled = value;
+}
+
+function syncWindowSizeButtons(): void {
+	const mode = getLayoutPilotWorkbenchSizeMode();
+	const entries: Array<[HTMLButtonElement, LayoutPilotWorkbenchSizeMode]> = [
+		[sizeCompactBtn, 'compact'],
+		[sizeStandardBtn, 'standard'],
+		[sizeWideBtn, 'wide'],
+	];
+	for (const [button, candidate] of entries) {
+		button.classList.toggle('active', mode === candidate);
+		button.setAttribute('aria-pressed', String(mode === candidate));
+	}
 }
 
 function showToast(message: string): void {
