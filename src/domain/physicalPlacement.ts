@@ -48,6 +48,7 @@ export interface PhysicalPlacementPlan {
 	subjectPowerPadNumber: string;
 	ownerGroundPadNumber: string;
 	subjectGroundPadNumber: string;
+	currentLoopProxyMil: number;
 	estimatedLoopProxyMil: number;
 	from: PlacementPoint;
 	to: PlacementPoint;
@@ -73,6 +74,8 @@ export function placementPlansEquivalent(
 		&& a.subjectPowerPadNumber === b.subjectPowerPadNumber
 		&& a.ownerGroundPadNumber === b.ownerGroundPadNumber
 		&& a.subjectGroundPadNumber === b.subjectGroundPadNumber
+		&& Math.abs(a.currentLoopProxyMil - b.currentLoopProxyMil) <= tolerance
+		&& Math.abs(a.estimatedLoopProxyMil - b.estimatedLoopProxyMil) <= tolerance
 		&& Math.abs(a.clearanceMil - b.clearanceMil) <= tolerance
 		&& samePoint(a.from, b.from)
 		&& samePoint(a.to, b.to);
@@ -559,6 +562,15 @@ export function planDecouplingPlacement(input: {
 				}
 
 				const powerDistance = Math.hypot(offset.x, offset.y);
+				const currentPowerDistance = Math.hypot(
+					subjectPowerPad.x - ownerPowerPad.x,
+					subjectPowerPad.y - ownerPowerPad.y,
+				);
+				const currentGroundDistance = Math.hypot(
+					bestGroundPair.subjectPad.x - bestGroundPair.ownerPad.x,
+					bestGroundPair.subjectPad.y - bestGroundPair.ownerPad.y,
+				);
+				const currentLoopProxy = currentPowerDistance + currentGroundDistance;
 				const moveDistance = Math.hypot(dx, dy);
 				const loopProxy = powerDistance + bestGroundPair.distance;
 				const score = loopProxy + moveDistance * 0.05;
@@ -576,6 +588,7 @@ export function planDecouplingPlacement(input: {
 						subjectPowerPadNumber: subjectPowerPad.padNumber,
 						ownerGroundPadNumber: bestGroundPair.ownerPad.padNumber,
 						subjectGroundPadNumber: bestGroundPair.subjectPad.padNumber,
+						currentLoopProxyMil: currentLoopProxy,
 						estimatedLoopProxyMil: loopProxy,
 						from: { x: subject.x, y: subject.y },
 						to,
