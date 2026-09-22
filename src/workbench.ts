@@ -7,7 +7,10 @@ import {
 import { resolveComponentDisplayName } from './domain/semanticContext';
 import type { OwnershipRelationType } from './domain/ownershipRelation';
 import type { SemanticConfidence, SemanticRole } from './domain/semanticInference';
+import { buildClosestSharedRailPadEvidence, type SharedRailPadEvidence } from './domain/physicalEvidence';
 import { collectAnalysisState, type AnalysisState } from './eda/analysisAdapter';
+import { collectPadEvidenceComponents, focusPcbEvidence } from './eda/pcbPhysicalAdapter';
+import { hideLayoutPilotWorkbench } from './ui/workbenchWindow';
 import {
 	getStoredHumanOwnershipDecisions,
 	inspectStoredWorkflowState,
@@ -34,6 +37,7 @@ interface HostCandidate {
 	manufacturer?: string;
 	footprint?: string;
 	evidenceLines: string[];
+	powerPadEvidence?: SharedRailPadEvidence;
 }
 
 interface OwnerTask {
@@ -168,7 +172,28 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 			decisions.map(decision => [decision.componentId, decision]),
 		);
 
-		const tasks: OwnerTask[] = snapshot.entries
+		const eligibleEntries = snapshot.entries.filter(entry =>
+			entry.status === 'valid'
+				&& entry.inference?.role === 'decoupling-capacitor'
+				&& entry.context.ownership.relation === 'rail-domain'
+				&& entry.context.ownership.hostDesignators.length > 0,
+		);
+		const evidenceComponentIds = [...new Set(
+			eligibleEntries.flatMap(entry => [
+				entry.componentId,
+				...entry.context.ownership.hostDesignators
+					.map(designator => nodeByDesignator.get(designator)?.id)
+					.filter((id): id is string => Boolean(id)),
+			]),
+		)];
+		const padEvidenceComponents = await collectPadEvidenceComponents(
+			evidenceComponentIds,
+		);
+		const padEvidenceById = new Map(
+			padEvidenceComponents.map(component => [component.id, component]),
+		);
+
+		const tasks: OwnerTask[] = eligibleEntries
 			.filter(entry =>
 				entry.status === 'valid'
 				&& entry.inference?.role === 'decoupling-capacitor'
@@ -182,6 +207,15 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 					.filter((node): node is NonNullable<typeof node> => Boolean(node))
 					.map(node => {
 						const meta = metadataById.get(node.id);
+						const subjectPhysical = padEvidenceById.get(entry.componentId);
+						const ownerPhysical = padEvidenceById.get(node.id);
+						const powerPadEvidence = subjectPhysical && ownerPhysical
+							? buildClosestSharedRailPadEvidence(
+								subjectPhysical,
+								ownerPhysical,
+								entry.context.ownership.railNets,
+							)
+							: undefined;
 						const evidenceLines = entry.context.connectedNets
 							.filter(net =>
 								net.peerEndpoints.some(
@@ -212,7 +246,14 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 							manufacturer: meta?.manufacturer,
 							footprint: meta?.footprintName,
 							evidenceLines,
+							powerPadEvidence,
 						};
+					})
+					.sort((a, b) => {
+						const aDistance = a.powerPadEvidence?.distanceMil ?? Number.POSITIVE_INFINITY;
+						const bDistance = b.powerPadEvidence?.distanceMil ?? Number.POSITIVE_INFINITY;
+						return aDistance - bDistance
+							|| a.designator.localeCompare(b.designator);
 					});
 
 				return {
