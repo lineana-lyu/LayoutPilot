@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 
 import {
-	archiveWorkflowReferencePlan,
 	clearWorkflowSemanticSnapshot,
 	createEmptyWorkflowState,
 	normalizeWorkflowState,
@@ -9,6 +8,7 @@ import {
 	replaceWorkflowSemanticSnapshot,
 	setWorkflowPlacementCommand,
 	setWorkflowEvidenceReviewSession,
+	setAndArchiveWorkflowReferencePlan,
 	setWorkflowLayoutPlan,
 	setWorkflowLayoutPreviewSession,
 	upsertWorkflowHumanDecision,
@@ -207,11 +207,12 @@ const referencePlan = markLayoutPlanAccepted(createLayoutPlan({
 		},
 	],
 }));
-state = archiveWorkflowReferencePlan(
+state = setAndArchiveWorkflowReferencePlan(
 	state,
 	referencePlan,
 	'2026-09-22T01:04:50.000Z',
 );
+assert.equal(state.layoutPlan?.id, referencePlan.id);
 assert.equal(state.referencePlans.length, 1);
 assert.equal(state.referencePlans[0].id, referencePlan.id);
 assert.equal(Object.isFrozen(roundTrip), true);
