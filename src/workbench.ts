@@ -33,6 +33,7 @@ interface HostCandidate {
 	name?: string;
 	manufacturer?: string;
 	footprint?: string;
+	evidenceLines: string[];
 }
 
 interface OwnerTask {
@@ -45,6 +46,7 @@ interface OwnerTask {
 	candidates: HostCandidate[];
 	selectedOwnerId?: string;
 	selectedOwnerDesignator?: string;
+	ownershipExplanation: string;
 }
 
 interface RuntimeModel {
@@ -67,6 +69,7 @@ const el = <T extends HTMLElement>(id: string): T => {
 
 const taskList = el<HTMLDivElement>('taskList');
 const mainPanel = el<HTMLElement>('mainPanel');
+const planPanel = el<HTMLDivElement>('planPanel');
 const loading = el<HTMLDivElement>('loading');
 const toast = el<HTMLDivElement>('toast');
 const analyzeBtn = el<HTMLButtonElement>('analyzeBtn');
@@ -179,6 +182,26 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 					.filter((node): node is NonNullable<typeof node> => Boolean(node))
 					.map(node => {
 						const meta = metadataById.get(node.id);
+						const evidenceLines = entry.context.connectedNets
+							.filter(net =>
+								net.peerEndpoints.some(
+									peer => peer.designator === node.designator,
+								),
+							)
+							.map(net => {
+								const selfPads = net.selfPads.length
+									? net.selfPads
+										.map(pad => `${entry.designator}.${pad}`)
+										.join('/')
+									: entry.designator;
+								const peerPads = net.peerEndpoints
+									.filter(peer => peer.designator === node.designator)
+									.map(peer => `${peer.designator}.${peer.padNumber}`)
+									.join('/');
+								return `${net.netName}：${selfPads} ↔ ${peerPads || node.designator}`;
+							})
+							.slice(0, 4);
+
 						return {
 							id: node.id,
 							designator: node.designator,
@@ -188,6 +211,7 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 							),
 							manufacturer: meta?.manufacturer,
 							footprint: meta?.footprintName,
+							evidenceLines,
 						};
 					});
 
@@ -201,6 +225,7 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 					candidates,
 					selectedOwnerId: decision?.ownerComponentId,
 					selectedOwnerDesignator: decision?.ownerDesignator,
+					ownershipExplanation: entry.context.ownership.explanation,
 				};
 			})
 			.sort((a, b) => {
