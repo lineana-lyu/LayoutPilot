@@ -553,11 +553,12 @@ export function buildBoardRegionFromPolygons(
 
 const BOARD_ENDPOINT_TOLERANCE_MIL = 0.01;
 
-function endpointKey(point: BoardPoint): string {
-	return [
-		Math.round(point.x / BOARD_ENDPOINT_TOLERANCE_MIL),
-		Math.round(point.y / BOARD_ENDPOINT_TOLERANCE_MIL),
-	].join(':');
+function endpointsCoincide(
+	a: BoardPoint,
+	b: BoardPoint,
+): boolean {
+	return Math.abs(a.x - b.x) <= BOARD_ENDPOINT_TOLERANCE_MIL
+		&& Math.abs(a.y - b.y) <= BOARD_ENDPOINT_TOLERANCE_MIL;
 }
 
 export function buildBoardPolygonsFromSegments(
@@ -567,69 +568,112 @@ export function buildBoardPolygonsFromSegments(
 		return { ok: true, polygons: [] };
 	}
 
-	const edges = segments.flatMap((segment, index) => {
-		const startKey = endpointKey(segment.start);
-		const endKey = endpointKey(segment.end);
-		if (startKey === endKey) return [];
-		return [{
-			index,
+	const endpointRecords = segments.flatMap((segment, edgeIndex) => [
+		{ edgeIndex, side: 'start' as const, point: segment.start },
+		{ edgeIndex, side: 'end' as const, point: segment.end },
+	]);
+
+	const parent = endpointRecords.map((_, index) => index);
+	const find = (index: number): number => {
+		let current = index;
+		while (parent[current] !== current) {
+			parent[current] = parent[parent[current]];
+			current = parent[current];
+		}
+		return current;
+	};
+	const unite = (a: number, b: number) => {
+		const rootA = find(a);
+		const rootB = find(b);
+		if (rootA !== rootB) parent[rootB] = rootA;
+	};
+
+	for (let a = 0; a < endpointRecords.length; a += 1) {
+		for (let b = a + 1; b < endpointRecords.length; b += 1) {
+			if (endpointsCoincide(
+				endpointRecords[a].point,
+				endpointRecords[b].point,
+			)) {
+				unite(a, b);
+			}
+		}
+	}
+
+	const endpointVertex = endpointRecords.map((_, index) => find(index));
+	const edgeVertices = segments.map((segment, edgeIndex) => {
+		const startRecord = edgeIndex * 2;
+		const endRecord = startRecord + 1;
+		return {
+			index: edgeIndex,
 			start: { ...segment.start },
 			end: { ...segment.end },
-			startKey,
-			endKey,
-		}];
-	});
+			startVertex: endpointVertex[startRecord],
+			endVertex: endpointVertex[endRecord],
+		};
+	}).filter(edge => edge.startVertex !== edge.endVertex);
 
-	if (!edges.length) {
+	if (!edgeVertices.length) {
 		return {
 			ok: false,
 			reason: 'BOARD_OUTLINE 没有可用于重建轮廓的有效线段。',
 		};
 	}
 
-	const adjacency = new Map<string, number[]>();
-	const register = (key: string, edgeIndex: number) => {
-		const list = adjacency.get(key) ?? [];
+	const vertexPoint = new Map<number, BoardPoint>();
+	for (let index = 0; index < endpointRecords.length; index += 1) {
+		const vertex = endpointVertex[index];
+		if (!vertexPoint.has(vertex)) {
+			vertexPoint.set(vertex, { ...endpointRecords[index].point });
+		}
+	}
+
+	const adjacency = new Map<number, number[]>();
+	const register = (vertex: number, edgeIndex: number) => {
+		const list = adjacency.get(vertex) ?? [];
 		list.push(edgeIndex);
-		adjacency.set(key, list);
+		adjacency.set(vertex, list);
 	};
 
-	edges.forEach((edge, edgeIndex) => {
-		register(edge.startKey, edgeIndex);
-		register(edge.endKey, edgeIndex);
+	edgeVertices.forEach((edge, edgeIndex) => {
+		register(edge.startVertex, edgeIndex);
+		register(edge.endVertex, edgeIndex);
 	});
 
-	for (const [key, connected] of adjacency) {
+	for (const [vertex, connected] of adjacency) {
 		if (connected.length !== 2) {
+			const point = vertexPoint.get(vertex);
+			const label = point
+				? `(${point.x.toFixed(3)}, ${point.y.toFixed(3)})`
+				: String(vertex);
 			return {
 				ok: false,
 				reason:
 					connected.length < 2
-						? `BOARD_OUTLINE 存在断点（节点 ${key} 只有 ${connected.length} 条相连边）。`
-						: `BOARD_OUTLINE 存在分叉/轮廓接触（节点 ${key} 有 ${connected.length} 条相连边）。`,
+						? `BOARD_OUTLINE 存在断点：节点 ${label} 只有 ${connected.length} 条相连边。`
+						: `BOARD_OUTLINE 存在分叉/轮廓接触：节点 ${label} 有 ${connected.length} 条相连边。`,
 			};
 		}
 	}
 
-	const unused = new Set(edges.map((_, index) => index));
+	const unused = new Set(edgeVertices.map((_, index) => index));
 	const polygons: BoardPolygon[] = [];
 
 	while (unused.size) {
 		const firstIndex = unused.values().next().value as number;
-		const first = edges[firstIndex];
+		const first = edgeVertices[firstIndex];
 		unused.delete(firstIndex);
 
-		const startKey = first.startKey;
-		let currentKey = first.endKey;
+		const startVertex = first.startVertex;
+		let currentVertex = first.endVertex;
 		const points: BoardPoint[] = [
 			{ ...first.start },
 			{ ...first.end },
 		];
 
-		let safety = edges.length + 1;
-		while (currentKey !== startKey && safety > 0) {
+		let safety = edgeVertices.length + 1;
+		while (currentVertex !== startVertex && safety > 0) {
 			safety -= 1;
-			const connected = adjacency.get(currentKey) ?? [];
+			const connected = adjacency.get(currentVertex) ?? [];
 			const nextIndex = connected.find(edgeIndex => unused.has(edgeIndex));
 			if (nextIndex === undefined) {
 				return {
@@ -638,16 +682,16 @@ export function buildBoardPolygonsFromSegments(
 				};
 			}
 
-			const edge = edges[nextIndex];
+			const edge = edgeVertices[nextIndex];
 			unused.delete(nextIndex);
 
-			if (edge.startKey === currentKey) {
+			if (edge.startVertex === currentVertex) {
 				points.push({ ...edge.end });
-				currentKey = edge.endKey;
+				currentVertex = edge.endVertex;
 			}
-			else if (edge.endKey === currentKey) {
+			else if (edge.endVertex === currentVertex) {
 				points.push({ ...edge.start });
-				currentKey = edge.startKey;
+				currentVertex = edge.startVertex;
 			}
 			else {
 				return {
@@ -657,7 +701,7 @@ export function buildBoardPolygonsFromSegments(
 			}
 		}
 
-		if (currentKey !== startKey) {
+		if (currentVertex !== startVertex) {
 			return {
 				ok: false,
 				reason: 'BOARD_OUTLINE 轮廓遍历超过安全上限，无法证明闭合。',
