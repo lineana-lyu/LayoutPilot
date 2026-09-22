@@ -89,3 +89,7 @@ export async function openLayoutPilotWorkbench(): Promise<void> {
 export async function closeLayoutPilotWorkbench(): Promise<void> {
 	await eda.sys_IFrame.closeIFrame(currentWorkbenchId());
 }
+
+export async function hideLayoutPilotWorkbench(): Promise<void> {
+	await eda.sys_IFrame.hideIFrame(currentWorkbenchId());
+}
