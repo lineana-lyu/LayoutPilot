@@ -2,7 +2,7 @@ import { buildCircuitGraph, type CircuitComponentSnapshot } from './domain/circu
 import { extractStructuralFeatures, type ComponentMetadata } from './domain/componentFeatures';
 import { coreLevelZh, groupEvidenceZh, layoutConstraintTypeZh, lockedZh, netGroupingClassZh, ownershipRelationZh, semanticConfidenceZh, semanticMissingEvidenceZh, semanticRoleZh, structuralEvidenceZh } from './i18n/zhCN';
 import { buildCandidateGroups } from './domain/candidateGrouping';
-import { buildSemanticContexts, type SemanticComponentContext, type SemanticComponentMetadata } from './domain/semanticContext';
+import { buildSemanticContexts, resolveComponentDisplayName, type SemanticComponentContext, type SemanticComponentMetadata } from './domain/semanticContext';
 import { allowedSemanticRolesForPrefix, buildSemanticEvidenceCatalog, validateSemanticInference } from './domain/semanticInference';
 import { buildSemanticGatewayRequest, normalizeGatewayBaseUrl, parseSemanticGatewayResponse } from './ai/gatewayClient';
 import { buildConstraintEvaluation } from './application/constraintEvaluation';
@@ -1232,6 +1232,9 @@ export async function confirmAmbiguousOwnership(): Promise<void> {
     const nodeByDesignator = new Map(
       analysisState.graph.nodes.map(node => [node.designator, node]),
     );
+    const metadataById = new Map(
+      analysisState.semanticMetadata.map(item => [item.id, item]),
+    );
     const eligible = snapshot.entries.filter(entry =>
       entry.status === 'valid'
       && entry.inference?.role === 'decoupling-capacitor'
@@ -1277,7 +1280,12 @@ export async function confirmAmbiguousOwnership(): Promise<void> {
       const pendingFirst = [...selectable].sort((a, b) => {
         const aConfirmed = decisionByComponentId.has(a.entry.componentId) ? 1 : 0;
         const bConfirmed = decisionByComponentId.has(b.entry.componentId) ? 1 : 0;
+        const confidenceRank = (value: string | undefined) =>
+          value === 'high' ? 0 : value === 'medium' ? 1 : 2;
         return aConfirmed - bConfirmed
+          || confidenceRank(a.entry.inference?.confidence)
+            - confidenceRank(b.entry.inference?.confidence)
+          || a.candidates.length - b.candidates.length
           || a.entry.designator.localeCompare(b.entry.designator);
       });
       const selectedComponentId = await showSingleSelectDialog(
@@ -1313,20 +1321,36 @@ export async function confirmAmbiguousOwnership(): Promise<void> {
     const { entry, candidates } = selectedItem;
     const existing = decisionByComponentId.get(entry.componentId);
     const clearValue = '__layoutpilot_unconfirmed__';
+    const rails = entry.context.ownership.railNets.length
+      ? entry.context.ownership.railNets.join('、')
+      : '未知';
     const options = [
-      ...candidates.map(node => ({
-        value: node.id,
-        displayContent: node.designator,
-      })),
+      ...candidates.map(node => {
+        const metadata = metadataById.get(node.id);
+        const resolvedName = resolveComponentDisplayName(
+          metadata?.name,
+          metadata?.otherProperty,
+        );
+        const details = [
+          resolvedName && resolvedName !== node.designator
+            ? resolvedName
+            : undefined,
+          metadata?.manufacturer,
+          metadata?.footprintName,
+          rails,
+        ].filter(Boolean).join(' · ');
+        return {
+          value: node.id,
+          displayContent: details
+            ? `${node.designator} · ${details}`
+            : `${node.designator} · ${rails}`,
+        };
+      }),
       {
         value: clearValue,
         displayContent: existing ? '清除已确认 owner' : '暂不处理',
       },
     ];
-    const rails = entry.context.ownership.railNets.length
-      ? entry.context.ownership.railNets.join('、')
-      : '未知';
-
     const selected = await showSingleSelectDialog(
       options,
       [
@@ -1395,6 +1419,9 @@ export async function confirmAmbiguousOwnership(): Promise<void> {
         summary,
         '',
         '这些选择会在 Constraint Preview 中转换为 ExplicitOwnershipHint，再交给原有确定性 Ownership Resolver。',
+        confirmed === 0
+          ? '本次没有新增唯一 owner，因此如果此前也没有人工确认，Constraint Preview 仍会保持 0 条可执行约束。'
+          : '本次已经新增人工证据，可以继续运行“查看布局建议”。',
         'AI Semantic Snapshot 本身没有被修改，也不会重新调用模型。',
       ].join('\n'),
       'LayoutPilot · 人工确认 Owner',
@@ -1598,6 +1625,57 @@ export async function previewLayoutConstraints(): Promise<void> {
       snapshotId: snapshot.id,
       result: merged,
     });
+    console.log('[LayoutPilot] constraint evaluation detail', evaluation);
+
+    const pendingOwnerEntries = evaluation.entries.filter(item =>
+      item.entry.status === 'valid'
+      && item.entry.inference?.role === 'decoupling-capacitor'
+      && item.context.ownership.relation === 'rail-domain'
+      && !item.humanOwnershipDecision
+    );
+    const sharedSignalDecouplingCount = evaluation.entries.filter(item =>
+      item.entry.status === 'valid'
+      && item.entry.inference?.role === 'decoupling-capacitor'
+      && item.context.ownership.relation === 'shared-signal'
+    ).length;
+    const unsupportedRoleCount = evaluation.entries.filter(item =>
+      item.result?.skipped[0]?.reason === 'no-policy-for-role'
+    ).length;
+    const insufficientSemanticCount = evaluation.entries.filter(item => {
+      const reason = item.result?.skipped[0]?.reason;
+      return reason === 'semantic-not-inferred'
+        || reason === 'unknown-semantic-role';
+    }).length;
+
+    const conciseZeroConstraintRows = [
+      '当前没有生成可执行布局约束。',
+      '',
+      evaluation.explicitOwnershipHints.length === 0 && pendingOwnerEntries.length
+        ? `主要阻塞：${pendingOwnerEntries.length} 个去耦电容只有 rail-domain 证据，但没有人工确认唯一 owner。`
+        : '主要阻塞：当前证据尚不足以满足已有 Constraint Policy。',
+      pendingOwnerEntries.length
+        ? `待确认示例：${pendingOwnerEntries.slice(0, 8).map(item => item.context.designator).join('、')}${pendingOwnerEntries.length > 8 ? '…' : ''}`
+        : '',
+      sharedSignalDecouplingCount
+        ? `共享信号/多 Host 去耦：${sharedSignalDecouplingCount} 个，当前不会强制归属。`
+        : '',
+      unsupportedRoleCount
+        ? `尚未建立布局策略的角色：${unsupportedRoleCount} 个。`
+        : '',
+      insufficientSemanticCount
+        ? `语义证据不足：${insufficientSemanticCount} 个。`
+        : '',
+      '',
+      pendingOwnerEntries.length
+        ? '下一步：回到“确认待决 Owner（人工）”，只选择你能明确确认归属的一个器件；不确定就继续暂不处理。'
+        : '下一步：检查高级诊断中的 Policy 证据，不要为了得到结果而降低安全门槛。',
+      '',
+      '完整逐器件 Policy 诊断已输出到开发者控制台。',
+    ].filter(Boolean);
+
+    const displayRows = merged.proposals.length === 0
+      ? conciseZeroConstraintRows
+      : rows;
 
     await eda.sys_Dialog.showInformationMessage(
       [
@@ -1616,9 +1694,9 @@ export async function previewLayoutConstraints(): Promise<void> {
         `调用失败：${failed}`,
         `模型：${providerLabel || '未获得真实模型结果'}`,
         '',
-        ...rows,
+        ...displayRows,
         '',
-        '安全边界：',
+        '安全边界：'
         '• Preview 与 Apply 消费同一个 Constraint Evaluation，不复制两套业务逻辑；',
         '• Constraint Preview 不重新调用 AI；',
         '• 人工 Owner 选择作为 ExplicitOwnershipHint 单独叠加；',
