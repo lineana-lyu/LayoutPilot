@@ -579,6 +579,15 @@ export function buildBoardRegionFromPolygons(
 	};
 }
 
+const BOARD_ENDPOINT_TOLERANCE_MIL = 0.01;
+
+function endpointKey(point: BoardPoint): string {
+	return [
+		Math.round(point.x / BOARD_ENDPOINT_TOLERANCE_MIL),
+		Math.round(point.y / BOARD_ENDPOINT_TOLERANCE_MIL),
+	].join(':');
+}
+
 export function buildBoardPolygonsFromSegments(
 	segments: BoardSegment[],
 ): { ok: true; polygons: BoardPolygon[] } | { ok: false; reason: string } {
@@ -586,44 +595,108 @@ export function buildBoardPolygonsFromSegments(
 		return { ok: true, polygons: [] };
 	}
 
-	const unused = [...segments];
+	const edges = segments.flatMap((segment, index) => {
+		const startKey = endpointKey(segment.start);
+		const endKey = endpointKey(segment.end);
+		if (startKey === endKey) return [];
+		return [{
+			index,
+			start: { ...segment.start },
+			end: { ...segment.end },
+			startKey,
+			endKey,
+		}];
+	});
+
+	if (!edges.length) {
+		return {
+			ok: false,
+			reason: 'BOARD_OUTLINE 没有可用于重建轮廓的有效线段。',
+		};
+	}
+
+	const adjacency = new Map<string, number[]>();
+	const register = (key: string, edgeIndex: number) => {
+		const list = adjacency.get(key) ?? [];
+		list.push(edgeIndex);
+		adjacency.set(key, list);
+	};
+
+	edges.forEach((edge, edgeIndex) => {
+		register(edge.startKey, edgeIndex);
+		register(edge.endKey, edgeIndex);
+	});
+
+	for (const [key, connected] of adjacency) {
+		if (connected.length !== 2) {
+			return {
+				ok: false,
+				reason:
+					connected.length < 2
+						? `BOARD_OUTLINE 存在断点（节点 ${key} 只有 ${connected.length} 条相连边）。`
+						: `BOARD_OUTLINE 存在分叉/轮廓接触（节点 ${key} 有 ${connected.length} 条相连边）。`,
+			};
+		}
+	}
+
+	const unused = new Set(edges.map((_, index) => index));
 	const polygons: BoardPolygon[] = [];
 
-	while (unused.length) {
-		const first = unused.shift()!;
+	while (unused.size) {
+		const firstIndex = unused.values().next().value as number;
+		const first = edges[firstIndex];
+		unused.delete(firstIndex);
+
+		const startKey = first.startKey;
+		let currentKey = first.endKey;
 		const points: BoardPoint[] = [
 			{ ...first.start },
 			{ ...first.end },
 		];
-		let current = first.end;
-		let closed = samePoint(current, points[0]);
 
-		while (!closed) {
-			const nextIndex = unused.findIndex(segment =>
-				samePoint(segment.start, current)
-				|| samePoint(segment.end, current),
-			);
-			if (nextIndex < 0) {
+		let safety = edges.length + 1;
+		while (currentKey !== startKey && safety > 0) {
+			safety -= 1;
+			const connected = adjacency.get(currentKey) ?? [];
+			const nextIndex = connected.find(edgeIndex => unused.has(edgeIndex));
+			if (nextIndex === undefined) {
 				return {
 					ok: false,
-					reason: 'BOARD_OUTLINE 独立线段存在断点，无法形成闭合轮廓。',
+					reason: 'BOARD_OUTLINE 拓扑无法闭合；轮廓可能存在断点或重复边。',
 				};
 			}
 
-			const [segment] = unused.splice(nextIndex, 1);
-			const nextPoint = samePoint(segment.start, current)
-				? segment.end
-				: segment.start;
-			points.push({ ...nextPoint });
-			current = nextPoint;
-			closed = samePoint(current, points[0]);
+			const edge = edges[nextIndex];
+			unused.delete(nextIndex);
+
+			if (edge.startKey === currentKey) {
+				points.push({ ...edge.end });
+				currentKey = edge.endKey;
+			}
+			else if (edge.endKey === currentKey) {
+				points.push({ ...edge.start });
+				currentKey = edge.startKey;
+			}
+			else {
+				return {
+					ok: false,
+					reason: 'BOARD_OUTLINE 邻接图与线段端点不一致。',
+				};
+			}
+		}
+
+		if (currentKey !== startKey) {
+			return {
+				ok: false,
+				reason: 'BOARD_OUTLINE 轮廓遍历超过安全上限，无法证明闭合。',
+			};
 		}
 
 		const normalized = normalizePoints(points);
 		if (normalized.length < 3) {
 			return {
 				ok: false,
-				reason: 'BOARD_OUTLINE 闭合线段轮廓有效顶点少于 3 个。',
+				reason: 'BOARD_OUTLINE 闭合轮廓有效顶点少于 3 个。',
 			};
 		}
 		polygons.push({ points: normalized });
@@ -631,6 +704,7 @@ export function buildBoardPolygonsFromSegments(
 
 	return { ok: true, polygons };
 }
+
 
 export function boxInsideBoardRegion(
 	box: Box,
