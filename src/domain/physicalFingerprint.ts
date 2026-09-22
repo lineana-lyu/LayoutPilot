@@ -1,4 +1,4 @@
-import type { BoardPolygon } from './boardBoundary';
+import type { BoardPolygon, BoardRegion } from './boardBoundary';
 import type { PhysicalComponentSnapshot } from './physicalPlacement';
 
 function hashText(value: string): string {
@@ -24,7 +24,7 @@ function canonicalPolygon(polygon: BoardPolygon): string[] {
 
 export function buildPhysicalBoardFingerprint(input: {
 	components: PhysicalComponentSnapshot[];
-	board: BoardPolygon;
+	board: BoardRegion;
 	componentKeepouts: BoardPolygon[];
 }): string {
 	const components = [...input.components]
@@ -68,7 +68,12 @@ export function buildPhysicalBoardFingerprint(input: {
 
 	const canonical = JSON.stringify({
 		components,
-		board: canonicalPolygon(input.board),
+		board: {
+			outer: canonicalPolygon(input.board.outer),
+			holes: input.board.holes
+				.map(canonicalPolygon)
+				.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+		},
 		keepouts,
 	});
 
