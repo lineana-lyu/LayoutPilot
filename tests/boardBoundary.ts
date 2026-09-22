@@ -4,7 +4,9 @@ import {
 	boxInsideBoard,
 	boxInsideBoardRegion,
 	buildBoardRegionFromPolygons,
+	buildBoardPolygonsFromSegments,
 	buildSimpleBoardPolygonFromSegments,
+	parseBoardOutlineSource,
 	parseSimpleBoardPolygon,
 } from '../src/domain/boardBoundary';
 
@@ -158,4 +160,49 @@ console.log('Board boundary tests passed.');
 		false,
 		'disjoint outer contours must remain fail-closed',
 	);
+}
+
+
+{
+	const sources = [
+		[0, 0, 'L', 100, 0],
+		[100, 0, 'L', 100, 100],
+		[100, 100, 'L', 0, 100],
+		[0, 100, 'L', 0, 0],
+	] as const;
+
+	const segments = sources.flatMap(source => {
+		const parsed = parseBoardOutlineSource([...source]);
+		assert.equal(parsed.ok, true);
+		return parsed.ok ? parsed.segments : [];
+	});
+	const rebuilt = buildBoardPolygonsFromSegments(segments);
+	assert.equal(rebuilt.ok, true);
+	if (rebuilt.ok) {
+		assert.equal(rebuilt.polygons.length, 1);
+		assert.equal(rebuilt.polygons[0].points.length, 4);
+	}
+}
+
+{
+	const first = parseBoardOutlineSource([0, 0, 'L', 100, 0, 100, 100]);
+	assert.equal(first.ok, true);
+	const reconstructed = buildBoardPolygonsFromSegments([
+		...(first.ok ? first.segments : []),
+		{ start: { x: 100, y: 100 }, end: { x: 0, y: 100 } },
+		{ start: { x: 0, y: 100 }, end: { x: 0, y: 0 } },
+	]);
+	assert.equal(reconstructed.ok, true);
+	if (reconstructed.ok) {
+		assert.equal(reconstructed.polygons.length, 1);
+	}
+}
+
+{
+	const twoPointPath = parseBoardOutlineSource([0, 0, 'L', 100, 0]);
+	assert.equal(twoPointPath.ok, true);
+	if (twoPointPath.ok) {
+		assert.equal(twoPointPath.segments.length, 1);
+		assert.equal(twoPointPath.closedPolygons.length, 0);
+	}
 }
