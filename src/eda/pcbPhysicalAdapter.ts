@@ -1,6 +1,7 @@
 import {
 	buildBoardPolygonsFromSegments,
 	buildBoardRegionFromPolygons,
+	parseBoardOutlineSource,
 	parseSimpleBoardPolygon,
 	type BoardPolygon,
 	type BoardRegion,
@@ -59,41 +60,42 @@ export async function collectSimpleBoardBoundary(): Promise<
 	}
 
 	const contours: BoardPolygon[] = [];
+	const outlineSegments = outlineLines.map(line => ({
+		start: {
+			x: line.getState_StartX(),
+			y: line.getState_StartY(),
+		},
+		end: {
+			x: line.getState_EndX(),
+			y: line.getState_EndY(),
+		},
+	}));
+
 	for (const polyline of outlinePolylines) {
 		const polygon = polyline.getState_Polygon();
 		if (!polygon) {
 			return {
 				ok: false,
-				reason: '检测到 BOARD_OUTLINE polyline，但无法读取其 polygon 数据。',
+				reason: '检测到 BOARD_OUTLINE polyline，但无法读取其路径数据。',
 			};
 		}
 
-		const parsed = parseSimpleBoardPolygon(polygon.getSource());
+		const parsed = parseBoardOutlineSource(polygon.getSource());
 		if (!parsed.ok) {
 			return {
 				ok: false,
 				reason: `BOARD_OUTLINE polyline 无法安全解析：${parsed.reason}`,
 			};
 		}
-		contours.push(parsed.polygon);
+		contours.push(...parsed.closedPolygons);
+		outlineSegments.push(...parsed.segments);
 	}
 
-	const lineContours = buildBoardPolygonsFromSegments(
-		outlineLines.map(line => ({
-			start: {
-				x: line.getState_StartX(),
-				y: line.getState_StartY(),
-			},
-			end: {
-				x: line.getState_EndX(),
-				y: line.getState_EndY(),
-			},
-		})),
-	);
-	if (!lineContours.ok) {
-		return lineContours;
+	const reconstructed = buildBoardPolygonsFromSegments(outlineSegments);
+	if (!reconstructed.ok) {
+		return reconstructed;
 	}
-	contours.push(...lineContours.polygons);
+	contours.push(...reconstructed.polygons);
 
 	if (!contours.length) {
 		return {
