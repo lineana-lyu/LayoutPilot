@@ -78,6 +78,11 @@ export function placementPlansEquivalent(
 		&& samePoint(a.to, b.to);
 }
 
+export interface PlacementTargetValidation {
+	valid: boolean;
+	reasons: string[];
+}
+
 export interface PlacementReadiness {
 	ready: boolean;
 	reasons: string[];
@@ -227,20 +232,27 @@ function isFinitePositive(value: number): boolean {
 	return Number.isFinite(value) && value > 0;
 }
 
-function validateComponentGeometry(
+function validateMeasuredBounds(
 	component: PhysicalComponentSnapshot,
 ): string[] {
 	const reasons: string[] = [];
 	if (!Number.isFinite(component.x) || !Number.isFinite(component.y)) {
 		reasons.push(`${component.designator} 器件坐标无效`);
 	}
-	if (!component.pads.length) {
-		reasons.push(`${component.designator} 没有可用于物理规划的焊盘`);
-	}
 	if (!componentBox(component)) {
 		reasons.push(
 			`${component.designator} 缺少可信的 EasyEDA 实测器件 BBox`,
 		);
+	}
+	return reasons;
+}
+
+function validateComponentGeometry(
+	component: PhysicalComponentSnapshot,
+): string[] {
+	const reasons = validateMeasuredBounds(component);
+	if (!component.pads.length) {
+		reasons.push(`${component.designator} 没有可用于物理规划的焊盘`);
 	}
 	for (const pad of component.pads) {
 		if (
@@ -255,6 +267,92 @@ function validateComponentGeometry(
 		}
 	}
 	return reasons;
+}
+
+export function validatePlacementTarget(input: {
+	subject: PhysicalComponentSnapshot;
+	obstacles: PhysicalComponentSnapshot[];
+	board: BoardPolygon;
+	componentKeepouts: BoardPolygon[];
+	target: PlacementPoint;
+	clearanceMil?: number;
+}): PlacementTargetValidation {
+	const {
+		subject,
+		obstacles,
+		board,
+		componentKeepouts,
+		target,
+	} = input;
+	const clearanceMil = input.clearanceMil ?? DEFAULT_CLEARANCE_MIL;
+	const reasons = validateMeasuredBounds(subject);
+
+	if (!Number.isFinite(target.x) || !Number.isFinite(target.y)) {
+		reasons.push('目标坐标无效');
+	}
+	if (!Number.isFinite(clearanceMil) || clearanceMil <= 0) {
+		reasons.push('布局安全间距必须为正数');
+	}
+	if (reasons.length) {
+		return { valid: false, reasons };
+	}
+
+	const subjectBox = componentBox(subject);
+	if (!subjectBox) {
+		return {
+			valid: false,
+			reasons: [`${subject.designator} 无法建立实测器件 BBox`],
+		};
+	}
+
+	const relevantObstacles = obstacles.filter(component =>
+		component.id !== subject.id
+		&& component.layer === subject.layer
+	);
+	const invalidObstacle = relevantObstacles.find(
+		component => validateMeasuredBounds(component).length > 0,
+	);
+	if (invalidObstacle) {
+		return {
+			valid: false,
+			reasons: [
+				`无法确认 ${invalidObstacle.designator} 的 EasyEDA 实测 BBox，不能证明目标位置无碰撞`,
+			],
+		};
+	}
+
+	const dx = target.x - subject.x;
+	const dy = target.y - subject.y;
+	const translated = expandBox(
+		translatedBox(subjectBox, dx, dy),
+		clearanceMil,
+	);
+	const collision = relevantObstacles.find(component => {
+		const box = componentBox(component);
+		return Boolean(box && boxesOverlap(translated, box));
+	});
+	if (collision) {
+		return {
+			valid: false,
+			reasons: [`目标位置与 ${collision.designator} 的实测器件 BBox 冲突`],
+		};
+	}
+	if (!boxInsideBoard(translated, board)) {
+		return {
+			valid: false,
+			reasons: ['目标位置超出可验证板框或安全余量越界'],
+		};
+	}
+	if (componentKeepouts.some(keepout =>
+		boxIntersectsPolygon(translated, keepout),
+	)) {
+		return {
+			valid: false,
+			reasons: ['目标位置与 NO_COMPONENTS keepout 冲突'],
+		};
+	}
+
+	return { valid: true, reasons: [] };
 }
 
 export function planDecouplingPlacement(input: {
@@ -342,32 +440,6 @@ export function planDecouplingPlacement(input: {
 		};
 	}
 
-	const relevantObstacles = obstacles.filter(component =>
-		component.id !== subject.id
-		&& component.layer === subject.layer
-	);
-	const invalidObstacle = relevantObstacles.find(
-		component => validateComponentGeometry(component).length > 0,
-	);
-	if (invalidObstacle) {
-		return {
-			ready: false,
-			reasons: [
-				`无法确认 ${invalidObstacle.designator} 的完整焊盘几何，不能证明候选位置无碰撞`,
-			],
-		};
-	}
-
-	const obstacleBoxes = relevantObstacles
-		.map(component => ({
-			component,
-			box: componentBox(component),
-		}))
-		.filter(
-			(item): item is { component: PhysicalComponentSnapshot; box: BBox } =>
-				Boolean(item.box),
-		);
-
 	const candidates: Array<{
 		plan: PhysicalPlacementPlan;
 		score: number;
@@ -395,25 +467,15 @@ export function planDecouplingPlacement(input: {
 			};
 			const dx = to.x - subject.x;
 			const dy = to.y - subject.y;
-			const translated = expandBox(
-				translatedBox(subjectBox, dx, dy),
+			const targetValidation = validatePlacementTarget({
+				subject,
+				obstacles,
+				board,
+				componentKeepouts,
+				target: to,
 				clearanceMil,
-			);
-			const collision = obstacleBoxes.find(item =>
-				boxesOverlap(translated, item.box),
-			);
-
-			if (collision) {
-				continue;
-			}
-
-			if (!boxInsideBoard(translated, board)) {
-				continue;
-			}
-
-			if (componentKeepouts.some(keepout =>
-				boxIntersectsPolygon(translated, keepout),
-			)) {
+			});
+			if (!targetValidation.valid) {
 				continue;
 			}
 
