@@ -204,6 +204,7 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 				tasks: [],
 				constraintCount: 0,
 				previewEligibleCount: 0,
+				layoutPlan: workflow.layoutPlan,
 			};
 		}
 
@@ -221,6 +222,7 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 				tasks: [],
 				constraintCount: 0,
 				previewEligibleCount: 0,
+				layoutPlan: workflow.layoutPlan,
 			};
 		}
 
@@ -355,6 +357,7 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 			constraintCount: evaluation.merged.proposals.length,
 			previewEligibleCount: evaluation.merged.previewEligibleCount,
 			evaluation,
+			layoutPlan: workflow.layoutPlan,
 		};
 	})();
 }
