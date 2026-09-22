@@ -15,6 +15,7 @@ import { createPlacementCommand, markPlacementCommandApplied, markPlacementComma
 import { filterOwnershipPropertyNames, findOwnershipFields, findOwnershipMemberNames } from './domain/ownershipCapabilityProbe';
 import { collectPhysicalComponents, collectSimpleBoardBoundary, collectSimpleComponentKeepouts, moveComponentAndVerify, readComponentPhysicalState } from './eda/pcbPhysicalAdapter';
 import { collectAnalysisState } from './eda/analysisAdapter';
+import { openLayoutPilotWorkbench } from './ui/workbenchWindow';
 import { clearStoredSemanticSnapshot, getStoredHumanOwnershipDecisions, getStoredLastPlacementCommand, getStoredSemanticSnapshot, removeStoredHumanOwnershipDecision, replaceStoredSemanticSnapshot, setStoredLastPlacementCommand, upsertStoredHumanOwnershipDecision } from './eda/workflowStore';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
@@ -964,146 +965,134 @@ async function requestSemanticInference(
   };
 }
 
-export async function analyzeAmbiguousWithAi(): Promise<void> {
+export interface SemanticAnalysisRunResult {
+  snapshot: SemanticSnapshot;
+  total: number;
+  passed: number;
+  blocked: number;
+  failed: number;
+  providerLabel: string;
+}
+
+export async function runSemanticAnalysis(): Promise<
+  SemanticAnalysisRunResult | undefined
+> {
   const gatewayBaseUrl = await getConfiguredGatewayBaseUrl();
   if (!gatewayBaseUrl) {
-    return;
+    return undefined;
   }
 
-  try {
-    const analysisState = await collectAnalysisState();
-    const contexts = analysisState.contexts;
-    const boardFingerprint = buildSemanticBoardFingerprint({
-      graph: analysisState.graph,
-      contexts,
-    });
+  const analysisState = await collectAnalysisState();
+  const contexts = analysisState.contexts;
+  const boardFingerprint = buildSemanticBoardFingerprint({
+    graph: analysisState.graph,
+    contexts,
+  });
 
-    if (!contexts.length) {
-      await clearStoredSemanticSnapshot();
+  if (!contexts.length) {
+    await clearStoredSemanticSnapshot();
+    return undefined;
+  }
+
+  const snapshotEntries: SemanticSnapshotEntry[] = [];
+  let passed = 0;
+  let blocked = 0;
+  let failed = 0;
+  let providerLabel = '';
+
+  for (const context of contexts) {
+    try {
+      const { gatewayResponse, validation } = await requestSemanticInference(
+        context,
+        gatewayBaseUrl,
+      );
+
+      const provider = gatewayResponse.provider ?? 'unknown';
+      const model = gatewayResponse.model ?? 'unknown';
+      providerLabel ||= `${provider} / ${model}`;
+
+      const entryBase = {
+        componentId: context.componentId,
+        designator: context.designator,
+        context,
+        inference: gatewayResponse.inference,
+        validationErrors: [...validation.errors],
+        provider,
+        model,
+      };
+
+      if (provider === 'mock') {
+        snapshotEntries.push({
+          ...entryBase,
+          status: 'mock',
+        });
+        continue;
+      }
+
+      if (!validation.valid) {
+        blocked += 1;
+        snapshotEntries.push({
+          ...entryBase,
+          status: 'blocked',
+        });
+        continue;
+      }
+
+      passed += 1;
+      snapshotEntries.push({
+        ...entryBase,
+        status: 'valid',
+      });
+    }
+    catch (error) {
+      failed += 1;
+      console.error(
+        `[LayoutPilot] AI semantic analysis failed for ${context.designator}`,
+        error,
+      );
+      snapshotEntries.push({
+        componentId: context.componentId,
+        designator: context.designator,
+        context,
+        status: 'failed',
+        validationErrors: [],
+        error: String(error),
+      });
+    }
+  }
+
+  const snapshot = createSemanticSnapshot(
+    boardFingerprint,
+    snapshotEntries,
+  );
+  await replaceStoredSemanticSnapshot(snapshot);
+  console.log('[LayoutPilot] semantic snapshot frozen', snapshot);
+
+  return {
+    snapshot,
+    total: contexts.length,
+    passed,
+    blocked,
+    failed,
+    providerLabel,
+  };
+}
+
+export async function analyzeAmbiguousWithAi(): Promise<void> {
+  try {
+    const result = await runSemanticAnalysis();
+    if (!result) {
       await eda.sys_Dialog.showInformationMessage(
-        '当前 PCB 没有需要 AI 补全语义的歧义器件。',
-        'LayoutPilot · AI 批量语义分析',
+        '当前 PCB 没有需要 AI 补全语义的歧义器件，或尚未配置 AI Gateway。',
+        'LayoutPilot · AI 语义分析',
       );
       return;
     }
 
-    const rows: string[] = [];
-    const snapshotEntries: SemanticSnapshotEntry[] = [];
-    let passed = 0;
-    let blocked = 0;
-    let failed = 0;
-    let providerLabel = '';
-
-    for (const context of contexts) {
-      try {
-        const { gatewayResponse, validation } = await requestSemanticInference(
-          context,
-          gatewayBaseUrl,
-        );
-
-        const provider = gatewayResponse.provider ?? 'unknown';
-        const model = gatewayResponse.model ?? 'unknown';
-        providerLabel ||= `${provider} / ${model}`;
-
-        const entryBase = {
-          componentId: context.componentId,
-          designator: context.designator,
-          context,
-          inference: gatewayResponse.inference,
-          validationErrors: [...validation.errors],
-          provider,
-          model,
-        };
-
-        if (provider === 'mock') {
-          snapshotEntries.push({
-            ...entryBase,
-            status: 'mock',
-          });
-          rows.push(`${context.designator}：仅完成 Mock 通路测试，不作为 AI 结论`);
-          continue;
-        }
-
-        if (!validation.valid) {
-          blocked += 1;
-          snapshotEntries.push({
-            ...entryBase,
-            status: 'blocked',
-          });
-          rows.push(
-            `${context.designator}：已拦截 · ${validation.errors.join('；')}`,
-          );
-          continue;
-        }
-
-        passed += 1;
-        snapshotEntries.push({
-          ...entryBase,
-          status: 'valid',
-        });
-
-        const inference = gatewayResponse.inference;
-        const relation = ownershipRelationZh(context.ownership.relation);
-        const owner = context.ownership.ownerDesignator
-          ? ` · owner=${context.ownership.ownerDesignator}`
-          : '';
-        rows.push(
-          [
-            `${context.designator}：${semanticRoleZh(inference.role)}`,
-            `置信=${semanticConfidenceZh(inference.confidence)}`,
-            `确定性关系=${relation}${owner}`,
-            '布局动作=由 Constraint Policy 单独推导',
-          ].join(' · '),
-        );
-      }
-      catch (error) {
-        failed += 1;
-        console.error(
-          `[LayoutPilot] AI semantic analysis failed for ${context.designator}`,
-          error,
-        );
-        snapshotEntries.push({
-          componentId: context.componentId,
-          designator: context.designator,
-          context,
-          status: 'failed',
-          validationErrors: [],
-          error: String(error),
-        });
-        rows.push(`${context.designator}：调用失败 · ${String(error)}`);
-      }
-    }
-
-    const snapshot = createSemanticSnapshot(
-      boardFingerprint,
-      snapshotEntries,
-    );
-    await replaceStoredSemanticSnapshot(snapshot);
-    console.log('[LayoutPilot] semantic snapshot frozen', snapshot);
-
-    await eda.sys_Dialog.showInformationMessage(
-      [
-        'LayoutPilot 歧义器件 AI 语义分析完成。',
-        '',
-        `Semantic Snapshot：${snapshot.id}`,
-        `PCB Fingerprint：${snapshot.boardFingerprint}`,
-        `待分析器件：${contexts.length}`,
-        `通过校验：${passed}`,
-        `被 Validator 拦截：${blocked}`,
-        `调用失败：${failed}`,
-        `模型：${providerLabel || '未获得真实模型结果'}`,
-        '',
-        ...rows,
-        '',
-        '说明：本次 AI 结果已冻结为 Semantic Snapshot；后续布局约束预览只复用这份结果，不会再次调用模型。',
-        'AI 只判断语义角色；owner / bridge / shared-signal / rail-domain 由确定性规则提供，AI 无权改写。',
-      ].join('\n'),
-      'LayoutPilot · AI 批量语义分析',
-    );
+    await openLayoutPilotWorkbench();
   }
   catch (error) {
     console.error('[LayoutPilot] Batch AI semantic analysis failed', error);
-
     await eda.sys_Dialog.showInformationMessage(
       [
         'AI 批量语义分析失败。',
@@ -1112,7 +1101,7 @@ export async function analyzeAmbiguousWithAi(): Promise<void> {
         '',
         'PCB 未发生任何修改。',
       ].join('\n'),
-      'LayoutPilot · AI 批量语义分析',
+      'LayoutPilot · AI 语义分析',
     );
   }
 }
