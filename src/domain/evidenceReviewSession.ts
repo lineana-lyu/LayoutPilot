@@ -37,6 +37,23 @@ export function isEvidenceReviewSession(
 		return false;
 	}
 	const item = value as Record<string, unknown>;
+	const evidence = item.powerEvidence;
+	const evidenceValid = evidence === undefined
+		|| (
+			Boolean(evidence)
+			&& typeof evidence === 'object'
+			&& !Array.isArray(evidence)
+			&& typeof (evidence as Record<string, unknown>).netName === 'string'
+			&& typeof (evidence as Record<string, unknown>).subjectPadNumber === 'string'
+			&& typeof (evidence as Record<string, unknown>).ownerPadNumber === 'string'
+			&& typeof (evidence as Record<string, unknown>).subjectX === 'number'
+			&& typeof (evidence as Record<string, unknown>).subjectY === 'number'
+			&& typeof (evidence as Record<string, unknown>).ownerX === 'number'
+			&& typeof (evidence as Record<string, unknown>).ownerY === 'number'
+			&& typeof (evidence as Record<string, unknown>).distanceMil === 'number'
+			&& Number.isFinite((evidence as Record<string, number>).distanceMil)
+		);
+
 	return item.schemaVersion === 1
 		&& typeof item.snapshotId === 'string'
 		&& typeof item.boardFingerprint === 'string'
@@ -48,5 +65,6 @@ export function isEvidenceReviewSession(
 		&& typeof item.documentTabId === 'string'
 		&& Array.isArray(item.originalSelectionIds)
 		&& item.originalSelectionIds.every(id => typeof id === 'string')
-		&& typeof item.createdAt === 'string';
+		&& typeof item.createdAt === 'string'
+		&& evidenceValid;
 }
