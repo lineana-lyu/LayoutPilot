@@ -24,8 +24,12 @@ const acceptBtn = document.getElementById('acceptBtn') as HTMLButtonElement;
 
 function setBusy(value: boolean): void {
 	returnBtn.disabled = value;
-	rejectBtn.disabled = value;
-	acceptBtn.disabled = value;
+	if (value) {
+		rejectBtn.disabled = true;
+		acceptBtn.disabled = true;
+		return;
+	}
+	render();
 }
 
 function currentPreviewPlan() {
