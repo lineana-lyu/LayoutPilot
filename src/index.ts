@@ -6,17 +6,19 @@ import { allowedSemanticRolesForPrefix, buildSemanticEvidenceCatalog, validateSe
 import { buildSemanticGatewayRequest, normalizeGatewayBaseUrl, parseSemanticGatewayResponse } from './ai/gatewayClient';
 import { collectCurrentConstraintSession } from './application/constraintSession';
 import { executePlacementTransaction } from './application/placementTransaction';
+import { validateStoredLayoutPlanCurrent } from './eda/layoutPlanRuntime';
 import { resolveAmbiguousCoreAssociations } from './domain/coreAssociation';
 import { resolveOwnershipRelations } from './domain/ownershipRelation';
 import { createHumanOwnershipDecision } from './domain/humanOwnershipDecision';
 import { buildSemanticBoardFingerprint, createSemanticSnapshot, semanticSnapshotMatchesBoard, type SemanticSnapshot, type SemanticSnapshotEntry } from './domain/semanticSnapshot';
-import { placementPlansEquivalent, planDecouplingPlacement, validatePlacementTarget } from './domain/physicalPlacement';
+import { placementPlansEquivalent, planDecouplingPlacement, validatePlacementTarget, type PhysicalPlacementPlan } from './domain/physicalPlacement';
 import { createPlacementCommand, markPlacementCommandApplied, markPlacementCommandSuperseded, markPlacementCommandUndone } from './domain/placementCommand';
+import { markLayoutPlanApplied } from './domain/layoutPlan';
 import { filterOwnershipPropertyNames, findOwnershipFields, findOwnershipMemberNames } from './domain/ownershipCapabilityProbe';
 import { collectPhysicalComponents, collectSimpleBoardBoundary, collectSimpleComponentKeepouts, moveComponentAndVerify, readComponentPhysicalState } from './eda/pcbPhysicalAdapter';
 import { collectAnalysisState } from './eda/analysisAdapter';
 import { openLayoutPilotWorkbench } from './ui/workbenchWindow';
-import { clearStoredSemanticSnapshot, getStoredHumanOwnershipDecisions, getStoredLastPlacementCommand, getStoredSemanticSnapshot, removeStoredHumanOwnershipDecision, replaceStoredSemanticSnapshot, setStoredLastPlacementCommand, upsertStoredHumanOwnershipDecision } from './eda/workflowStore';
+import { clearStoredSemanticSnapshot, getStoredHumanOwnershipDecisions, getStoredLastPlacementCommand, getStoredSemanticSnapshot, removeStoredHumanOwnershipDecision, replaceStoredSemanticSnapshot, setStoredLastPlacementCommand, setStoredLayoutPlan, upsertStoredHumanOwnershipDecision } from './eda/workflowStore';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
 export function activate(status?: 'onStartupFinished', arg?: string): void {
