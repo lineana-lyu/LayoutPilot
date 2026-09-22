@@ -133,6 +133,30 @@ export function markLayoutPlanSuperseded(
 	});
 }
 
+export type LayoutPlanStateMismatch =
+	| 'snapshot'
+	| 'semantic'
+	| 'physical';
+
+export function layoutPlanStateMismatches(
+	plan: LayoutPlan,
+	input: {
+		snapshotId: string;
+		semanticFingerprint: string;
+		physicalFingerprint: string;
+	},
+): LayoutPlanStateMismatch[] {
+	const mismatches: LayoutPlanStateMismatch[] = [];
+	if (plan.snapshotId !== input.snapshotId) mismatches.push('snapshot');
+	if (plan.semanticFingerprint !== input.semanticFingerprint) {
+		mismatches.push('semantic');
+	}
+	if (plan.physicalFingerprint !== input.physicalFingerprint) {
+		mismatches.push('physical');
+	}
+	return mismatches;
+}
+
 export function layoutPlanMatchesCurrentState(
 	plan: LayoutPlan,
 	input: {
@@ -141,9 +165,7 @@ export function layoutPlanMatchesCurrentState(
 		physicalFingerprint: string;
 	},
 ): boolean {
-	return plan.snapshotId === input.snapshotId
-		&& plan.semanticFingerprint === input.semanticFingerprint
-		&& plan.physicalFingerprint === input.physicalFingerprint;
+	return layoutPlanStateMismatches(plan, input).length === 0;
 }
 
 
