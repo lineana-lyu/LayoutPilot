@@ -8,12 +8,16 @@ import {
 	replaceWorkflowSemanticSnapshot,
 	setWorkflowPlacementCommand,
 	setWorkflowEvidenceReviewSession,
+	setWorkflowLayoutPlan,
+	setWorkflowLayoutPreviewSession,
 	upsertWorkflowHumanDecision,
 } from '../src/application/workflowState';
 import { createHumanOwnershipDecision } from '../src/domain/humanOwnershipDecision';
 import { createPlacementCommand } from '../src/domain/placementCommand';
 import { createSemanticSnapshot } from '../src/domain/semanticSnapshot';
 import { createEvidenceReviewSession } from '../src/domain/evidenceReviewSession';
+import { createLayoutPlan } from '../src/domain/layoutPlan';
+import { createLayoutPreviewSession } from '../src/domain/layoutPreviewSession';
 
 const t0 = '2026-09-22T01:00:00.000Z';
 const snapshotA = createSemanticSnapshot('sem-v1-board-a', [], t0);
@@ -114,6 +118,54 @@ state = setWorkflowEvidenceReviewSession(
 );
 assert.equal(state.evidenceReviewSession?.ownerDesignator, 'U8');
 
+const layoutPlan = createLayoutPlan({
+	snapshotId: snapshotA.id,
+	semanticFingerprint: snapshotA.boardFingerprint,
+	physicalFingerprint: 'phys-v1-a',
+	createdAt: '2026-09-22T01:04:40.000Z',
+	items: [
+		{
+			constraintId: 'C14:near:U8',
+			subjectId: 'c14',
+			subjectDesignator: 'C14',
+			ownerId: 'u8',
+			ownerDesignator: 'U8',
+			powerNet: '+3.3V',
+			groundNet: 'GND',
+			ownerPowerPadNumber: '8',
+			subjectPowerPadNumber: '1',
+			ownerGroundPadNumber: '4',
+			subjectGroundPadNumber: '2',
+			from: { x: 100, y: 200 },
+			to: { x: 120, y: 220 },
+			fromBounds: { minX: 95, minY: 195, maxX: 105, maxY: 205 },
+			toBounds: { minX: 115, minY: 215, maxX: 125, maxY: 225 },
+			movementMil: 28.28,
+			estimatedLoopProxyMil: 40,
+			clearanceMil: 20,
+			executionBlockers: [],
+			rationale: 'fixture',
+		},
+	],
+});
+state = setWorkflowLayoutPlan(
+	state,
+	layoutPlan,
+	'2026-09-22T01:04:40.000Z',
+);
+const layoutPreview = createLayoutPreviewSession({
+	planId: layoutPlan.id,
+	documentTabId: 'pcb-tab-1',
+	createdAt: '2026-09-22T01:04:45.000Z',
+});
+state = setWorkflowLayoutPreviewSession(
+	state,
+	layoutPreview,
+	'2026-09-22T01:04:45.000Z',
+);
+assert.equal(state.layoutPlan?.id, layoutPlan.id);
+assert.equal(state.layoutPreviewSession?.planId, layoutPlan.id);
+
 const roundTrip = normalizeWorkflowState(
 	JSON.parse(JSON.stringify(state)),
 	'2026-09-22T01:05:00.000Z',
@@ -122,6 +174,8 @@ assert.equal(roundTrip.semanticSnapshot?.id, snapshotA.id);
 assert.equal(roundTrip.humanOwnershipDecisions[0].ownerDesignator, 'U8');
 assert.equal(roundTrip.lastPlacementCommand?.id, command.id);
 assert.equal(roundTrip.evidenceReviewSession?.subjectDesignator, 'C14');
+assert.equal(roundTrip.layoutPlan?.id, layoutPlan.id);
+assert.equal(roundTrip.layoutPreviewSession?.planId, layoutPlan.id);
 assert.deepEqual(roundTrip.evidenceReviewSession?.originalSelectionIds, ['r1', 'u2']);
 assert.equal(Object.isFrozen(roundTrip), true);
 assert.equal(Object.isFrozen(roundTrip.semanticSnapshot), true);
@@ -133,6 +187,8 @@ state = removeWorkflowHumanDecision(
 	'2026-09-22T01:06:00.000Z',
 );
 assert.equal(state.humanOwnershipDecisions.length, 0);
+assert.equal(state.layoutPlan, undefined, 'owner changes must invalidate LayoutPlan');
+assert.equal(state.layoutPreviewSession, undefined, 'owner changes must retire preview session');
 
 state = upsertWorkflowHumanDecision(
 	state,
