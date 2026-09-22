@@ -150,8 +150,16 @@ export async function collectSimpleComponentKeepouts(): Promise<
 }
 
 export async function collectPhysicalComponents(
-	routingInspectionComponentId?: string,
+	routingInspectionComponentIds?: string | string[],
 ): Promise<PhysicalComponentSnapshot[]> {
+	const routingInspectionIds = new Set(
+		(Array.isArray(routingInspectionComponentIds)
+			? routingInspectionComponentIds
+			: routingInspectionComponentIds
+				? [routingInspectionComponentIds]
+				: []
+		).filter(Boolean),
+	);
 	const components = await eda.pcb_PrimitiveComponent.getAll();
 	const result: PhysicalComponentSnapshot[] = [];
 
@@ -167,7 +175,7 @@ export async function collectPhysicalComponents(
 			const dimensions = padDimensions(pad.getState_Pad());
 			let connectedPrimitiveCount: number | undefined;
 
-			if (id === routingInspectionComponentId) {
+			if (routingInspectionIds.has(id)) {
 				try {
 					connectedPrimitiveCount = (
 						await pad.getConnectedPrimitives(false)
