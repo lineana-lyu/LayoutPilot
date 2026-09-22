@@ -1,4 +1,4 @@
-# v0.7 EasyEDA Runtime Smoke Test
+# v0.8.4 EasyEDA Runtime Smoke Test
 
 This checklist validates the real EasyEDA Pro runtime path. It is intentionally separate from automated tests.
 
@@ -16,11 +16,11 @@ Use a disposable PCB with:
 - components whose runtime BBoxes can be read successfully;
 - no intentional overlap around the test area.
 
-For the first positive-path run, avoid curved board edges and complex keepout geometry. Those cases are expected to fail closed in v0.7.
+For the first positive-path run, avoid curved board edges and complex keepout geometry. Those cases are expected to fail closed in v0.8.4.
 
 ## Pre-flight
 
-1. Install the package built from `feat/v0.7-interview-mvp`.
+1. Install the package built from `feat/v0.8.4-interview-mvp`.
 2. Open the disposable PCB.
 3. Run EasyEDA DRC manually and confirm it passes.
 4. Record the test capacitor's X/Y position.
@@ -33,7 +33,7 @@ For the first positive-path run, avoid curved board edges and complex keepout ge
 
 Run:
 
-`LayoutPilot → 分析当前 PCB（AI 语义）`
+`LayoutPilot → 打开 LayoutPilot 工作台 → 重新分析`
 
 Expected:
 
@@ -46,7 +46,7 @@ Expected:
 
 Run:
 
-`LayoutPilot → 确认待决 Owner（人工）`
+`Workbench → 选择待决器件 → 选择 Host → 定位核对 / 确认 Owner`
 
 Expected for a rail-domain decoupling capacitor:
 
@@ -55,11 +55,34 @@ Expected for a rail-domain decoupling capacitor:
 - AI is not called again;
 - PCB geometry is unchanged.
 
+### Evidence review continuity
+
+1. Select a rail-domain decoupling task.
+2. Click a Host's **定位核对** action.
+3. Verify the PCB canvas selects the subject and Host and marks the shared power-pad evidence.
+4. Verify the compact Evidence Review Bar remains visible.
+5. Click **返回工作台**.
+
+Expected:
+
+- the main Workbench returns without using the extension menu;
+- LayoutPilot indicator markers are removed;
+- the PCB selection that existed before evidence review is restored;
+- no Owner decision is created by the locate-only action.
+
+Repeat and click **确认 Owner** in the Evidence Review Bar.
+
+Expected:
+
+- the Owner decision is stored only after explicit confirmation;
+- the Workbench returns automatically;
+- the Constraint count updates without a new AI call.
+
 ### 3. Preview constraints
 
 Run:
 
-`LayoutPilot → 查看布局建议`
+`Workbench → 右侧布局约束`
 
 Expected:
 
@@ -72,7 +95,7 @@ Expected:
 
 Run:
 
-`LayoutPilot → 应用受控布局建议`
+`Workbench → 物理预检并应用`
 
 Before accepting the confirmation dialog, verify it displays:
 
@@ -101,7 +124,7 @@ Inspect the board visually. The capacitor should be adjacent to the relevant own
 
 Run:
 
-`LayoutPilot → 撤销上次受控布局`
+`Workbench → 撤销上次布局`
 
 Expected:
 
@@ -123,7 +146,7 @@ Expected: blocked before mutation.
 
 Route at least one test-capacitor pad and attempt Apply.
 
-Expected: blocked because v0.7 does not reposition routed components.
+Expected: blocked because v0.8.4 does not reposition routed components.
 
 ### Dirty DRC baseline
 
