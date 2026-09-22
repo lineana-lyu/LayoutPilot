@@ -400,10 +400,10 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 					<div class="hero">
 						<div class="hero-copy">
 							<div class="hero-title">当前没有待确认 Owner 的去耦器件</div>
-							<div class="hero-sub">可以直接查看 Constraint 结果；如果约束仍为 0，可展开策略诊断。</div>
+							<div class="hero-sub">约束计划已移到右侧独立区域；窄屏时会显示在当前详情下方。</div>
 						</div>
 					</div>
-					${renderConstraintArea(model)}
+					<div class="inline-plan">${renderConstraintArea(model)}</div>
 				</div>`;
 		}
 		return;
@@ -427,16 +427,21 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 			<div class="facts">
 				<div class="fact"><div class="fact-label">电源域</div><div class="fact-value">${escapeHtml(task.rail)}</div></div>
 				<div class="fact"><div class="fact-label">Host 候选</div><div class="fact-value">${task.candidates.length} 个</div></div>
+				<div class="fact"><div class="fact-label">AI 置信</div><div class="fact-value">${escapeHtml(semanticConfidenceZh(task.confidence))}</div></div>
+				<div class="fact"><div class="fact-label">当前 Owner</div><div class="fact-value">${escapeHtml(task.selectedOwnerDesignator ?? '未确认')}</div></div>
 			</div>
 			<div class="block">
 				<div class="block-title">选择实际服务的 Host</div>
-				<div class="note">这里的候选只表示“与该器件存在确定性的电源域关联”，不是 AI 推荐。只有你明确知道归属时才确认；不确定就保持待确认。</div>
+				<div class="note">候选来自确定性拓扑，不是 AI 推荐。${escapeHtml(task.ownershipExplanation)} 只有你能确认实际服务关系时才补充 Owner；不确定就保持待确认。</div>
 				<div class="host-grid">
 					${task.candidates.map(candidate => {
 						const selected = candidate.id === task.selectedOwnerId;
 						const primaryName = candidate.name && candidate.name !== candidate.designator
 							? candidate.name
 							: '器件名称未解析';
+						const evidenceLines = candidate.evidenceLines.length
+							? candidate.evidenceLines
+							: [`${task.rail}：与 ${task.designator} 同处 rail-domain`];
 						return `
 							<button class="host ${selected ? 'selected' : ''}" data-owner="${escapeHtml(candidate.id)}">
 								<div class="host-top">
@@ -445,13 +450,16 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 									${selected ? '<span class="badge ok" style="margin-left:auto">当前 Owner</span>' : ''}
 								</div>
 								<div class="host-meta">${escapeHtml([candidate.manufacturer, candidate.footprint].filter(Boolean).join(' · ') || '制造商 / 封装信息不足')}</div>
-								<div class="host-evidence">候选证据：与 ${escapeHtml(task.designator)} 处于 ${escapeHtml(task.rail)} rail-domain</div>
+								<div class="host-evidence">
+									<strong>拓扑证据</strong>
+									${evidenceLines.map(line => `<span class="evidence-line">${escapeHtml(line)}</span>`).join('')}
+								</div>
 							</button>`;
 					}).join('')}
 				</div>
 				${task.selectedOwnerId ? '<div style="margin-top:8px"><button class="btn danger" id="clearOwnerBtn">清除人工确认</button></div>' : ''}
 			</div>
-			${model ? renderConstraintArea(model) : ''}
+			<div class="inline-plan">${model ? renderConstraintArea(model) : ''}</div>
 		</div>`;
 
 	for (const node of mainPanel.querySelectorAll<HTMLButtonElement>('[data-owner]')) {
@@ -485,7 +493,6 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 		await refresh();
 	});
 }
-
 async function refresh(): Promise<void> {
 	if (busy) return;
 	setBusy(true);
