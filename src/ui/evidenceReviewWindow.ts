@@ -59,7 +59,12 @@ export async function openEvidenceReviewBar(): Promise<void> {
 			x,
 			y,
 			onBeforeCloseCallFn: async () => {
-				await cleanupReviewSession();
+				try {
+					await cleanupReviewSession();
+				}
+				catch (error) {
+					console.warn('[LayoutPilot] evidence review cleanup failed on close', error);
+				}
 				await openLayoutPilotWorkbench();
 				return true;
 			},
@@ -72,7 +77,26 @@ export async function openEvidenceReviewBar(): Promise<void> {
 }
 
 export async function closeEvidenceReviewBarAndReturn(): Promise<void> {
-	await cleanupReviewSession();
-	await eda.sys_IFrame.closeIFrame(currentReviewBarId());
-	await openLayoutPilotWorkbench();
+	let cleanupError: unknown;
+	try {
+		await cleanupReviewSession();
+	}
+	catch (error) {
+		cleanupError = error;
+		console.warn('[LayoutPilot] evidence review cleanup failed', error);
+	}
+
+	try {
+		await eda.sys_IFrame.closeIFrame(currentReviewBarId());
+	}
+	finally {
+		await openLayoutPilotWorkbench();
+	}
+
+	if (cleanupError) {
+		console.warn(
+			'[LayoutPilot] returned to workbench with incomplete review cleanup',
+			cleanupError,
+		);
+	}
 }
