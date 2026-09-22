@@ -99,6 +99,12 @@ export function normalizeWorkflowState(
 	const evidenceReviewSession = isEvidenceReviewSession(value.evidenceReviewSession)
 		? value.evidenceReviewSession
 		: undefined;
+	const validEvidenceReviewSession =
+		semanticSnapshot
+		&& evidenceReviewSession?.snapshotId === semanticSnapshot.id
+		&& evidenceReviewSession.boardFingerprint === semanticSnapshot.boardFingerprint
+			? evidenceReviewSession
+			: undefined;
 
 	const validDecisions = semanticSnapshot
 		? humanOwnershipDecisions.filter(
@@ -111,7 +117,7 @@ export function normalizeWorkflowState(
 		semanticSnapshot,
 		humanOwnershipDecisions: validDecisions,
 		lastPlacementCommand,
-		evidenceReviewSession,
+		evidenceReviewSession: validEvidenceReviewSession,
 		updatedAt:
 			typeof value.updatedAt === 'string'
 				? value.updatedAt
