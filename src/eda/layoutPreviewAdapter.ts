@@ -43,6 +43,22 @@ function boundsMarkers(box: CanvasBounds) {
 	];
 }
 
+function ownerMarkers(box: CanvasBounds) {
+	const center = {
+		x: (box.minX + box.maxX) / 2,
+		y: (box.minY + box.maxY) / 2,
+	};
+	return [
+		...boundsMarkers(box),
+		{
+			type: EDMT_IndicatorMarkerType.CIRCLE,
+			x: center.x,
+			y: center.y,
+			r: 14,
+		},
+	];
+}
+
 function targetMarkers(item: LayoutPlanItem) {
 	return [
 		...boundsMarkers(item.toBounds),
@@ -134,7 +150,7 @@ export async function showLayoutPlanGhost(
 
 	if (ownerBounds.length) {
 		await eda.dmt_EditorControl.generateIndicatorMarkers(
-			ownerBounds.flatMap(boundsMarkers),
+			ownerBounds.flatMap(ownerMarkers),
 			{ r: 35, g: 130, b: 95, alpha: 0.95 },
 			2,
 			false,
