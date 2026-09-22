@@ -323,6 +323,75 @@ export async function collectPadEvidenceComponents(
 	return result;
 }
 
+export interface PcbEvidenceReviewContext {
+	documentTabId: string;
+	originalSelectionIds: string[];
+}
+
+export async function beginPcbEvidenceReview(input: {
+	subjectId: string;
+	subjectDesignator: string;
+	ownerId: string;
+	ownerDesignator: string;
+	powerEvidence?: {
+		netName: string;
+		subjectPadNumber: string;
+		ownerPadNumber: string;
+		subjectX: number;
+		subjectY: number;
+		ownerX: number;
+		ownerY: number;
+	};
+}): Promise<PcbEvidenceReviewContext> {
+	const document = await eda.dmt_SelectControl.getCurrentDocumentInfo();
+	if (!document) {
+		throw new Error('无法获取当前 PCB 文档信息。');
+	}
+	if (document.documentType !== EDMT_EditorDocumentType.PCB) {
+		throw new Error('当前活动文档不是 PCB，无法执行画布定位。');
+	}
+
+	const originalSelectionIds =
+		await eda.pcb_SelectControl.getSelectedPrimitives_PrimitiveId();
+
+	await focusPcbEvidence(input);
+
+	return {
+		documentTabId: document.tabId,
+		originalSelectionIds: [...originalSelectionIds],
+	};
+}
+
+export async function endPcbEvidenceReview(input: {
+	documentTabId: string;
+	originalSelectionIds: string[];
+}): Promise<void> {
+	await eda.dmt_EditorControl.activateDocument(input.documentTabId);
+
+	try {
+		await eda.dmt_EditorControl.removeIndicatorMarkers(input.documentTabId);
+	}
+	catch (error) {
+		console.warn('[LayoutPilot] unable to clear evidence markers', error);
+	}
+
+	await eda.pcb_SelectControl.clearSelected();
+
+	if (input.originalSelectionIds.length) {
+		try {
+			await eda.pcb_SelectControl.doSelectPrimitives(
+				input.originalSelectionIds,
+			);
+		}
+		catch (error) {
+			console.warn(
+				'[LayoutPilot] unable to restore previous PCB selection',
+				error,
+			);
+		}
+	}
+}
+
 export async function focusPcbEvidence(input: {
 	subjectId: string;
 	subjectDesignator: string;
