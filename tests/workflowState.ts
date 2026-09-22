@@ -178,6 +178,25 @@ assert.throws(
 	/does not belong/,
 );
 
+const mismatchedReview = normalizeWorkflowState(
+	{
+		schemaVersion: 1,
+		semanticSnapshot: snapshotA,
+		humanOwnershipDecisions: [],
+		evidenceReviewSession: {
+			...review,
+			snapshotId: 'semantic-other',
+		},
+		updatedAt: '2026-09-22T01:10:30.000Z',
+	},
+	'2026-09-22T01:10:30.000Z',
+);
+assert.equal(
+	mismatchedReview.evidenceReviewSession,
+	undefined,
+	'persisted evidence review must match the active snapshot',
+);
+
 const corrupted = normalizeWorkflowState(
 	{ schemaVersion: 999, humanOwnershipDecisions: ['bad'] },
 	'2026-09-22T01:11:00.000Z',
