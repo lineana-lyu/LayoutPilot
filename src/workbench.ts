@@ -513,10 +513,10 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 		if (model?.evaluation) {
 			mainPanel.innerHTML = `
 				<div class="detail">
-					<div class="hero">
-						<div class="hero-copy">
-							<div class="hero-title">当前没有待确认 Owner 的去耦器件</div>
-							<div class="hero-sub">约束计划已移到右侧独立区域；窄屏时会显示在当前详情下方。</div>
+					<div class="detail-head">
+						<div class="detail-copy">
+							<div class="detail-title">当前没有待确认 Owner 的去耦器件</div>
+							<div class="detail-sub">布局约束可在右侧查看；窄窗口时会显示在当前区域下方。</div>
 						</div>
 					</div>
 					<div class="inline-plan">${renderConstraintArea(model)}</div>
@@ -527,29 +527,60 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 
 	mainPanel.innerHTML = `
 		<div class="detail">
-			<div class="hero">
+			<div class="detail-head">
 				<div class="ref">${escapeHtml(task.designator)}</div>
-				<div class="hero-copy">
-					<div class="hero-title">${escapeHtml(semanticRoleZh(task.role))} · ${escapeHtml(semanticConfidenceZh(task.confidence))}</div>
-					<div class="hero-sub">
-						确定性关系：${escapeHtml(ownershipRelationZh(task.relation))}<br/>
+				<div class="detail-copy">
+					<div class="detail-title">${escapeHtml(semanticRoleZh(task.role))} · ${escapeHtml(semanticConfidenceZh(task.confidence))}</div>
+					<div class="detail-sub">
+						确定性关系：${escapeHtml(ownershipRelationZh(task.relation))} ·
 						${task.selectedOwnerDesignator
 							? `已确认 Owner：${escapeHtml(task.selectedOwnerDesignator)}`
-							: '系统只能确认它属于一个电源域，不能从电源网本身推断唯一 Owner。'}
+							: '当前只有电源域证据，尚不能确定唯一 Owner。'}
 					</div>
 				</div>
-				<span class="badge ${task.selectedOwnerId ? 'ok' : 'pending'}">${task.selectedOwnerId ? '已确认' : '需要人工证据'}</span>
+				<span class="status-text ${task.selectedOwnerId ? 'ok' : ''}">
+					${task.selectedOwnerId ? '已确认' : '需要人工证据'}
+				</span>
 			</div>
-			<div class="facts">
-				<div class="fact"><div class="fact-label">电源域</div><div class="fact-value">${escapeHtml(task.rail)}</div></div>
-				<div class="fact"><div class="fact-label">Host 候选</div><div class="fact-value">${task.candidates.length} 个</div></div>
-				<div class="fact"><div class="fact-label">AI 置信</div><div class="fact-value">${escapeHtml(semanticConfidenceZh(task.confidence))}</div></div>
-				<div class="fact"><div class="fact-label">当前 Owner</div><div class="fact-value">${escapeHtml(task.selectedOwnerDesignator ?? '未确认')}</div></div>
+
+			<div class="property-grid">
+				<div class="property">
+					<div class="property-label">电源域</div>
+					<div class="property-value">${escapeHtml(task.rail)}</div>
+				</div>
+				<div class="property">
+					<div class="property-label">Host 候选</div>
+					<div class="property-value">${task.candidates.length}</div>
+				</div>
+				<div class="property">
+					<div class="property-label">AI 置信</div>
+					<div class="property-value">${escapeHtml(semanticConfidenceZh(task.confidence))}</div>
+				</div>
+				<div class="property">
+					<div class="property-label">当前 Owner</div>
+					<div class="property-value">${escapeHtml(task.selectedOwnerDesignator ?? '未确认')}</div>
+				</div>
 			</div>
+
 			<div class="block">
-				<div class="block-title">选择实际服务的 Host</div>
-				<div class="note">候选来自确定性拓扑，不是 AI 推荐。${escapeHtml(task.ownershipExplanation)} 卡片按最近共享电源 Pad 的直线几何距离排列，仅用于核对顺序，不代表 Owner 推荐；该距离也不是走线长度或 SI/PI 指标。只有你能确认实际服务关系时才补充 Owner。</div>
-				<div class="host-grid">
+				<div class="block-heading">
+					<div class="block-title">Host 候选</div>
+					<div class="block-help">按共享电源 Pad 的当前直线距离排序，仅用于核对，不构成 Owner 推荐。</div>
+				</div>
+				<div class="note">
+					${escapeHtml(task.ownershipExplanation)}
+					距离是当前 PCB 几何证据，不是走线长度，也不是 SI/PI 指标。只有明确知道实际服务关系时才确认 Owner。
+				</div>
+
+				<div class="host-table">
+					<div class="host-table-head">
+						<div class="host-cell">Host</div>
+						<div class="host-cell">器件 / 封装</div>
+						<div class="host-cell">共享电源 Pad</div>
+						<div class="host-cell">距离</div>
+						<div class="host-cell host-topology">拓扑证据</div>
+						<div class="host-cell">操作</div>
+					</div>
 					${task.candidates.map(candidate => {
 						const selected = candidate.id === task.selectedOwnerId;
 						const primaryName = candidate.name && candidate.name !== candidate.designator
@@ -560,34 +591,45 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 							: [`${task.rail}：与 ${task.designator} 同处 rail-domain`];
 						const distance = candidate.powerPadEvidence;
 						return `
-							<div class="host ${selected ? 'selected' : ''}">
-								<div class="host-top">
-									<span class="host-ref">${escapeHtml(candidate.designator)}</span>
-									<span class="host-name">${escapeHtml(primaryName)}</span>
-									${selected ? '<span class="badge ok" style="margin-left:auto">当前 Owner</span>' : ''}
+							<div class="host-row ${selected ? 'selected' : ''}">
+								<div class="host-cell host-ref-cell">
+									<div class="host-ref">${escapeHtml(candidate.designator)}</div>
+									${selected ? '<div class="status-text ok" style="margin-top:3px">当前 Owner</div>' : ''}
 								</div>
-								<div class="host-meta">${escapeHtml([candidate.manufacturer, candidate.footprint].filter(Boolean).join(' · ') || '制造商 / 封装信息不足')}</div>
-								${distance ? `
-									<div class="host-distance">
-										${escapeHtml(distance.netName)} ·
-										${escapeHtml(task.designator)}.${escapeHtml(distance.subjectPadNumber)}
-										↔
-										${escapeHtml(candidate.designator)}.${escapeHtml(distance.ownerPadNumber)}
-										· ${distance.distanceMil.toFixed(1)} mil 直线距离
-									</div>` : ''}
-								<div class="host-evidence">
-									<strong>拓扑证据</strong>
-									${evidenceLines.map(line => `<span class="evidence-line">${escapeHtml(line)}</span>`).join('')}
+								<div class="host-cell host-device-cell">
+									<div class="host-name">${escapeHtml(primaryName)}</div>
+									<div class="host-meta">${escapeHtml([candidate.manufacturer, candidate.footprint].filter(Boolean).join(' · ') || '制造商 / 封装信息不足')}</div>
 								</div>
-								<div class="host-actions">
-									<button class="btn small" data-locate-owner="${escapeHtml(candidate.id)}">定位核对（切回 PCB）</button>
-									<button class="btn small ${selected ? '' : 'primary'}" data-confirm-owner="${escapeHtml(candidate.id)}">${selected ? '已确认 Owner' : '确认 Owner'}</button>
+								<div class="host-cell host-pad-cell">
+									${distance
+										? `<div class="pad-evidence">${escapeHtml(distance.netName)} · ${escapeHtml(task.designator)}.${escapeHtml(distance.subjectPadNumber)} ↔ ${escapeHtml(candidate.designator)}.${escapeHtml(distance.ownerPadNumber)}</div>`
+										: '<div class="host-meta">暂无可用 Pad 距离证据</div>'}
+								</div>
+								<div class="host-cell host-distance-cell">
+									${distance
+										? `<div class="distance-value">${distance.distanceMil.toFixed(1)}</div><div class="distance-unit">mil · 直线</div>`
+										: '<div class="host-meta">—</div>'}
+								</div>
+								<div class="host-cell host-topology">
+									<div class="topology">
+										${evidenceLines.slice(0, 2).map(line => `<span class="topology-line">${escapeHtml(line)}</span>`).join('')}
+									</div>
+								</div>
+								<div class="host-cell host-actions-cell">
+									<div class="host-actions">
+										<button class="btn small" data-locate-owner="${escapeHtml(candidate.id)}">定位核对</button>
+										<button class="btn small ${selected ? '' : 'primary'}" data-confirm-owner="${escapeHtml(candidate.id)}">${selected ? '已确认' : '确认 Owner'}</button>
+									</div>
 								</div>
 							</div>`;
 					}).join('')}
 				</div>
-				${task.selectedOwnerId ? '<div style="margin-top:8px"><button class="btn danger" id="clearOwnerBtn">清除人工确认</button></div>' : ''}
+
+				${task.selectedOwnerId
+					? '<div style="margin-top:8px"><button class="btn danger" id="clearOwnerBtn">清除人工确认</button></div>'
+					: ''}
 			</div>
+
 			<div class="inline-plan">${model ? renderConstraintArea(model) : ''}</div>
 		</div>`;
 
@@ -685,6 +727,7 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 		await refresh();
 	});
 }
+
 async function refresh(): Promise<void> {
 	if (busy) return;
 	setBusy(true);
