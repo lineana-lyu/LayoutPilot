@@ -8,12 +8,15 @@ import { resolveComponentDisplayName } from './domain/semanticContext';
 import type { OwnershipRelationType } from './domain/ownershipRelation';
 import type { SemanticConfidence, SemanticRole } from './domain/semanticInference';
 import { buildClosestSharedRailPadEvidence, type SharedRailPadEvidence } from './domain/physicalEvidence';
+import { createEvidenceReviewSession } from './domain/evidenceReviewSession';
 import { collectAnalysisState, type AnalysisState } from './eda/analysisAdapter';
-import { collectPadEvidenceComponents, focusPcbEvidence } from './eda/pcbPhysicalAdapter';
+import { beginPcbEvidenceReview, collectPadEvidenceComponents, endPcbEvidenceReview } from './eda/pcbPhysicalAdapter';
 import { hideLayoutPilotWorkbench } from './ui/workbenchWindow';
+import { openEvidenceReviewBar, retireEvidenceReviewBar } from './ui/evidenceReviewWindow';
 import {
 	getStoredHumanOwnershipDecisions,
 	inspectStoredWorkflowState,
+	setStoredEvidenceReviewSession,
 	removeStoredHumanOwnershipDecision,
 	upsertStoredHumanOwnershipDecision,
 } from './eda/workflowStore';
@@ -559,21 +562,48 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 		node.addEventListener('click', async () => {
 			const ownerId = node.dataset.locateOwner;
 			const candidate = task.candidates.find(item => item.id === ownerId);
-			if (!candidate) return;
+			const workflow = inspectStoredWorkflowState();
+			const snapshot = workflow.semanticSnapshot;
+			if (!candidate || !snapshot || !model?.boardFingerprint) return;
 
 			setBusy(true);
+			let reviewContext:
+				| { documentTabId: string; originalSelectionIds: string[] }
+				| undefined;
 			try {
-				await focusPcbEvidence({
+				await retireEvidenceReviewBar();
+				reviewContext = await beginPcbEvidenceReview({
 					subjectId: task.componentId,
 					subjectDesignator: task.designator,
 					ownerId: candidate.id,
 					ownerDesignator: candidate.designator,
 					powerEvidence: candidate.powerPadEvidence,
 				});
+
+				await setStoredEvidenceReviewSession(
+					createEvidenceReviewSession({
+						snapshotId: snapshot.id,
+						boardFingerprint: model.boardFingerprint,
+						subjectId: task.componentId,
+						subjectDesignator: task.designator,
+						ownerId: candidate.id,
+						ownerDesignator: candidate.designator,
+						railLabel: task.rail,
+						powerEvidence: candidate.powerPadEvidence,
+						documentTabId: reviewContext.documentTabId,
+						originalSelectionIds: reviewContext.originalSelectionIds,
+					}),
+				);
+
+				await openEvidenceReviewBar();
 				await hideLayoutPilotWorkbench();
 			}
 			catch (error) {
-				console.error('[LayoutPilot Workbench] PCB evidence focus failed', error);
+				if (reviewContext) {
+					await endPcbEvidenceReview(reviewContext);
+				}
+				await setStoredEvidenceReviewSession(undefined);
+				console.error('[LayoutPilot Workbench] PCB evidence review failed', error);
 				showToast(`PCB 定位失败：${String(error)}`);
 			}
 			finally {
