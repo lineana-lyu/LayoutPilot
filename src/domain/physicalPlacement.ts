@@ -111,20 +111,6 @@ const MAX_LOCAL_SEARCH_RADIUS_MIL = 500;
 const MIN_LOCAL_SEARCH_STEP_MIL = 10;
 const MAX_LOCAL_SEARCH_STEP_MIL = 25;
 
-function rotatedHalfExtents(
-	width: number,
-	height: number,
-	rotation: number,
-): { halfX: number; halfY: number } {
-	const radians = rotation * Math.PI / 180;
-	const cos = Math.abs(Math.cos(radians));
-	const sin = Math.abs(Math.sin(radians));
-	return {
-		halfX: cos * width / 2 + sin * height / 2,
-		halfY: sin * width / 2 + cos * height / 2,
-	};
-}
-
 function componentBox(component: PhysicalComponentSnapshot): BBox | undefined {
 	const bounds = component.bounds;
 	if (
