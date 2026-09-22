@@ -942,7 +942,9 @@ async function refresh(): Promise<void> {
 					: activePlan.status === 'rejected'
 						? '方案已放弃 · 可重新规划'
 						: `${activePlan.items.length} 个位置 · ${activePlan.status}`
-			: `${model.constraintCount} 条约束 · 待生成方案`;
+			: model.referencePlans.length
+				? `${model.constraintCount} 条约束 · ${model.referencePlans.length} 条参考历史`
+				: `${model.constraintCount} 条约束 · 待生成方案`;
 		el<HTMLDivElement>('metricPending').textContent = String(pending);
 		el<HTMLDivElement>('metricConstraints').textContent = String(model.constraintCount);
 		renderTasks(model.tasks, model);
@@ -962,28 +964,29 @@ async function refresh(): Promise<void> {
 						: '等待物理预检'
 					: '尚未进入';
 
-		if (pending > 0) {
-			setStage('stageOwner', 'active');
-			setStage('stageConstraint', 'idle');
+		setStage('stageOwner', pending > 0 ? 'active' : 'done');
+
+		if (command?.status === 'applied') {
+			setStage('stageConstraint', 'done');
+			setStage('stageExecute', 'done');
+		}
+		else if (activePlan?.status === 'accepted') {
+			setStage('stageConstraint', 'done');
+			setStage(
+				'stageExecute',
+				activePlanMode === 'reference-only' ? 'idle' : 'active',
+			);
+		}
+		else if (activePlan?.status === 'preview') {
+			setStage('stageConstraint', 'active');
 			setStage('stageExecute', 'idle');
 		}
 		else {
-			setStage('stageOwner', 'done');
-			if (command?.status === 'applied') {
-				setStage('stageConstraint', 'done');
-				setStage('stageExecute', 'done');
-			}
-			else if (activePlan?.status === 'accepted') {
-				setStage('stageConstraint', 'done');
-				setStage(
-					'stageExecute',
-					activePlanMode === 'reference-only' ? 'idle' : 'active',
-				);
-			}
-			else {
-				setStage('stageConstraint', 'active');
-				setStage('stageExecute', 'idle');
-			}
+			setStage(
+				'stageConstraint',
+				model.constraintCount > 0 ? 'active' : 'idle',
+			);
+			setStage('stageExecute', 'idle');
 		}
 
 		const plan = model.layoutPlan;
