@@ -10,7 +10,10 @@ import type { SemanticConfidence, SemanticRole } from './domain/semanticInferenc
 import { buildClosestSharedRailPadEvidence, type SharedRailPadEvidence } from './domain/physicalEvidence';
 import { createEvidenceReviewSession } from './domain/evidenceReviewSession';
 import { createLayoutPreviewSession } from './domain/layoutPreviewSession';
-import type { LayoutPlan } from './domain/layoutPlan';
+import {
+	layoutPlanAcceptanceMode,
+	type LayoutPlan,
+} from './domain/layoutPlan';
 import { collectAnalysisState, type AnalysisState } from './eda/analysisAdapter';
 import { generateCurrentLayoutPlan, validateStoredLayoutPlanCurrent } from './eda/layoutPlanRuntime';
 import { showLayoutPlanGhost } from './eda/layoutPreviewAdapter';
@@ -848,9 +851,14 @@ async function refresh(): Promise<void> {
 		el<HTMLDivElement>('stageAnalyzeMeta').textContent = `${workflow.semanticSnapshot.entries.length} 个语义器件`;
 		el<HTMLDivElement>('stageOwnerMeta').textContent = `${confirmed}/${model.tasks.length} 已确认`;
 		const activePlan = model.layoutPlan;
+		const activePlanMode = activePlan
+			? layoutPlanAcceptanceMode(activePlan)
+			: undefined;
 		el<HTMLDivElement>('stageConstraintMeta').textContent = activePlan
 			? activePlan.status === 'accepted'
-				? `${activePlan.items.length} 个位置 · 方案已接受`
+				? activePlanMode === 'reference-only'
+					? `${activePlan.items.length} 个位置 · 参考方案已保存`
+					: `${activePlan.items.length} 个位置 · 方案已接受`
 				: activePlan.status === 'preview'
 					? `${activePlan.items.length} 个位置 · 待确认`
 					: activePlan.status === 'rejected'
@@ -871,7 +879,9 @@ async function refresh(): Promise<void> {
 			: command?.status === 'undone'
 				? `${command.componentDesignator} 已撤销`
 				: activePlan?.status === 'accepted'
-					? '等待物理预检'
+					? activePlanMode === 'reference-only'
+						? '仅参考 · 不会修改 PCB'
+						: '等待物理预检'
 					: '尚未进入';
 
 		if (pending > 0) {
@@ -887,7 +897,10 @@ async function refresh(): Promise<void> {
 			}
 			else if (activePlan?.status === 'accepted') {
 				setStage('stageConstraint', 'done');
-				setStage('stageExecute', 'active');
+				setStage(
+					'stageExecute',
+					activePlanMode === 'reference-only' ? 'idle' : 'active',
+				);
 			}
 			else {
 				setStage('stageConstraint', 'active');
@@ -897,6 +910,7 @@ async function refresh(): Promise<void> {
 
 		const plan = model.layoutPlan;
 		const acceptedPlan = plan?.status === 'accepted';
+		const planMode = plan ? layoutPlanAcceptanceMode(plan) : undefined;
 		const planHasPreflightCandidate = plan?.items.some(
 			item => item.executionBlockers.length === 0,
 		) ?? false;
@@ -906,11 +920,16 @@ async function refresh(): Promise<void> {
 			? plan.status === 'preview'
 				? '查看布局预览'
 				: plan.status === 'accepted'
-					? '查看已接受方案'
+					? planMode === 'reference-only'
+						? '查看参考方案'
+						: '查看已接受方案'
 					: '重新生成布局预览'
 			: '生成布局预览';
 
 		applyBtn.disabled = !acceptedPlan || !planHasPreflightCandidate;
+		applyBtn.textContent = planMode === 'reference-only'
+			? '仅参考 · 不执行'
+			: '物理预检并应用';
 		undoBtn.disabled = command?.status !== 'applied';
 
 		const firstProvider = workflow.semanticSnapshot.entries
