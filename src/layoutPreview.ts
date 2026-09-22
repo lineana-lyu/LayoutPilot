@@ -49,16 +49,21 @@ function render(): void {
 
 	const blocked = plan.items.filter(item => item.executionBlockers.length > 0).length;
 	const acceptanceMode = layoutPlanAcceptanceMode(plan);
+	const activePlan = getStoredLayoutPlan();
+	const archived = activePlan?.id !== plan.id;
 	const blockerSummary = [...new Set(
 		plan.items.flatMap(item => item.executionBlockers),
 	)];
-	title.textContent = acceptanceMode === 'reference-only'
-		? `参考布局建议 · ${plan.id}`
-		: `布局预览 · ${plan.id}`;
+	title.textContent = archived
+		? `历史参考方案 · ${plan.id}`
+		: acceptanceMode === 'reference-only'
+			? `参考布局建议 · ${plan.id}`
+			: `布局预览 · ${plan.id}`;
 	meta.innerHTML = [
 		`${plan.items.length} 个器件`,
 		`${plan.items.length - blocked} 个当前可进入物理预检`,
 		blocked ? `${blocked} 个仅预览` : '',
+		archived ? '<strong class="reference-note">历史记录 · 不代表当前 Owner 决策</strong>' : '',
 		acceptanceMode === 'reference-only'
 			? '<strong class="reference-note">当前方案不会修改 PCB</strong>'
 			: '',
