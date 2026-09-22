@@ -50,6 +50,7 @@ interface OwnerTask {
 	confidence: SemanticConfidence;
 	relation: OwnershipRelationType;
 	rail: string;
+	railNets: string[];
 	candidates: HostCandidate[];
 	selectedOwnerId?: string;
 	selectedOwnerDesignator?: string;
@@ -253,6 +254,7 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 					confidence: entry.inference!.confidence,
 					relation: entry.context.ownership.relation,
 					rail: entry.context.ownership.railNets.join('、') || '未知电源域',
+					railNets: [...entry.context.ownership.railNets],
 					candidates,
 					selectedOwnerId: decision?.ownerComponentId,
 					selectedOwnerDesignator: decision?.ownerDesignator,
@@ -293,7 +295,7 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 						? buildClosestSharedRailPadEvidence(
 							subjectPhysical,
 							ownerPhysical,
-							selectedTask.rail.split('、').filter(Boolean),
+							selectedTask.railNets,
 						)
 						: undefined;
 				}
