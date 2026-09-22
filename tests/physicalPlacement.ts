@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
 	placementPlansEquivalent,
 	planDecouplingPlacement,
+	validatePlacementTarget,
 	type PhysicalComponentSnapshot,
 } from '../src/domain/physicalPlacement';
 
@@ -242,6 +243,81 @@ function component(
 
 	assert.equal(result.ready, false);
 	assert.ok(result.reasons.some(reason => reason.includes('keepout')));
+}
+
+{
+	const subject = component('c1', 'C1', 300, 300, { routed: 0 });
+	const obstacle = component('u1', 'U1', 100, 100);
+	const safe = validatePlacementTarget({
+		subject,
+		obstacles: [subject, obstacle],
+		board,
+		componentKeepouts: [],
+		target: { x: 300, y: 300 },
+	});
+	assert.equal(safe.valid, true);
+
+	const collision = validatePlacementTarget({
+		subject,
+		obstacles: [subject, obstacle],
+		board,
+		componentKeepouts: [],
+		target: { x: 110, y: 100 },
+	});
+	assert.equal(collision.valid, false);
+	assert.ok(collision.reasons.some(reason => reason.includes('BBox 冲突')));
+
+	const outside = validatePlacementTarget({
+		subject,
+		obstacles: [subject, obstacle],
+		board,
+		componentKeepouts: [],
+		target: { x: 995, y: 995 },
+	});
+	assert.equal(outside.valid, false);
+	assert.ok(outside.reasons.some(reason => reason.includes('板框')));
+}
+
+{
+	const subject = component('c1', 'C1', 300, 300, {
+		routed: 0,
+		powerPadX: 290,
+		groundPadX: 310,
+	});
+	const owner = component('u1', 'U1', 100, 100, {
+		powerPadX: 130,
+		groundPadX: 90,
+	});
+	const mechanicalObstacle: PhysicalComponentSnapshot = {
+		id: 'h1',
+		designator: 'H1',
+		x: -600,
+		y: -600,
+		rotation: 0,
+		layer: 'TOP',
+		locked: true,
+		bounds: {
+			minX: -650,
+			minY: -650,
+			maxX: -550,
+			maxY: -550,
+		},
+		pads: [],
+	};
+	const result = planDecouplingPlacement({
+		subject,
+		owner,
+		obstacles: [subject, owner, mechanicalObstacle],
+		board,
+		componentKeepouts: [],
+		powerNet: '3V3',
+		groundNet: 'GND',
+	});
+	assert.equal(
+		result.ready,
+		true,
+		'a measured mechanical obstacle does not need fake electrical pads',
+	);
 }
 
 {
