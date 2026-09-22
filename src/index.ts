@@ -1608,6 +1608,20 @@ async function collectPhysicalComponents(
       });
     }
 
+    let bounds:
+      | { minX: number; minY: number; maxX: number; maxY: number }
+      | undefined;
+    try {
+      bounds = await eda.pcb_Primitive.getPrimitivesBBox([id]);
+    }
+    catch (error) {
+      console.warn(
+        `[LayoutPilot] Unable to read measured BBox for ${designator}`,
+        error,
+      );
+      bounds = undefined;
+    }
+
     result.push({
       id,
       designator,
@@ -1616,6 +1630,7 @@ async function collectPhysicalComponents(
       rotation: component.getState_Rotation(),
       layer: String(component.getState_Layer()),
       locked: component.getState_PrimitiveLock(),
+      bounds,
       pads: physicalPads,
     });
   }
