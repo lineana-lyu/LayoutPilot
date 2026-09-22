@@ -106,3 +106,24 @@ Apply accepted LayoutPlan = explicit mutation boundary
 ```
 
 No external editor framework is bundled into the extension.
+
+
+## Curved board boundary safety
+
+Real EasyEDA projects may store BOARD_OUTLINE as fragmented polylines, mixed lines/arcs, rounded rectangles, circles or Bézier-bearing paths.
+
+LayoutPilot v0.9.3 normalizes these sources into one contour pipeline:
+
+```
+EasyEDA outline primitives
+→ exact command parsing
+→ adaptive curve flattening
+→ endpoint clustering
+→ degree-2 contour graph
+→ outer / hole classification
+→ conservative placement checks
+```
+
+Curve flattening uses a bounded 0.05 mil approximation tolerance. The tolerance is not discarded after rendering: BoardRegion carries it as physical uncertainty, LayoutPlan physical fingerprints include it, and component BBoxes are inflated by that amount during board-boundary checks. This ensures approximation cannot silently make a candidate placement less conservative.
+
+Unsupported or ambiguous topology remains fail-closed.
