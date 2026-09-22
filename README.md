@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.8 Workbench Interview MVP
+## Current stage — v0.8.3 Workbench Interview MVP
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -53,7 +53,7 @@ The workbench keeps four stages visible at once and uses a responsive three-pane
 - **Plan** — generated constraints and concise blocking reasons when the result is still zero;
 - **Apply** — guarded placement and Undo state.
 
-Owner confirmation happens directly in the workbench. The only dialogs intentionally retained in the main path are settings/errors and the final confirmation before a real PCB mutation.
+Owner confirmation happens directly in the workbench. The only dialogs intentionally retained in the main path are settings/errors and the final confirmation before a real PCB mutation.\n\n### Canvas evidence review\n\nBefore confirming an Owner, a Host card can show the closest shared power-pad pair and its current straight-line distance in mil. The engineer can use **在 PCB 中定位** to select the subject/Host on the real PCB canvas, zoom to them and mark the relevant pads. This is review evidence only: distance never becomes an automatic Owner rule.
 
 ## AI authority boundary
 
@@ -162,7 +162,7 @@ CI runs domain tests, gateway syntax validation, extension compilation, and pack
 - `docs/SEMANTIC_SNAPSHOT_V07.md`
 - `docs/HUMAN_OWNERSHIP_CONFIRMATION_V07.md`
 - `docs/CONTROLLED_PHYSICAL_EXECUTION_V07.md`
-- `docs/RUNTIME_SMOKE_TEST_V07.md`
+- `docs/RUNTIME_SMOKE_TEST_V07.md`\n- `docs/CANVAS_EVIDENCE_V083.md`
 - `docs/POC_PLAN.md` — original feasibility milestone for historical context
 
 ## Status
