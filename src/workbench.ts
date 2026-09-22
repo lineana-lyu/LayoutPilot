@@ -586,7 +586,9 @@ async function refresh(): Promise<void> {
 				? 'active'
 				: command?.status === 'undone'
 					? 'done'
-					: 'idle',
+					: model.previewEligibleCount > 0
+						? 'active'
+						: 'idle',
 		);
 
 		applyBtn.disabled = model.previewEligibleCount === 0;
