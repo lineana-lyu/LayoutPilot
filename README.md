@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.6 Layout Review MVP
+## Current stage — v0.9.7 Review Workflow Freeze
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -131,6 +131,18 @@ v0.9.6 separates **accepting a recommendation** from **authorizing PCB mutation*
 Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with EasyEDA's explicit `zoomToRegion` API around current position, proposed position and available Owner bounds instead of preserving the user's previous zoom level. Evidence review uses the same explicit-region pattern rather than relying on `zoomToSelectedPrimitives`, whose internal selection BBox calculation can fail on real projects when a selected primitive has incomplete bounds.
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
+
+## Review workflow freeze
+
+v0.9.7 freezes the current AI scope and closes the review lifecycle exposed by real-board testing on the full ESP32-IOT-KIT project.
+
+- **Explicit LayoutPlan state machine**: status changes are guarded transitions instead of arbitrary string replacement. This follows the event-driven transition discipline used by mature state-machine libraries such as XState: invalid transitions fail rather than silently mutating state.
+- **Reference-plan archive**: an accepted reference-only LayoutPlan is retained as auditable history even when a later Owner decision invalidates the active plan. Historical plans are never re-enabled for Apply; they can only be reviewed when the current physical/Snapshot context still matches.
+- **Before / after explanation**: every plan stores the baseline and proposed decoupling loop geometry proxy and surfaces the change in mil and percentage. The value is explicitly a geometry proxy, not an SI/PI metric.
+- **Canvas-first review**: Evidence Review and Layout Preview are shorter bottom control bars. Current position, Owner and target use distinct canvas markers; the PCB remains the primary review surface.
+- **Capability status instead of a linear wizard**: the header now reports understanding, Owner decisions, layout suggestions and execution safety independently, matching the real per-component pipeline.
+
+No board-specific conditions, runtime test switches or safety bypasses were added.
 
 ## Layout Preview MVP
 
