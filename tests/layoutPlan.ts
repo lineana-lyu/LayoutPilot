@@ -1,12 +1,18 @@
 import assert from 'node:assert/strict';
 
 import {
+	canTransitionLayoutPlan,
 	createLayoutPlan,
 	isLayoutPlan,
 	layoutPlanAcceptanceMode,
 	layoutPlanMatchesCurrentState,
 	markLayoutPlanAccepted,
+	transitionLayoutPlan,
 } from '../src/domain/layoutPlan';
+import {
+	formatLayoutPlanItemReview,
+	layoutPlanItemReviewMetrics,
+} from '../src/domain/layoutPlanReview';
 import { buildPhysicalBoardFingerprint } from '../src/domain/physicalFingerprint';
 
 const components = [
@@ -88,6 +94,7 @@ const plan = createLayoutPlan({
 			fromBounds: { minX: 95, minY: 95, maxX: 105, maxY: 105 },
 			toBounds: { minX: 125, minY: 95, maxX: 135, maxY: 105 },
 			movementMil: 30,
+			currentLoopProxyMil: 100,
 			estimatedLoopProxyMil: 44,
 			clearanceMil: 20,
 			executionBlockers: [],
@@ -129,6 +136,19 @@ assert.equal(
 const accepted = markLayoutPlanAccepted(plan);
 assert.equal(accepted.status, 'accepted');
 assert.equal(plan.status, 'preview', 'LayoutPlan status update must be immutable');
+assert.equal(canTransitionLayoutPlan(plan, 'accept'), true);
+assert.equal(canTransitionLayoutPlan(accepted, 'accept'), false);
+assert.throws(
+	() => transitionLayoutPlan(accepted, 'accept'),
+	/Invalid LayoutPlan transition/,
+	'accepted plan must not be accepted twice',
+);
+
+const review = layoutPlanItemReviewMetrics(plan.items[0]);
+assert.equal(review.outcome, 'improved');
+assert.equal(review.beforeLoopProxyMil, 100);
+assert.equal(review.afterLoopProxyMil, 44);
+assert.match(formatLayoutPlanItemReview(plan.items[0]), /降低 56\.0%/);
 
 assert.equal(
 	layoutPlanMatchesCurrentState(plan, {
