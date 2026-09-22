@@ -3,6 +3,7 @@ import {
 	markLayoutPlanAccepted,
 	markLayoutPlanRejected,
 } from './domain/layoutPlan';
+import { formatLayoutPlanItemReview } from './domain/layoutPlanReview';
 import { validateStoredLayoutPlanCurrent } from './eda/layoutPlanRuntime';
 import {
 	archiveStoredReferencePlan,
@@ -61,11 +62,15 @@ function render(): void {
 		acceptanceMode === 'reference-only'
 			? '<strong class="reference-note">当前方案不会修改 PCB</strong>'
 			: '',
-		'<span class="legend"><span><i class="swatch blue"></i>可预检</span><span><i class="swatch amber"></i>仅预览</span></span>',
+		'<span class="legend"><span><i class="swatch current"></i>当前位置</span><span><i class="swatch owner"></i>Owner</span><span><i class="swatch blue"></i>可执行目标</span><span><i class="swatch amber"></i>参考目标</span></span>',
 	].filter(Boolean).join(' · ');
 	items.textContent = [
 		...plan.items.map(item =>
-			`${item.subjectDesignator} → near(${item.ownerDesignator}) · 移动 ${item.movementMil.toFixed(1)} mil`
+			[
+				`${item.subjectDesignator} → near(${item.ownerDesignator})`,
+				`移动 ${item.movementMil.toFixed(1)} mil`,
+				formatLayoutPlanItemReview(item),
+			].join(' · ')
 		),
 		...(acceptanceMode === 'reference-only'
 			? blockerSummary.slice(0, 2).map(reason => `仅参考：${reason}`)
