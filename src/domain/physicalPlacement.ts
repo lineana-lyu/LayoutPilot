@@ -1,4 +1,4 @@
-import { boxInsideBoard, boxIntersectsPolygon, type BoardPolygon } from './boardBoundary';
+import { boxInsideBoardRegion, boxIntersectsPolygon, type BoardPolygon, type BoardRegion } from './boardBoundary';
 
 export interface PhysicalPadSnapshot {
 	componentId: string;
@@ -273,7 +273,7 @@ function validateComponentGeometry(
 export function validatePlacementTarget(input: {
 	subject: PhysicalComponentSnapshot;
 	obstacles: PhysicalComponentSnapshot[];
-	board: BoardPolygon;
+	board: BoardRegion;
 	componentKeepouts: BoardPolygon[];
 	target: PlacementPoint;
 	clearanceMil?: number;
@@ -338,7 +338,7 @@ export function validatePlacementTarget(input: {
 			reasons: [`目标位置与 ${collision.designator} 的实测器件 BBox 冲突`],
 		};
 	}
-	if (!boxInsideBoard(translated, board)) {
+	if (!boxInsideBoardRegion(translated, board)) {
 		return {
 			valid: false,
 			reasons: ['目标位置超出可验证板框或安全余量越界'],
@@ -360,7 +360,7 @@ export function planDecouplingPlacement(input: {
 	subject: PhysicalComponentSnapshot;
 	owner: PhysicalComponentSnapshot;
 	obstacles: PhysicalComponentSnapshot[];
-	board: BoardPolygon;
+	board: BoardRegion;
 	componentKeepouts: BoardPolygon[];
 	powerNet: string;
 	groundNet: string;
