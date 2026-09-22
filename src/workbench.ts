@@ -504,6 +504,46 @@ function renderPlanPanel(model?: RuntimeModel): void {
 		return;
 	}
 
+	const plan = model.layoutPlan;
+	const planStatus = plan
+		? plan.status === 'preview'
+			? '待确认'
+			: plan.status === 'accepted'
+				? '已接受'
+				: plan.status === 'rejected'
+					? '已放弃'
+					: plan.status === 'applied'
+						? '已应用'
+						: '已失效'
+		: '未生成';
+	const preflightEligibleItems = plan?.items.filter(
+		item => item.executionBlockers.length === 0,
+	).length ?? 0;
+
+	const planArtifact = plan
+		? `
+			<div class="constraint-area" style="border-bottom:1px solid var(--line)">
+				<div class="constraint-summary">
+					<span>LayoutPlan · ${escapeHtml(planStatus)}</span>
+					<span class="constraint-state">${plan.items.length} 个位置 · ${preflightEligibleItems} 个可预检</span>
+				</div>
+				<div class="constraint-list">
+					${plan.items.map(item => `
+						<div class="constraint-row">
+							<div class="constraint-title">${escapeHtml(item.subjectDesignator)} → near(${escapeHtml(item.ownerDesignator)})</div>
+							<div class="constraint-meta">
+								移动 ${item.movementMil.toFixed(1)} mil ·
+								回路几何代理 ${item.estimatedLoopProxyMil.toFixed(1)} mil ·
+								${item.executionBlockers.length
+									? `仅预览：${escapeHtml(item.executionBlockers[0])}`
+									: '可进入物理预检'}
+							</div>
+						</div>
+					`).join('')}
+				</div>
+			</div>`
+		: '';
+
 	planPanel.innerHTML = `
 		<div class="plan-overview">
 			<div class="plan-stat">
@@ -511,10 +551,11 @@ function renderPlanPanel(model?: RuntimeModel): void {
 				<span>已生成约束</span>
 			</div>
 			<div class="plan-stat">
-				<strong>${model.previewEligibleCount}</strong>
-				<span>可进入物理预检</span>
+				<strong>${plan?.items.length ?? 0}</strong>
+				<span>布局预览位置</span>
 			</div>
 		</div>
+		${planArtifact}
 		${renderConstraintArea(model)}
 	`;
 }
