@@ -1793,6 +1793,47 @@ export async function applyDemoPlacement(): Promise<void> {
     );
     if (!confirmed) return;
 
+    const refreshedConstraintSession = await collectCurrentConstraintSession();
+    if (
+      !refreshedConstraintSession.ok
+      || refreshedConstraintSession.value.snapshot.id !== snapshot.id
+    ) {
+      await eda.sys_Dialog.showInformationMessage(
+        [
+          '确认期间 PCB 的语义输入发生了变化，当前 Semantic Snapshot 已不能作为执行依据。',
+          '',
+          refreshedConstraintSession.ok
+            ? 'Snapshot 标识发生变化。'
+            : refreshedConstraintSession.message,
+          '',
+          '请重新运行分析/确认/预览后再执行。',
+        ].join('\n'),
+        'LayoutPilot · 语义计划已过期',
+      );
+      return;
+    }
+
+    const refreshedConstraintEntry = refreshedConstraintSession.value.evaluation.entries
+      .find(entry => entry.entry.componentId === item.entry.componentId);
+    const refreshedProposal = refreshedConstraintEntry?.result?.proposals
+      .find(candidate => candidate.id === proposal.id);
+    const refreshedDecision = refreshedConstraintEntry?.humanOwnershipDecision;
+    if (
+      !refreshedProposal
+      || refreshedProposal.execution !== 'preview-eligible'
+      || refreshedDecision?.ownerComponentId !== decision.ownerComponentId
+    ) {
+      await eda.sys_Dialog.showInformationMessage(
+        [
+          '确认期间约束证据或人工 Owner 决策发生了变化。',
+          '',
+          '旧的 Constraint Proposal 不再满足执行条件，本次移动已取消。',
+        ].join('\n'),
+        'LayoutPilot · 约束计划已过期',
+      );
+      return;
+    }
+
     const refreshedPhysical = await collectPhysicalComponents(plan.subjectId);
     const refreshedSubject = refreshedPhysical.find(
       component => component.id === plan.subjectId,
