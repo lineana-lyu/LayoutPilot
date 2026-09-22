@@ -232,6 +232,7 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 				constraintCount: 0,
 				previewEligibleCount: 0,
 				layoutPlan: workflow.layoutPlan,
+				referencePlans: workflow.referencePlans,
 			};
 		}
 
