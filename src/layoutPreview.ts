@@ -1,4 +1,5 @@
 import {
+	layoutPlanAcceptanceMode,
 	markLayoutPlanAccepted,
 	markLayoutPlanRejected,
 } from './domain/layoutPlan';
@@ -35,18 +36,35 @@ function render(): void {
 	}
 
 	const blocked = plan.items.filter(item => item.executionBlockers.length > 0).length;
-	title.textContent = `布局预览 · ${plan.id}`;
+	const acceptanceMode = layoutPlanAcceptanceMode(plan);
+	const blockerSummary = [...new Set(
+		plan.items.flatMap(item => item.executionBlockers),
+	)];
+	title.textContent = acceptanceMode === 'reference-only'
+		? `参考布局建议 · ${plan.id}`
+		: `布局预览 · ${plan.id}`;
 	meta.innerHTML = [
 		`${plan.items.length} 个器件`,
 		`${plan.items.length - blocked} 个当前可进入物理预检`,
 		blocked ? `${blocked} 个仅预览` : '',
+		acceptanceMode === 'reference-only'
+			? '<strong class="reference-note">当前方案不会修改 PCB</strong>'
+			: '',
 		'<span class="legend"><span><i class="swatch blue"></i>可预检</span><span><i class="swatch amber"></i>仅预览</span></span>',
 	].filter(Boolean).join(' · ');
-	items.textContent = plan.items
-		.map(item =>
-			`${item.subjectDesignator} → near(${item.ownerDesignator}) · ${item.movementMil.toFixed(1)} mil`
-		)
-		.join('   |   ');
+	items.textContent = [
+		...plan.items.map(item =>
+			`${item.subjectDesignator} → near(${item.ownerDesignator}) · 移动 ${item.movementMil.toFixed(1)} mil`
+		),
+		...(acceptanceMode === 'reference-only'
+			? blockerSummary.slice(0, 2).map(reason => `仅参考：${reason}`)
+			: []),
+	].join('   |   ');
+	acceptBtn.textContent = acceptanceMode === 'reference-only'
+		? '保存参考方案'
+		: acceptanceMode === 'mixed'
+			? '接受可执行项'
+			: '接受并进入预检';
 }
 
 returnBtn.addEventListener('click', async () => {
