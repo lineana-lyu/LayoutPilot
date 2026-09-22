@@ -5,12 +5,14 @@ import {
 	removeWorkflowHumanDecision,
 	replaceWorkflowSemanticSnapshot,
 	setWorkflowPlacementCommand,
+	setWorkflowEvidenceReviewSession,
 	upsertWorkflowHumanDecision,
 	type LayoutPilotWorkflowState,
 } from '../application/workflowState';
 import type { HumanOwnershipDecision } from '../domain/humanOwnershipDecision';
 import type { PlacementCommandRecord } from '../domain/placementCommand';
 import type { SemanticSnapshot } from '../domain/semanticSnapshot';
+import type { EvidenceReviewSession } from '../domain/evidenceReviewSession';
 
 const WORKFLOW_STORAGE_KEY = 'layoutpilot.workflow-state.v1';
 
@@ -89,4 +91,15 @@ export async function setStoredLastPlacementCommand(
 
 export function inspectStoredWorkflowState(): LayoutPilotWorkflowState {
 	return loadState();
+}
+
+
+export function getStoredEvidenceReviewSession(): EvidenceReviewSession | undefined {
+	return loadState().evidenceReviewSession;
+}
+
+export async function setStoredEvidenceReviewSession(
+	session: EvidenceReviewSession | undefined,
+): Promise<void> {
+	await saveState(setWorkflowEvidenceReviewSession(loadState(), session));
 }
