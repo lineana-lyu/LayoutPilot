@@ -297,8 +297,11 @@ export function setWorkflowLayoutPlan(
 	} as LayoutPilotWorkflowState;
 
 	if (plan) {
+		const samePlanIdentity = state.layoutPlan?.id === plan.id;
 		next.layoutPlan = plan;
-		next.layoutPreviewSession = undefined;
+		if (!samePlanIdentity) {
+			delete next.layoutPreviewSession;
+		}
 	}
 	else {
 		delete next.layoutPlan;
