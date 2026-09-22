@@ -32,34 +32,14 @@
         "title": "LayoutPilot 智能布局助手",
         "menuItems": [
           {
+            "id": "open-workbench",
+            "title": "打开 LayoutPilot 工作台",
+            "registerFn": "openWorkbench"
+          },
+          {
             "id": "configure-ai-gateway",
             "title": "配置 AI Gateway",
             "registerFn": "configureAiGateway"
-          },
-          {
-            "id": "analyze-ambiguous-ai",
-            "title": "分析当前 PCB（AI 语义）",
-            "registerFn": "analyzeAmbiguousWithAi"
-          },
-          {
-            "id": "confirm-ambiguous-ownership",
-            "title": "确认待决 Owner（人工）",
-            "registerFn": "confirmAmbiguousOwnership"
-          },
-          {
-            "id": "preview-layout-constraints",
-            "title": "查看布局建议",
-            "registerFn": "previewLayoutConstraints"
-          },
-          {
-            "id": "apply-demo-placement",
-            "title": "应用受控布局建议",
-            "registerFn": "applyDemoPlacement"
-          },
-          {
-            "id": "undo-demo-placement",
-            "title": "撤销上次受控布局",
-            "registerFn": "undoLastDemoPlacement"
           },
           {
             "id": "about",
