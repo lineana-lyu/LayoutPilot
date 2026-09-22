@@ -848,7 +848,16 @@ async function refresh(): Promise<void> {
 		const confirmed = model.tasks.length - pending;
 		el<HTMLDivElement>('stageAnalyzeMeta').textContent = `${workflow.semanticSnapshot.entries.length} 个语义器件`;
 		el<HTMLDivElement>('stageOwnerMeta').textContent = `${confirmed}/${model.tasks.length} 已确认`;
-		el<HTMLDivElement>('stageConstraintMeta').textContent = `${model.constraintCount} 条 · ${model.previewEligibleCount} 可预检`;
+		const activePlan = model.layoutPlan;
+		el<HTMLDivElement>('stageConstraintMeta').textContent = activePlan
+			? activePlan.status === 'accepted'
+				? `${activePlan.items.length} 个位置 · 方案已接受`
+				: activePlan.status === 'preview'
+					? `${activePlan.items.length} 个位置 · 待确认`
+					: activePlan.status === 'rejected'
+						? '方案已放弃 · 可重新规划'
+						: `${activePlan.items.length} 个位置 · ${activePlan.status}`
+			: `${model.constraintCount} 条约束 · 待生成方案`;
 		el<HTMLDivElement>('metricPending').textContent = String(pending);
 		el<HTMLDivElement>('metricConstraints').textContent = String(model.constraintCount);
 		renderTasks(model.tasks, model);
@@ -862,8 +871,8 @@ async function refresh(): Promise<void> {
 			? `${command.componentDesignator} 已应用 · 可撤销`
 			: command?.status === 'undone'
 				? `${command.componentDesignator} 已撤销`
-				: model.previewEligibleCount > 0
-					? `${model.previewEligibleCount} 条建议可预检`
+				: activePlan?.status === 'accepted'
+					? '等待物理预检'
 					: '尚未进入';
 
 		if (pending > 0) {
@@ -877,7 +886,7 @@ async function refresh(): Promise<void> {
 				setStage('stageConstraint', 'done');
 				setStage('stageExecute', 'done');
 			}
-			else if (model.previewEligibleCount > 0) {
+			else if (activePlan?.status === 'accepted') {
 				setStage('stageConstraint', 'done');
 				setStage('stageExecute', 'active');
 			}
