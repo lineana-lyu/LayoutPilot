@@ -46,7 +46,7 @@ Undo with concurrent-edit protection
 
 The primary product workflow now runs in a persistent EasyEDA `sys_IFrame` workbench rather than a chain of modal dialogs.
 
-The workbench keeps four stages visible at once:
+The workbench keeps four stages visible at once and uses a responsive three-pane decision layout on wide screens: task queue, component/topology evidence, and Constraint Plan.
 
 - **Understand** — Semantic Snapshot, model, board fingerprint and AI analysis count;
 - **Confirm** — rail-domain decoupling tasks and evidence-backed Host candidates;
