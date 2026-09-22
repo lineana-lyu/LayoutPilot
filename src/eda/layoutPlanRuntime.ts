@@ -5,7 +5,7 @@ import {
 	type LayoutPlanningSkip,
 } from '../application/layoutPlanner';
 import {
-	layoutPlanMatchesCurrentState,
+	layoutPlanStateMismatches,
 	type LayoutPlan,
 } from '../domain/layoutPlan';
 import { buildPhysicalBoardFingerprint } from '../domain/physicalFingerprint';
@@ -199,14 +199,27 @@ export async function validateStoredLayoutPlanCurrent(): Promise<
 		componentKeepouts: keepouts.polygons,
 	});
 
-	if (!layoutPlanMatchesCurrentState(plan, {
+	const mismatches = layoutPlanStateMismatches(plan, {
 		snapshotId: session.value.snapshot.id,
 		semanticFingerprint: session.value.boardFingerprint,
 		physicalFingerprint,
-	})) {
+	});
+	if (mismatches.length) {
+		const labels = mismatches.map(mismatch =>
+			mismatch === 'snapshot'
+				? 'Semantic Snapshot'
+				: mismatch === 'semantic'
+					? '语义输入'
+					: 'PCB 物理状态'
+		);
 		return {
 			ok: false,
-			message: '当前 PCB 或语义状态已经变化，旧 LayoutPlan 已过期。请重新生成布局预览。',
+			message: [
+				`${labels.join('、') }发生变化，旧 LayoutPlan 已过期。`,
+				`Plan physical fingerprint：${plan.physicalFingerprint}`,
+				`Current physical fingerprint：${physicalFingerprint}`,
+				'请重新生成布局预览。',
+			].join('\n'),
 		};
 	}
 

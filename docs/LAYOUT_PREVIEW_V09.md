@@ -108,6 +108,12 @@ Apply accepted LayoutPlan = explicit mutation boundary
 No external editor framework is bundled into the extension.
 
 
+## v0.9.5 canonical staleness fingerprint
+
+LayoutPlan acceptance performs a fresh semantic + physical consistency check before changing plan status. The physical hash must represent PCB state, not incidental serialization order. Closed board and keepout rings are therefore normalized to an orientation- and start-vertex-independent canonical sequence before hashing. Component and pad ordering is also deterministic.
+
+This preserves the safety property that a true PCB edit invalidates the plan while preventing false invalidation when the EDA runtime returns geometrically identical polygons with a different traversal order.
+
 ## v0.9.4 bounded local occupancy search
 
 The original MVP generated only four candidate directions at one pad-to-pad distance. That was safe but incomplete: a dense real PCB could have a legal nearby placement that simply did not lie on one of those four rays.
