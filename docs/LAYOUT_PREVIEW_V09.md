@@ -108,6 +108,18 @@ Apply accepted LayoutPlan = explicit mutation boundary
 No external editor framework is bundled into the extension.
 
 
+## v0.9.6 explicit review framing and reference plans
+
+Real completed PCBs frequently produce useful placement recommendations that must not be applied automatically because the target component already has routing or copper connectivity. v0.9.6 makes this a first-class review outcome rather than a dead-end execution blocker.
+
+- `reference-only`: every item has an execution blocker; acceptance saves a review artifact and never enables Apply.
+- `mixed`: some items remain preflight-eligible while blocked items stay reference-only.
+- `executable`: all items may proceed to strict physical preflight after acceptance.
+
+Ghost Preview now frames the current subject bounds, proposed bounds and readable Owner bounds through `DMT_EditorControl.zoomToRegion`. The evidence-review locator uses the same explicit geometry framing. Selection remains a visual aid but is no longer the source of viewport geometry, avoiding runtime failures inside `zoomToSelectedPrimitives` when EasyEDA cannot derive a complete selection BBox.
+
+Viewport construction is isolated in a pure domain utility and regression-tested independently; no runtime test switch or board-specific fixture is introduced.
+
 ## v0.9.5 canonical staleness fingerprint
 
 LayoutPlan acceptance performs a fresh semantic + physical consistency check before changing plan status. The physical hash must represent PCB state, not incidental serialization order. Closed board and keepout rings are therefore normalized to an orientation- and start-vertex-independent canonical sequence before hashing. Component and pad ordering is also deterministic.

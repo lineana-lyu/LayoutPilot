@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
 	createLayoutPlan,
 	isLayoutPlan,
+	layoutPlanAcceptanceMode,
 	layoutPlanMatchesCurrentState,
 	markLayoutPlanAccepted,
 } from '../src/domain/layoutPlan';
@@ -100,6 +101,30 @@ assert.equal(Object.isFrozen(plan), true);
 assert.equal(Object.isFrozen(plan.items), true);
 assert.equal(Object.isFrozen(plan.items[0].to), true);
 assert.equal(isLayoutPlan(JSON.parse(JSON.stringify(plan))), true);
+
+assert.equal(
+	layoutPlanAcceptanceMode(plan),
+	'executable',
+	'plan without execution blockers should be executable',
+);
+
+const referencePlan = createLayoutPlan({
+	snapshotId: 'semantic-a',
+	semanticFingerprint: 'sem-v1-a',
+	physicalFingerprint: fingerprintA,
+	createdAt: '2026-09-22T02:00:01.000Z',
+	items: [
+		{
+			...plan.items[0],
+			executionBlockers: ['C1 已有布线/铜连接，当前只允许预览，不执行器件移动'],
+		},
+	],
+});
+assert.equal(
+	layoutPlanAcceptanceMode(referencePlan),
+	'reference-only',
+	'fully blocked preview must remain an explicit reference workflow',
+);
 
 const accepted = markLayoutPlanAccepted(plan);
 assert.equal(accepted.status, 'accepted');

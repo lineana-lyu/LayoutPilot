@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.5 Layout Preview MVP
+## Current stage — v0.9.6 Layout Review MVP
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -123,6 +123,14 @@ The design adapts the mature separation used by KiCad's autoplacer: candidate-sp
 v0.9.5 canonicalizes closed board / keepout polygon rings before hashing. Equivalent geometry now produces the same physical fingerprint regardless of which vertex the EasyEDA runtime returns first or whether a ring is enumerated clockwise or counter-clockwise. Real physical edits such as component movement still invalidate the fingerprint.
 
 This follows the same normalization principle used by mature geometry engines such as GEOS / Shapely: geometry is converted to a stable canonical form before equality-style comparison or identity hashing. LayoutPlan acceptance therefore remains fail-closed without treating representation-order changes as PCB edits.
+
+## Reviewable reference-plan workflow
+
+v0.9.6 separates **accepting a recommendation** from **authorizing PCB mutation**. A LayoutPlan whose items are all execution-blocked (for example, an already-routed capacitor) is explicitly treated as a reference-only plan: the preview action becomes “保存参考方案”, the workbench reports that PCB mutation will not occur, and the Apply action remains disabled.
+
+Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with EasyEDA's explicit `zoomToRegion` API around current position, proposed position and available Owner bounds instead of preserving the user's previous zoom level. Evidence review uses the same explicit-region pattern rather than relying on `zoomToSelectedPrimitives`, whose internal selection BBox calculation can fail on real projects when a selected primitive has incomplete bounds.
+
+The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
 
 ## Layout Preview MVP
 

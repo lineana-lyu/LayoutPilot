@@ -97,6 +97,22 @@ export function createLayoutPlan(input: {
 	});
 }
 
+export type LayoutPlanAcceptanceMode =
+	| 'executable'
+	| 'mixed'
+	| 'reference-only';
+
+export function layoutPlanAcceptanceMode(
+	plan: LayoutPlan,
+): LayoutPlanAcceptanceMode {
+	const executable = plan.items.filter(
+		item => item.executionBlockers.length === 0,
+	).length;
+	if (executable === 0) return 'reference-only';
+	if (executable === plan.items.length) return 'executable';
+	return 'mixed';
+}
+
 export function markLayoutPlanAccepted(
 	plan: LayoutPlan,
 ): LayoutPlan {

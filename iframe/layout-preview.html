@@ -7,14 +7,14 @@
   <style>
     :root{
       --bg:#f3f4f6;--panel:#fff;--line:#d9dee5;--text:#252a30;
-      --muted:#68717b;--accent:#4f7fdc;--ok:#23825f;--danger:#c13f3f;
+      --muted:#68717b;--accent:#4f7fdc;--ok:#23825f;--danger:#c13f3f;--reference:#9b681d;
       --font:"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif;
       --mono:"Cascadia Mono","SFMono-Regular",Consolas,monospace;
     }
     *{box-sizing:border-box}
     html,body{margin:0;height:100%;font-family:var(--font);background:var(--bg);color:var(--text)}
     body{padding:8px}
-    .bar{height:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center;background:var(--panel);border:1px solid var(--line);padding:9px 11px}
+    .bar{height:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;background:var(--panel);border:1px solid var(--line);padding:7px 10px}
     .title{font-size:12px;font-weight:600}
     .meta{font-size:10px;color:var(--muted);margin-top:4px}
     .items{font-family:var(--mono);font-size:10px;color:#40505f;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -28,6 +28,7 @@
     .legend{display:inline-flex;gap:10px;margin-left:8px;color:var(--muted);font-size:9px}
     .swatch{display:inline-block;width:10px;height:2px;vertical-align:middle;margin-right:3px}
     .blue{background:#407edc}.amber{background:#c48426}
+    .reference-note{color:var(--reference);font-weight:600}
   </style>
 </head>
 <body>

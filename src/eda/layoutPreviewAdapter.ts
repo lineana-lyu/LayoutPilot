@@ -1,3 +1,8 @@
+import {
+	paddedCanvasRegion,
+	unionCanvasBounds,
+	type CanvasBounds,
+} from '../domain/canvasRegion';
 import type { LayoutPlan, LayoutPlanItem } from '../domain/layoutPlan';
 
 export interface LayoutPreviewCanvasSession {
@@ -5,8 +10,7 @@ export interface LayoutPreviewCanvasSession {
 	planId: string;
 }
 
-function rectangleMarkers(item: LayoutPlanItem) {
-	const box = item.toBounds;
+function boundsMarkers(box: CanvasBounds) {
 	return [
 		{
 			type: EDMT_IndicatorMarkerType.LINE,
@@ -36,6 +40,12 @@ function rectangleMarkers(item: LayoutPlanItem) {
 			endX: box.minX,
 			endY: box.minY,
 		},
+	];
+}
+
+function targetMarkers(item: LayoutPlanItem) {
+	return [
+		...boundsMarkers(item.toBounds),
 		{
 			type: EDMT_IndicatorMarkerType.LINE,
 			startX: item.from.x,
@@ -52,22 +62,44 @@ function rectangleMarkers(item: LayoutPlanItem) {
 	];
 }
 
-function previewCenter(plan: LayoutPlan): { x: number; y: number } {
-	const points = plan.items.flatMap(item => [
-		item.from,
-		item.to,
-	]);
-	const sum = points.reduce(
-		(acc, point) => ({
-			x: acc.x + point.x,
-			y: acc.y + point.y,
-		}),
-		{ x: 0, y: 0 },
-	);
-	return {
-		x: sum.x / points.length,
-		y: sum.y / points.length,
-	};
+function currentMarkers(item: LayoutPlanItem) {
+	return [
+		...boundsMarkers(item.fromBounds),
+		{
+			type: EDMT_IndicatorMarkerType.CIRCLE,
+			x: item.from.x,
+			y: item.from.y,
+			r: 12,
+		},
+	];
+}
+
+async function collectOwnerBounds(plan: LayoutPlan): Promise<CanvasBounds[]> {
+	const ownerIds = [...new Set(plan.items.map(item => item.ownerId))];
+	const bounds: CanvasBounds[] = [];
+
+	for (const ownerId of ownerIds) {
+		try {
+			const box = await eda.pcb_Primitive.getPrimitivesBBox([ownerId]);
+			if (
+				box
+				&& Number.isFinite(box.minX)
+				&& Number.isFinite(box.minY)
+				&& Number.isFinite(box.maxX)
+				&& Number.isFinite(box.maxY)
+			) {
+				bounds.push(box);
+			}
+		}
+		catch (error) {
+			console.warn('[LayoutPilot] unable to read Owner BBox for preview', {
+				ownerId,
+				error,
+			});
+		}
+	}
+
+	return bounds;
 }
 
 export async function showLayoutPlanGhost(
@@ -90,10 +122,29 @@ export async function showLayoutPlanGhost(
 	const previewOnlyItems = plan.items.filter(
 		item => item.executionBlockers.length > 0,
 	);
+	const ownerBounds = await collectOwnerBounds(plan);
+
+	await eda.dmt_EditorControl.generateIndicatorMarkers(
+		plan.items.flatMap(currentMarkers),
+		{ r: 116, g: 126, b: 139, alpha: 0.85 },
+		1,
+		false,
+		document.tabId,
+	);
+
+	if (ownerBounds.length) {
+		await eda.dmt_EditorControl.generateIndicatorMarkers(
+			ownerBounds.flatMap(boundsMarkers),
+			{ r: 35, g: 130, b: 95, alpha: 0.95 },
+			2,
+			false,
+			document.tabId,
+		);
+	}
 
 	if (eligibleItems.length) {
 		await eda.dmt_EditorControl.generateIndicatorMarkers(
-			eligibleItems.flatMap(rectangleMarkers),
+			eligibleItems.flatMap(targetMarkers),
 			{ r: 64, g: 126, b: 220, alpha: 0.95 },
 			2,
 			false,
@@ -103,7 +154,7 @@ export async function showLayoutPlanGhost(
 
 	if (previewOnlyItems.length) {
 		await eda.dmt_EditorControl.generateIndicatorMarkers(
-			previewOnlyItems.flatMap(rectangleMarkers),
+			previewOnlyItems.flatMap(targetMarkers),
 			{ r: 196, g: 132, b: 38, alpha: 0.95 },
 			2,
 			false,
@@ -111,17 +162,34 @@ export async function showLayoutPlanGhost(
 		);
 	}
 
-	const center = previewCenter(plan);
-	try {
-		await eda.dmt_EditorControl.zoomTo(
-			center.x,
-			center.y,
-			undefined,
-			document.tabId,
-		);
-	}
-	catch (error) {
-		console.warn('[LayoutPilot] unable to center layout preview', error);
+	const viewportBounds = unionCanvasBounds(
+		[
+			...plan.items.flatMap(item => [item.fromBounds, item.toBounds]),
+			...ownerBounds,
+		],
+		plan.items.flatMap(item => [item.from, item.to]),
+	);
+	if (viewportBounds) {
+		const region = paddedCanvasRegion(viewportBounds, {
+			marginRatio: 0.16,
+			minMarginMil: 60,
+			minSpanMil: 220,
+		});
+		try {
+			const zoomed = await eda.dmt_EditorControl.zoomToRegion(
+				region.left,
+				region.right,
+				region.top,
+				region.bottom,
+				document.tabId,
+			);
+			if (!zoomed) {
+				console.warn('[LayoutPilot] layout preview region zoom was rejected');
+			}
+		}
+		catch (error) {
+			console.warn('[LayoutPilot] unable to frame layout preview', error);
+		}
 	}
 
 	return {
