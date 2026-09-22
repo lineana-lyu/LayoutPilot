@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 
 import {
 	boxInsideBoard,
+	boxInsideBoardRegion,
+	buildBoardRegionFromPolygons,
 	buildSimpleBoardPolygonFromSegments,
 	parseSimpleBoardPolygon,
 } from '../src/domain/boardBoundary';
@@ -90,3 +92,70 @@ import {
 }
 
 console.log('Board boundary tests passed.');
+
+
+{
+	const region = buildBoardRegionFromPolygons([
+		{
+			points: [
+				{ x: 0, y: 0 },
+				{ x: 1000, y: 0 },
+				{ x: 1000, y: 1000 },
+				{ x: 0, y: 1000 },
+			],
+		},
+		{
+			points: [
+				{ x: 400, y: 400 },
+				{ x: 600, y: 400 },
+				{ x: 600, y: 600 },
+				{ x: 400, y: 600 },
+			],
+		},
+	]);
+	assert.equal(region.ok, true);
+	if (region.ok) {
+		assert.equal(region.region.holes.length, 1);
+		assert.equal(
+			boxInsideBoardRegion(
+				{ minX: 100, minY: 100, maxX: 180, maxY: 180 },
+				region.region,
+			),
+			true,
+		);
+		assert.equal(
+			boxInsideBoardRegion(
+				{ minX: 450, minY: 450, maxX: 550, maxY: 550 },
+				region.region,
+			),
+			false,
+			'component BBox inside a board cutout must be rejected',
+		);
+	}
+}
+
+{
+	const panelLike = buildBoardRegionFromPolygons([
+		{
+			points: [
+				{ x: 0, y: 0 },
+				{ x: 100, y: 0 },
+				{ x: 100, y: 100 },
+				{ x: 0, y: 100 },
+			],
+		},
+		{
+			points: [
+				{ x: 300, y: 0 },
+				{ x: 400, y: 0 },
+				{ x: 400, y: 100 },
+				{ x: 300, y: 100 },
+			],
+		},
+	]);
+	assert.equal(
+		panelLike.ok,
+		false,
+		'disjoint outer contours must remain fail-closed',
+	);
+}
