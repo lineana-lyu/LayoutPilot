@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.8.3 Workbench Interview MVP
+## Current stage — v0.9.0 Layout Preview MVP
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -27,11 +27,17 @@ Human confirmation for unresolved owner
   ↓
 Constraint Policy
   ↓
-Pad-aware Physical Planner
+Deterministic Local Geometry Planner
   ↓
-Safety gates + baseline DRC
+Immutable LayoutPlan
   ↓
-Explicit user confirmation
+PCB Ghost Preview (no mutation)
+  ↓
+User Accept / Reject
+  ↓
+Strict physical preflight
+  ↓
+Apply the exact accepted coordinates
   ↓
 Move one unrouted component
   ↓
@@ -78,6 +84,20 @@ A semantic Constraint marked `preview-eligible` means only that it can enter phy
 
 Pad-distance evidence is loaded only for the currently selected task. Switching between tasks does not rebuild the full Circuit Graph / Semantic Context, which keeps the workbench responsive without caching potentially stale X/Y evidence.
 
+## Layout Preview MVP
+
+v0.9 introduces a real proposal-before-commit layer.
+
+- Constraint answers **what placement relation is desired**.
+- LayoutPlan answers **what exact legal coordinate is proposed**.
+- Ghost Preview renders only EasyEDA indicator markers and never writes PCB primitive state.
+- Accepting a LayoutPlan still does not modify the PCB.
+- Apply revalidates physical state and must reproduce the exact accepted coordinate; if the legal candidate changed, execution is cancelled.
+
+The first v0.9 MVP intentionally previews one local placement item at a time. This keeps Preview → Apply → Verify → Undo one-to-one and auditable while the underlying LayoutPlan model remains multi-item capable.
+
+See `docs/LAYOUT_PREVIEW_V09.md`.
+
 ## AI authority boundary
 
 AI is currently allowed to infer semantic roles such as a decoupling capacitor.
@@ -111,7 +131,7 @@ If relevant PCB semantics change, the snapshot becomes stale. Physical X/Y movem
 
 ## Controlled physical execution
 
-v0.7 only executes a very narrow placement case:
+v0.9 still executes a deliberately narrow placement case:
 
 - role is `decoupling-capacitor`;
 - constraint is `near(owner)`;
@@ -167,6 +187,8 @@ Read-back + DRC + Undo
 - preview and execution share the same Constraint Evaluation;
 - no hard-coded component designators or board-specific exceptions;
 - no test mode or synthetic fixture path in production;
+- Ghost Preview is transient overlay state and never mutates PCB primitives;
+- Apply consumes the exact accepted LayoutPlan rather than replanning silently;
 - already-routed components are not moved in v0.7;
 - failed execution should restore the before-state;
 - Undo must not overwrite a newer manual edit;
@@ -182,6 +204,7 @@ CI runs domain tests, gateway syntax validation, extension compilation, and pack
 
 ## Documentation
 
+- `docs/LAYOUT_PREVIEW_V09.md`
 - `docs/SEMANTIC_SNAPSHOT_V07.md`
 - `docs/HUMAN_OWNERSHIP_CONFIRMATION_V07.md`
 - `docs/CONTROLLED_PHYSICAL_EXECUTION_V07.md`
@@ -199,6 +222,9 @@ CI runs domain tests, gateway syntax validation, extension compilation, and pack
 - [x] Semantic Snapshot / staleness control
 - [x] Human owner confirmation
 - [x] Constraint Policy
+- [x] Immutable LayoutPlan + physical staleness fingerprint
+- [x] Non-mutating PCB Ghost Preview
+- [x] Accept / Reject gate before physical execution
 - [x] Pad-aware controlled placement candidate
 - [x] Baseline/post-move DRC transaction boundary
 - [x] Coordinate read-back verification
