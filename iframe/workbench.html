@@ -7,23 +7,23 @@
   <style>
     :root{
       color-scheme:light;
-      --bg:#f3f5f7;--panel:#fff;--panel-2:#f7f9fb;--line:#dfe5ea;
-      --text:#17212b;--muted:#64717d;--subtle:#8d98a2;--accent:#176fbd;
+      --bg:#f4f5f6;--panel:#fff;--panel-2:#f7f8f9;--line:#d8dde3;
+      --text:#2b3035;--muted:#68727c;--subtle:#9099a2;--accent:#4f7fdc;
       --accent-soft:#edf5fb;--ok:#177a61;--ok-soft:#eaf7f2;--warn:#a76500;
       --warn-soft:#fff5df;--danger:#b43b3b;--danger-soft:#fff1f1;
-      --shadow:0 8px 28px rgba(20,34,48,.10);--radius:10px;
+      --shadow:0 8px 28px rgba(20,34,48,.10);--radius:3px;
     }
     *{box-sizing:border-box}
-    html,body{margin:0;height:100%;font-family:Inter,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text)}
+    html,body{margin:0;height:100%;font-family:"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
     button{font:inherit}
     #app{height:100%;display:grid;grid-template-rows:auto auto 1fr auto;overflow:hidden}
     .topbar{display:flex;align-items:center;gap:9px;padding:10px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
-    .brand{font-size:15px;font-weight:800;letter-spacing:.1px}
-    .tag{font-size:10px;padding:3px 7px;border:1px solid var(--line);border-radius:999px;color:var(--muted);background:var(--panel-2)}
+    .brand{font-size:14px;font-weight:600;letter-spacing:.1px}
+    .tag{font-size:10px;padding:3px 7px;border:1px solid var(--line);border-radius:3px;color:var(--muted);background:var(--panel-2)}
     .grow{flex:1}
-    .icon-btn,.btn{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:7px;cursor:pointer}
+    .icon-btn,.btn{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:3px;cursor:pointer}
     .icon-btn{width:30px;height:30px;display:grid;place-items:center}
-    .btn{padding:7px 10px;font-weight:650}
+    .btn{height:28px;padding:0 10px;font-weight:500;font-size:12px}
     .btn:hover,.icon-btn:hover{border-color:#b8c5cf;background:#fafcfd}
     .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
     .btn.primary:hover{background:#105e9f}
@@ -33,23 +33,23 @@
     .stage{position:relative;padding:9px 11px;border-right:1px solid var(--line);min-width:0}
     .stage:last-child{border-right:0}
     .stage-kicker{font-size:9px;color:var(--subtle);text-transform:uppercase;letter-spacing:.45px}
-    .stage-main{display:flex;align-items:center;gap:6px;margin-top:2px;font-size:12px;font-weight:760}
+    .stage-main{display:flex;align-items:center;gap:6px;margin-top:2px;font-size:12px;font-weight:600}
     .stage-meta{margin-top:3px;font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .dot{width:7px;height:7px;border-radius:50%;background:#c8d0d6;flex:0 0 auto}
     .stage.done .dot{background:var(--ok)}
     .stage.active .dot{background:var(--accent)}
     .stage.blocked .dot{background:var(--warn)}
-    .content{min-height:0;display:grid;grid-template-columns:232px minmax(420px,1fr) minmax(292px,340px);gap:8px;padding:8px;overflow:hidden}
+    .content{min-height:0;display:grid;grid-template-columns:232px minmax(420px,1fr) minmax(292px,340px);gap:6px;padding:6px;overflow:hidden}
     .sidebar,.main,.plan-pane{min-height:0;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
     .sidebar{display:grid;grid-template-rows:auto auto 1fr}
     .main{overflow:auto}
     .plan-pane{display:grid;grid-template-rows:auto 1fr}
     .section-head{display:flex;align-items:center;gap:8px;padding:10px 11px;border-bottom:1px solid var(--line)}
-    .section-title{font-size:12px;font-weight:780}
+    .section-title{font-size:12px;font-weight:600}
     .section-subtitle{font-size:9px;color:var(--muted);margin-top:2px}
     .count{font-size:10px;color:var(--muted);margin-left:auto;white-space:nowrap}
     .summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;padding:7px;border-bottom:1px solid var(--line)}
-    .metric{background:var(--panel-2);border:1px solid #e9edf0;border-radius:7px;padding:7px 8px}
+    .metric{background:var(--panel-2);border:1px solid #e9edf0;border-radius:3px;padding:7px 8px}
     .metric strong{display:block;font-size:16px;line-height:18px}
     .metric span{font-size:9px;color:var(--muted)}
     .task-list{overflow:auto;padding:5px}
@@ -63,25 +63,25 @@
     .badge.pending{background:var(--warn-soft);color:var(--warn)}
     .badge.ok{background:var(--ok-soft);color:var(--ok)}
     .badge.info{background:var(--accent-soft);color:var(--accent)}
-    .detail{padding:13px}
+    .detail{padding:10px}
     .hero{display:flex;gap:11px;align-items:flex-start;padding-bottom:11px;border-bottom:1px solid var(--line)}
-    .ref{font-family:"Cascadia Mono","SFMono-Regular",Consolas,monospace;font-size:22px;font-weight:800;line-height:1}
+    .ref{font-family:"Cascadia Mono","SFMono-Regular",Consolas,monospace;font-size:20px;font-weight:600;line-height:1}
     .hero-copy{flex:1;min-width:0}
-    .hero-title{font-size:13px;font-weight:760}
+    .hero-title{font-size:12px;font-weight:600}
     .hero-sub{font-size:10px;color:var(--muted);margin-top:4px;line-height:1.55}
     .facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-top:10px}
-    .fact{border:1px solid var(--line);border-radius:8px;padding:7px 8px;background:var(--panel-2);min-width:0}
+    .fact{border:1px solid var(--line);border-radius:3px;padding:7px 8px;background:var(--panel-2);min-width:0}
     .fact-label{font-size:9px;color:var(--muted)}
     .fact-value{font-size:11px;font-weight:680;margin-top:2px;word-break:break-word;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .block{margin-top:13px}
-    .block-title{font-size:11px;font-weight:780;margin-bottom:6px}
+    .block-title{font-size:11px;font-weight:600;margin-bottom:6px}
     .note{font-size:10px;line-height:1.55;color:var(--muted);padding:7px 8px;border-left:3px solid #cbd5dc;background:#f7f9fa;border-radius:4px}
     .host-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:7px;margin-top:8px}
-    .host{border:1px solid var(--line);border-radius:9px;background:var(--panel);padding:10px;text-align:left;min-width:0}
+    .host{border:1px solid var(--line);border-radius:3px;background:var(--panel);padding:8px;text-align:left;min-width:0}
     .host:hover{border-color:#9fc5e1;background:#fbfdff}
-    .host.selected{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset;background:#f7fbff}
+    .host.selected{border-color:var(--accent);background:#f3f7fd}
     .host-top{display:flex;align-items:center;gap:7px;min-width:0}
-    .host-ref{font-family:"Cascadia Mono","SFMono-Regular",Consolas,monospace;font-weight:800;font-size:12px}
+    .host-ref{font-family:"Cascadia Mono","SFMono-Regular",Consolas,monospace;font-weight:600;font-size:12px}
     .host-name{font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .host-meta{font-size:9px;color:var(--muted);margin-top:4px;line-height:1.45}
     .host-evidence{font-size:9px;color:#7b5a1d;margin-top:6px;padding-top:6px;border-top:1px dashed #eadfc9;line-height:1.45}
@@ -135,29 +135,29 @@
 <div id="app">
   <div class="topbar">
     <div class="brand">LayoutPilot</div>
-    <div class="tag">PCB Layout Copilot</div>
+    <div class="tag">PCB 布局助手</div>
     <div class="grow"></div>
     <button class="icon-btn" id="gatewayBtn" title="配置 AI Gateway">⚙</button>
     <button class="icon-btn" id="refreshBtn" title="刷新工作台">↻</button>
   </div>
   <div class="statusbar">
     <div class="stage" id="stageAnalyze">
-      <div class="stage-kicker">01 UNDERSTAND</div>
+      <div class="stage-kicker">阶段 1</div>
       <div class="stage-main"><span class="dot"></span><span>电路理解</span></div>
       <div class="stage-meta" id="stageAnalyzeMeta">等待分析</div>
     </div>
     <div class="stage" id="stageOwner">
-      <div class="stage-kicker">02 CONFIRM</div>
+      <div class="stage-kicker">阶段 2</div>
       <div class="stage-main"><span class="dot"></span><span>Owner 确认</span></div>
       <div class="stage-meta" id="stageOwnerMeta">等待证据</div>
     </div>
     <div class="stage" id="stageConstraint">
-      <div class="stage-kicker">03 PLAN</div>
+      <div class="stage-kicker">阶段 3</div>
       <div class="stage-main"><span class="dot"></span><span>布局约束</span></div>
       <div class="stage-meta" id="stageConstraintMeta">0 条约束</div>
     </div>
     <div class="stage" id="stageExecute">
-      <div class="stage-kicker">04 APPLY</div>
+      <div class="stage-kicker">阶段 4</div>
       <div class="stage-main"><span class="dot"></span><span>受控执行</span></div>
       <div class="stage-meta" id="stageExecuteMeta">尚未执行</div>
     </div>
@@ -187,7 +187,7 @@
     <aside class="plan-pane">
       <div class="section-head">
         <div>
-          <div class="section-title">Constraint Plan</div>
+          <div class="section-title">布局约束</div>
           <div class="section-subtitle">由确定性证据 + 人工确认生成</div>
         </div>
       </div>
@@ -197,9 +197,9 @@
 
   <div class="footer">
     <button class="btn primary" id="analyzeBtn">重新分析</button>
-    <button class="btn" id="applyBtn" disabled>应用受控建议</button>
+    <button class="btn" id="applyBtn" disabled>物理预检并应用</button>
     <button class="btn danger" id="undoBtn" disabled>撤销上次布局</button>
-    <div class="footer-note" id="footerNote">执行前仍会进行最终确认、物理重验和 DRC。</div>
+    <div class="footer-note" id="footerNote">点击后先检查走线、器件边界、Keepout、板框与 DRC；全部通过后才允许移动。</div>
   </div>
 </div>
 <div class="loading" id="loading"><div class="spinner"></div></div>
