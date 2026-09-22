@@ -1370,7 +1370,7 @@ export async function confirmAmbiguousOwnership(): Promise<void> {
         '',
         '这些选择会在 Constraint Preview 中转换为 ExplicitOwnershipHint，再交给原有确定性 Ownership Resolver。',
         confirmed === 0
-          ? '本次没有新增唯一 owner，因此如果此前也没有人工确认，Constraint Preview 仍会保持 0 条可执行约束。'
+          ? '本次没有新增唯一 owner，因此如果此前也没有人工确认，Constraint Preview 仍会保持 0 条可进入物理预检的约束。'
           : '本次已经新增人工证据，可以继续运行“查看布局建议”。',
         'AI Semantic Snapshot 本身没有被修改，也不会重新调用模型。',
       ].join('\n'),
@@ -1525,7 +1525,7 @@ export async function previewLayoutConstraints(): Promise<void> {
           const level = proposal.strength === 'advisory' ? '提示级' : '软约束';
           const execution = proposal.execution === 'review-only'
             ? '仅人工复核，不参与布局计算'
-            : '可进入后续布局方案计算';
+            : '可进入物理预检';
           const target = proposal.target ? ` → ${proposal.target}` : '';
           const ownershipSource = humanOwnershipDecision
             ? ` · owner来源=人工确认(${humanOwnershipDecision.ownerDesignator})`
@@ -1543,7 +1543,7 @@ export async function previewLayoutConstraints(): Promise<void> {
         : reason === 'unknown-semantic-role'
           ? '语义角色未知'
           : reason === 'no-policy-for-role'
-            ? '当前语义角色尚未建立可执行布局策略'
+            ? '当前语义角色尚未建立可落地布局策略'
             : reason === 'policy-evidence-insufficient'
               ? '已有布局策略，但当前 PCB 事实证据不足'
               : '没有可推导的布局约束';
@@ -1598,7 +1598,7 @@ export async function previewLayoutConstraints(): Promise<void> {
     }).length;
 
     const conciseZeroConstraintRows = [
-      '当前没有生成可执行布局约束。',
+      '当前没有生成可进入物理预检的布局约束。',
       '',
       evaluation.explicitOwnershipHints.length === 0 && pendingOwnerEntries.length
         ? `主要阻塞：${pendingOwnerEntries.length} 个去耦电容只有 rail-domain 证据，但没有人工确认唯一 owner。`
@@ -1638,7 +1638,7 @@ export async function previewLayoutConstraints(): Promise<void> {
         `生成约束：${merged.proposals.length}`,
         `软约束：${merged.softCount}`,
         `提示级约束：${merged.advisoryCount}`,
-        `可进入后续布局方案：${merged.previewEligibleCount}`,
+        `可进入物理预检：${merged.previewEligibleCount}`,
         `仅人工复核：${merged.reviewOnlyCount}`,
         `AI 结果被拦截：${blocked}`,
         `调用失败：${failed}`,
@@ -1710,7 +1710,7 @@ export async function applyDemoPlacement(): Promise<void> {
             `仍有一条未关闭的受控布局 Command：${outstanding.id}`,
             `${outstanding.componentDesignator} 仍位于该 Command 的目标位置。`,
             '',
-            'v0.7 只维护一个 outstanding command。',
+            '当前版本只维护一个 outstanding command。',
             '请先“撤销上次受控布局”，再执行下一条建议。',
           ].join('\n'),
           'LayoutPilot · 请先关闭上一事务',
@@ -1741,9 +1741,9 @@ export async function applyDemoPlacement(): Promise<void> {
     if (!executable.length) {
       await eda.sys_Dialog.showInformationMessage(
         [
-          '当前没有满足 v0.7 执行门槛的布局建议。',
+          '当前没有可进入物理预检的布局建议。',
           '',
-          '受控执行要求：',
+          '进入物理预检要求：',
           '• 去耦电容 near(owner) 约束；',
           '• medium/high 置信，属于 preview-eligible；',
           '• owner 已由用户显式确认；',
@@ -1762,7 +1762,7 @@ export async function applyDemoPlacement(): Promise<void> {
           displayContent: `${candidate.proposal.subject} → ${candidate.proposal.target}`,
         })),
         '请选择本次只执行的一条布局建议。',
-        'v0.7 每次只移动一个器件，避免批量变更扩大风险。',
+        '当前版本每次只移动一个器件，避免批量变更扩大风险。',
         'LayoutPilot · 选择执行建议',
         '0',
       );
@@ -1802,7 +1802,7 @@ export async function applyDemoPlacement(): Promise<void> {
     if (!boardBoundary.ok) {
       await eda.sys_Dialog.showInformationMessage(
         [
-          '当前 PCB 板框不能被 v0.7 安全解析。',
+          '当前 PCB 板框不能被当前安全模型可靠解析。',
           '',
           boardBoundary.reason,
           '',
@@ -1817,7 +1817,7 @@ export async function applyDemoPlacement(): Promise<void> {
     if (!componentKeepouts.ok) {
       await eda.sys_Dialog.showInformationMessage(
         [
-          '当前 PCB 的器件 keepout 不能被 v0.7 安全解析。',
+          '当前 PCB 的器件 keepout 不能被当前安全模型可靠解析。',
           '',
           componentKeepouts.reason,
           '',
