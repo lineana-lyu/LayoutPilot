@@ -16,10 +16,55 @@ function numeric(value: number | undefined): string | null {
 		: null;
 }
 
+function compareSequence(a: string[], b: string[]): number {
+	const length = Math.min(a.length, b.length);
+	for (let index = 0; index < length; index += 1) {
+		const compared = a[index].localeCompare(b[index]);
+		if (compared !== 0) return compared;
+	}
+	return a.length - b.length;
+}
+
+function minimalRotation(points: string[]): string[] {
+	if (points.length <= 1) return [...points];
+
+	let best = 0;
+	for (let candidate = 1; candidate < points.length; candidate += 1) {
+		for (let offset = 0; offset < points.length; offset += 1) {
+			const left = points[(candidate + offset) % points.length];
+			const right = points[(best + offset) % points.length];
+			const compared = left.localeCompare(right);
+			if (compared < 0) {
+				best = candidate;
+				break;
+			}
+			if (compared > 0) break;
+		}
+	}
+
+	return points.map((_, index) =>
+		points[(best + index) % points.length]
+	);
+}
+
 function canonicalPolygon(polygon: BoardPolygon): string[] {
-	return polygon.points.map(point =>
+	const points = polygon.points.map(point =>
 		`${numeric(point.x)}:${numeric(point.y)}`,
 	);
+
+	if (
+		points.length > 1
+		&& points[0] === points[points.length - 1]
+	) {
+		points.pop();
+	}
+
+	const forward = minimalRotation(points);
+	const reversed = minimalRotation([...points].reverse());
+
+	return compareSequence(forward, reversed) <= 0
+		? forward
+		: reversed;
 }
 
 export function buildPhysicalBoardFingerprint(input: {
