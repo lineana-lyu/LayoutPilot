@@ -24,7 +24,22 @@ export function activate(status?: 'onStartupFinished', arg?: string): void {
 }
 
 export async function openWorkbench(): Promise<void> {
-  await openLayoutPilotWorkbench();
+  try {
+    await openLayoutPilotWorkbench();
+  }
+  catch (error) {
+    console.error('[LayoutPilot] Workbench open failed', error);
+    await eda.sys_Dialog.showInformationMessage(
+      [
+        'LayoutPilot 工作台打开失败。',
+        '',
+        String(error),
+        '',
+        '该错误只影响工作台窗口；PCB 不会发生任何修改。',
+      ].join('\n'),
+      'LayoutPilot · 工作台启动失败',
+    );
+  }
 }
 
 export async function inspectPcb(): Promise<void> {
