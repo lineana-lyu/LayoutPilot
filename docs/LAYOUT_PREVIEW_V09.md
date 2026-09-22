@@ -108,6 +108,33 @@ Apply accepted LayoutPlan = explicit mutation boundary
 No external editor framework is bundled into the extension.
 
 
+## v0.9.7 review lifecycle freeze
+
+The real-board workflow is no longer modeled as one global Step 1 → Step 4 wizard. Each component can independently progress through semantic understanding, Owner evidence, layout review and optional execution. The workbench header therefore exposes capability status rather than implying that all Owner tasks must finish before any layout suggestion can exist.
+
+Reference-only plans now have an explicit lifecycle:
+
+```
+preview
+  ├─ reject → rejected
+  └─ accept → accepted reference
+                 ↓
+            archived review record
+```
+
+Executable plans keep the controlled path:
+
+```
+preview → accepted → preflight → applied
+                    ↘ state change → superseded
+```
+
+Invalid state transitions throw instead of silently rewriting status. This is adapted from event/state-machine practice used by XState and keeps UI state from inventing impossible lifecycle combinations such as accepting an already accepted plan.
+
+Accepted reference-only plans are retained separately from the active LayoutPlan. A later Owner decision invalidates the active plan but does not erase the historical review artifact. Reopening historical Ghost geometry is allowed only when the current Snapshot/physical fingerprint still validates; otherwise the record remains visible but is not overlaid on the PCB.
+
+Each LayoutPlan item also stores a baseline loop geometry proxy and the proposed proxy. The UI reports `before → after` and the relative reduction/increase. This metric remains a local geometric proxy based on power-pad plus ground-return distance; it is not a routing-length or SI/PI claim.
+
 ## v0.9.6 explicit review framing and reference plans
 
 Real completed PCBs frequently produce useful placement recommendations that must not be applied automatically because the target component already has routing or copper connectivity. v0.9.6 makes this a first-class review outcome rather than a dead-end execution blocker.
