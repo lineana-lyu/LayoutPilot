@@ -2,12 +2,24 @@ import extensionConfig from '../../extension.json' with { type: 'json' };
 
 export type LayoutPilotWorkbenchSizeMode = 'compact' | 'standard' | 'wide';
 
-const WORKBENCH_SIZE_KEY = 'layoutpilot.workbench-size.v1';
-const ACTIVE_WORKBENCH_ID_KEY = 'layoutpilot.workbench-active-id.v1';
+const WORKBENCH_SIZE_KEY = 'layoutpilot.workbench-size.v2';
+const ACTIVE_WORKBENCH_ID_KEY = 'layoutpilot.workbench-active-id.v2';
+
+let instanceSequence = 0;
 
 function versionToken(): string {
 	return String(extensionConfig.version ?? 'unknown')
 		.replace(/[^a-zA-Z0-9_-]/g, '-');
+}
+
+function createWorkbenchInstanceId(): string {
+	instanceSequence += 1;
+	return [
+		'layoutpilot-workbench',
+		versionToken(),
+		Date.now().toString(36),
+		instanceSequence.toString(36),
+	].join('-');
 }
 
 export function getLayoutPilotWorkbenchSizeMode(): LayoutPilotWorkbenchSizeMode {
@@ -29,13 +41,25 @@ async function setLayoutPilotWorkbenchSizeMode(
 	}
 }
 
-function workbenchId(mode = getLayoutPilotWorkbenchSizeMode()): string {
-	return `layoutpilot-workbench-${versionToken()}-${mode}`;
+function getStoredActiveWorkbenchId(): string | undefined {
+	const value = eda.sys_Storage.getExtensionUserConfig(ACTIVE_WORKBENCH_ID_KEY);
+	return typeof value === 'string' && value.length ? value : undefined;
 }
 
-function allCurrentVersionWorkbenchIds(): string[] {
-	return (['compact', 'standard', 'wide'] as const).map(mode =>
-		workbenchId(mode),
+async function rememberActiveWorkbenchId(id: string): Promise<void> {
+	const success = await eda.sys_Storage.setExtensionUserConfig(
+		ACTIVE_WORKBENCH_ID_KEY,
+		id,
+	);
+	if (!success) {
+		throw new Error('嘉立创EDA未能保存当前 LayoutPilot 工作台实例。');
+	}
+}
+
+async function clearActiveWorkbenchId(): Promise<void> {
+	await eda.sys_Storage.setExtensionUserConfig(
+		ACTIVE_WORKBENCH_ID_KEY,
+		'',
 	);
 }
 
@@ -70,53 +94,25 @@ function dimensionsFor(
 	};
 }
 
-async function rememberActiveWorkbenchId(id: string): Promise<void> {
-	await eda.sys_Storage.setExtensionUserConfig(ACTIVE_WORKBENCH_ID_KEY, id);
-}
-
-async function retirePreviouslyActiveWorkbench(nextId: string): Promise<void> {
-	const previous = eda.sys_Storage.getExtensionUserConfig(
-		ACTIVE_WORKBENCH_ID_KEY,
-	);
-	if (typeof previous !== 'string' || !previous || previous === nextId) {
-		return;
-	}
+async function closeWorkbenchInstance(id: string | undefined): Promise<void> {
+	if (!id) return;
 	try {
-		await eda.sys_IFrame.closeIFrame(previous);
+		await eda.sys_IFrame.closeIFrame(id);
 	}
 	catch (error) {
-		console.warn('[LayoutPilot] unable to retire previous workbench iframe', {
-			previous,
-			error,
-		});
-	}
-}
-
-async function openWorkbenchFrame(
-	mode: LayoutPilotWorkbenchSizeMode,
-	options?: { retirePrevious?: boolean },
-): Promise<boolean> {
-	const id = workbenchId(mode);
-	const viewport = eda.sys_Window.getViewportSize();
-	const size = dimensionsFor(mode, viewport);
-
-	if (options?.retirePrevious !== false) {
-		await retirePreviouslyActiveWorkbench(id);
-	}
-
-	try {
-		const shown = await eda.sys_IFrame.showIFrame(id);
-		if (shown) {
-			await rememberActiveWorkbenchId(id);
-			return true;
-		}
-	}
-	catch (error) {
-		console.warn('[LayoutPilot] showIFrame failed; opening fresh workbench', {
+		console.warn('[LayoutPilot] unable to retire workbench iframe', {
 			id,
 			error,
 		});
 	}
+}
+
+async function openFreshWorkbenchFrame(
+	mode: LayoutPilotWorkbenchSizeMode,
+): Promise<string> {
+	const id = createWorkbenchInstanceId();
+	const viewport = eda.sys_Window.getViewportSize();
+	const size = dimensionsFor(mode, viewport);
 
 	const opened = await eda.sys_IFrame.openIFrame(
 		'/iframe/workbench.html',
@@ -134,38 +130,44 @@ async function openWorkbenchFrame(
 		},
 	);
 
-	if (opened) {
-		await rememberActiveWorkbenchId(id);
-	}
-
-	return opened;
-}
-
-export async function openLayoutPilotWorkbench(): Promise<void> {
-	const mode = getLayoutPilotWorkbenchSizeMode();
-	let opened = false;
-
-	try {
-		opened = await openWorkbenchFrame(mode);
-	}
-	catch (error) {
-		throw new Error(
-			[
-				'嘉立创EDA打开 LayoutPilot 工作台时发生异常。',
-				`窗口规格: ${mode}`,
-				`原因: ${String(error)}`,
-			].join('\n'),
-		);
-	}
-
 	if (!opened) {
 		throw new Error(
 			[
 				'嘉立创EDA返回工作台打开失败。',
-				`Workbench ID: ${workbenchId(mode)}`,
+				`Workbench ID: ${id}`,
+				`窗口规格: ${mode}`,
 				'HTML: /iframe/workbench.html',
 			].join('\n'),
 		);
+	}
+
+	return id;
+}
+
+export async function openLayoutPilotWorkbench(): Promise<void> {
+	const activeId = getStoredActiveWorkbenchId();
+	if (activeId) {
+		try {
+			const shown = await eda.sys_IFrame.showIFrame(activeId);
+			if (shown) {
+				return;
+			}
+		}
+		catch (error) {
+			console.warn('[LayoutPilot] stored workbench instance is stale', {
+				activeId,
+				error,
+			});
+		}
+	}
+
+	const mode = getLayoutPilotWorkbenchSizeMode();
+	const freshId = await openFreshWorkbenchFrame(mode);
+	await rememberActiveWorkbenchId(freshId);
+
+	// Only retire the stale instance after the new one is proven alive.
+	if (activeId && activeId !== freshId) {
+		await closeWorkbenchInstance(activeId);
 	}
 }
 
@@ -173,38 +175,47 @@ export async function resizeLayoutPilotWorkbench(
 	mode: LayoutPilotWorkbenchSizeMode,
 ): Promise<void> {
 	const currentMode = getLayoutPilotWorkbenchSizeMode();
-	if (currentMode === mode) {
-		return;
-	}
+	if (currentMode === mode) return;
 
-	const previousId = workbenchId(currentMode);
+	const previousId = getStoredActiveWorkbenchId();
 	await setLayoutPilotWorkbenchSizeMode(mode);
 
-	const opened = await openWorkbenchFrame(mode, { retirePrevious: false });
-	if (!opened) {
+	let freshId: string;
+	try {
+		freshId = await openFreshWorkbenchFrame(mode);
+	}
+	catch (error) {
 		await setLayoutPilotWorkbenchSizeMode(currentMode);
-		throw new Error(`无法切换到“${mode}”窗口规格。`);
+		throw error;
 	}
 
 	try {
-		await eda.sys_IFrame.closeIFrame(previousId);
+		await rememberActiveWorkbenchId(freshId);
 	}
 	catch (error) {
-		console.warn('[LayoutPilot] unable to close previous size workbench', error);
+		await closeWorkbenchInstance(freshId);
+		await setLayoutPilotWorkbenchSizeMode(currentMode);
+		throw error;
 	}
+
+	// New iframe is alive and recorded before the previous one is closed.
+	await closeWorkbenchInstance(previousId);
 }
 
 export async function closeLayoutPilotWorkbench(): Promise<void> {
-	for (const id of allCurrentVersionWorkbenchIds()) {
-		try {
-			await eda.sys_IFrame.closeIFrame(id);
-		}
-		catch {
-			// A size mode may not have been opened.
-		}
-	}
+	const activeId = getStoredActiveWorkbenchId();
+	await closeWorkbenchInstance(activeId);
+	await clearActiveWorkbenchId();
 }
 
 export async function hideLayoutPilotWorkbench(): Promise<void> {
-	await eda.sys_IFrame.hideIFrame(workbenchId());
+	const activeId = getStoredActiveWorkbenchId();
+	if (!activeId) {
+		throw new Error('当前没有可隐藏的 LayoutPilot 工作台实例。');
+	}
+
+	const hidden = await eda.sys_IFrame.hideIFrame(activeId);
+	if (hidden === false) {
+		throw new Error('嘉立创EDA未能隐藏当前 LayoutPilot 工作台。');
+	}
 }
