@@ -2301,8 +2301,9 @@ export async function about(): Promise<void> {
       '当前闭环：',
       '真实 PCB → 确定性结构/归属 → AI 语义 Snapshot → 人工补充关键证据 → Constraint Policy → Pad-aware Physical Planner → 用户确认 → 单器件受控移动 → 坐标回读 / DRC → 回滚或 Undo。',
       '',
-      'v0.7 执行边界：',
-      '• 仅执行满足严格证据门槛的去耦电容 near(owner) 建议；',
+      'v0.8 工作台 / 执行边界：',
+      '• 主流程集中在持久化 Workbench，不再用连续弹窗展示分析结果；',
+      '• 仅执行满足严格证据门槛的去耦电容 near(owner) 建议；'
       '• owner 必须由用户显式确认；',
       '• 已锁定、已有布线、物理几何不完整或基线 DRC 未通过时拒绝执行；',
       '• 每次只移动一个器件；',
