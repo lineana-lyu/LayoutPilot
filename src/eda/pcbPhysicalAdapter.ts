@@ -1,7 +1,9 @@
 import {
-	buildSimpleBoardPolygonFromSegments,
+	buildBoardPolygonsFromSegments,
+	buildBoardRegionFromPolygons,
 	parseSimpleBoardPolygon,
 	type BoardPolygon,
+	type BoardRegion,
 } from '../domain/boardBoundary';
 import type { PhysicalComponentSnapshot } from '../domain/physicalPlacement';
 
@@ -29,7 +31,7 @@ function closeEnough(a: number, b: number, tolerance = 0.01): boolean {
 }
 
 export async function collectSimpleBoardBoundary(): Promise<
-	| { ok: true; polygon: BoardPolygon }
+	| { ok: true; region: BoardRegion }
 	| { ok: false; reason: string }
 > {
 	const [polylines, lines, arcs] = await Promise.all([
@@ -51,44 +53,32 @@ export async function collectSimpleBoardBoundary(): Promise<
 	if (outlineArcs.length) {
 		return {
 			ok: false,
-			reason: '当前板框包含独立圆弧；v0.7 不对曲线板框执行自动移动。',
+			reason:
+				'当前 BOARD_OUTLINE 含独立圆弧。为避免把圆角/弧形板框离散化错误，当前版本仍按安全策略拒绝物理规划。',
 		};
 	}
 
-	if (outlinePolylines.length > 1) {
-		return {
-			ok: false,
-			reason: '检测到多个 BOARD_OUTLINE polyline，无法证明不存在多环/镂空。',
-		};
-	}
-
-	if (outlinePolylines.length === 1) {
-		if (outlineLines.length) {
-			return {
-				ok: false,
-				reason: '板框同时存在 polyline 与独立 line，v0.7 不猜测它们的组合关系。',
-			};
-		}
-
-		const polygon = outlinePolylines[0].getState_Polygon();
+	const contours: BoardPolygon[] = [];
+	for (const polyline of outlinePolylines) {
+		const polygon = polyline.getState_Polygon();
 		if (!polygon) {
 			return {
 				ok: false,
-				reason: 'BOARD_OUTLINE polyline 缺少 polygon 数据。',
+				reason: '检测到 BOARD_OUTLINE polyline，但无法读取其 polygon 数据。',
 			};
 		}
 
-		return parseSimpleBoardPolygon(polygon.getSource());
+		const parsed = parseSimpleBoardPolygon(polygon.getSource());
+		if (!parsed.ok) {
+			return {
+				ok: false,
+				reason: `BOARD_OUTLINE polyline 无法安全解析：${parsed.reason}`,
+			};
+		}
+		contours.push(parsed.polygon);
 	}
 
-	if (!outlineLines.length) {
-		return {
-			ok: false,
-			reason: '没有找到可验证的 BOARD_OUTLINE。',
-		};
-	}
-
-	return buildSimpleBoardPolygonFromSegments(
+	const lineContours = buildBoardPolygonsFromSegments(
 		outlineLines.map(line => ({
 			start: {
 				x: line.getState_StartX(),
@@ -100,6 +90,19 @@ export async function collectSimpleBoardBoundary(): Promise<
 			},
 		})),
 	);
+	if (!lineContours.ok) {
+		return lineContours;
+	}
+	contours.push(...lineContours.polygons);
+
+	if (!contours.length) {
+		return {
+			ok: false,
+			reason: '没有找到可验证的 BOARD_OUTLINE 闭合轮廓。',
+		};
+	}
+
+	return buildBoardRegionFromPolygons(contours);
 }
 
 export async function collectSimpleComponentKeepouts(): Promise<
