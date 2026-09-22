@@ -17,6 +17,7 @@ const board = {
 		],
 	},
 	holes: [],
+	approximationToleranceMil: 0,
 };
 
 function component(
@@ -374,6 +375,7 @@ console.log('Physical placement planner tests passed.');
 				],
 			},
 		],
+		approximationToleranceMil: 0,
 	};
 	const subject = component('c-hole', 'C_HOLE', 700, 700, { routed: 0 });
 	const obstacle = component('u-hole', 'U_HOLE', -500, -500);
