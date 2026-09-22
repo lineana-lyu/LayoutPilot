@@ -12,7 +12,7 @@ import { resolveOwnershipRelations } from './domain/ownershipRelation';
 import { clearHumanOwnershipDecisions, createHumanOwnershipDecision, getHumanOwnershipDecisions, removeHumanOwnershipDecision, upsertHumanOwnershipDecision } from './domain/humanOwnershipDecision';
 import { buildSemanticBoardFingerprint, clearActiveSemanticSnapshot, createSemanticSnapshot, getActiveSemanticSnapshot, semanticSnapshotMatchesBoard, setActiveSemanticSnapshot, type SemanticSnapshotEntry } from './domain/semanticSnapshot';
 import { buildSimpleBoardPolygonFromSegments, parseSimpleBoardPolygon, type BoardPolygon } from './domain/boardBoundary';
-import { planDecouplingPlacement, type PhysicalComponentSnapshot } from './domain/physicalPlacement';
+import { placementPlansEquivalent, planDecouplingPlacement, type PhysicalComponentSnapshot } from './domain/physicalPlacement';
 import { createPlacementCommand, getLastPlacementCommand, markPlacementCommandApplied, markPlacementCommandSuperseded, markPlacementCommandUndone, setLastPlacementCommand } from './domain/placementCommand';
 import { filterOwnershipPropertyNames, findOwnershipFields, findOwnershipMemberNames } from './domain/ownershipCapabilityProbe';
 import extensionConfig from '../extension.json' with { type: 'json' };
@@ -2039,19 +2039,6 @@ export async function applyDemoPlacement(): Promise<void> {
       return;
     }
 
-    const baselineDrcPassed = await eda.pcb_Drc.check(true, false, false);
-    if (!baselineDrcPassed) {
-      await eda.sys_Dialog.showInformationMessage(
-        [
-          '当前 PCB 在移动前就没有通过 DRC。',
-          '',
-          'v0.7 采用失败关闭策略：无法建立干净基线时，不执行自动移动。',
-        ].join('\n'),
-        'LayoutPilot · DRC 基线未通过',
-      );
-      return;
-    }
-
     const plan = readiness.plan;
     const confirmed = await showConfirmationDialog(
       [
@@ -2072,47 +2059,97 @@ export async function applyDemoPlacement(): Promise<void> {
     );
     if (!confirmed) return;
 
-    const currentSubject = await readComponentPhysicalState(plan.subjectId);
-    const currentOwner = await readComponentPhysicalState(plan.ownerId);
+    const refreshedPhysical = await collectPhysicalComponents(plan.subjectId);
+    const refreshedSubject = refreshedPhysical.find(
+      component => component.id === plan.subjectId,
+    );
+    const refreshedOwner = refreshedPhysical.find(
+      component => component.id === plan.ownerId,
+    );
+    if (!refreshedSubject || !refreshedOwner) {
+      await eda.sys_Dialog.showInformationMessage(
+        '确认后无法重新定位 subject 或 owner，本次执行已取消。',
+        'LayoutPilot · 物理计划已过期',
+      );
+      return;
+    }
+
+    const refreshedBoardBoundary = await collectSimpleBoardBoundary();
+    if (!refreshedBoardBoundary.ok) {
+      await eda.sys_Dialog.showInformationMessage(
+        refreshedBoardBoundary.reason,
+        'LayoutPilot · 确认后板框状态不可验证',
+      );
+      return;
+    }
+
+    const refreshedKeepouts = await collectSimpleComponentKeepouts();
+    if (!refreshedKeepouts.ok) {
+      await eda.sys_Dialog.showInformationMessage(
+        refreshedKeepouts.reason,
+        'LayoutPilot · 确认后 Keepout 状态不可验证',
+      );
+      return;
+    }
+
+    const refreshedReadiness = planDecouplingPlacement({
+      subject: refreshedSubject,
+      owner: refreshedOwner,
+      obstacles: refreshedPhysical,
+      board: refreshedBoardBoundary.polygon,
+      componentKeepouts: refreshedKeepouts.polygons,
+      powerNet,
+      groundNet,
+    });
+
     if (
-      !closeEnough(currentSubject.x, plan.from.x)
-      || !closeEnough(currentSubject.y, plan.from.y)
-      || !closeEnough(currentOwner.x, owner.x)
-      || !closeEnough(currentOwner.y, owner.y)
+      !refreshedReadiness.ready
+      || !refreshedReadiness.plan
+      || !placementPlansEquivalent(plan, refreshedReadiness.plan)
     ) {
       await eda.sys_Dialog.showInformationMessage(
         [
-          '确认窗口打开后，subject 或 owner 的位置发生了变化。',
+          '确认窗口打开期间，PCB 的物理上下文发生了变化，或最佳合法候选已经改变。',
           '',
-          '为避免使用过期物理计划，本次执行已取消。',
-          '请重新生成布局建议后再执行。',
+          'LayoutPilot 已重新读取器件 BBox、走线状态、板框和 keepout。',
+          '为避免执行过期计划，本次移动已取消。',
+          '',
+          '请重新点击“应用受控布局建议”查看新的候选位置。',
         ].join('\n'),
         'LayoutPilot · 物理计划已过期',
       );
       return;
     }
-    if (currentSubject.locked) {
+
+    const baselineDrcPassed = await eda.pcb_Drc.check(true, false, false);
+    if (!baselineDrcPassed) {
       await eda.sys_Dialog.showInformationMessage(
-        `${plan.subjectDesignator} 在执行前被锁定，本次移动已取消。`,
-        'LayoutPilot · 物理执行被阻止',
+        [
+          '确认后重新检查发现当前 PCB 未通过 DRC。',
+          '',
+          '写入前必须存在干净 DRC 基线，本次不会移动器件。',
+        ].join('\n'),
+        'LayoutPilot · DRC 基线未通过',
       );
       return;
     }
 
+    const executionPlan = refreshedReadiness.plan;
+
     const command = createPlacementCommand({
       snapshotId: snapshot.id,
       constraintId: proposal.id,
-      componentId: plan.subjectId,
-      componentDesignator: plan.subjectDesignator,
-      from: plan.from,
-      to: plan.to,
+      componentId: executionPlan.subjectId,
+      componentDesignator: executionPlan.subjectDesignator,
+      from: executionPlan.from,
+      to: executionPlan.to,
     });
 
     const transaction = await executePlacementTransaction(
       {
-        componentId: plan.subjectId,
-        from: plan.from,
-        to: plan.to,
+        componentId: executionPlan.subjectId,
+        from: executionPlan.from,
+        to: executionPlan.to,
       },
       {
         moveAndVerify: async (componentId, point) => {
