@@ -337,3 +337,176 @@ export function boxInsideBoard(
 		),
 	);
 }
+
+
+export interface BoardRegion {
+	outer: BoardPolygon;
+	holes: BoardPolygon[];
+}
+
+export type BoardRegionBuildResult =
+	| { ok: true; region: BoardRegion }
+	| { ok: false; reason: string };
+
+export function polygonSignedArea(polygon: BoardPolygon): number {
+	let area = 0;
+	for (let index = 0; index < polygon.points.length; index += 1) {
+		const current = polygon.points[index];
+		const next = polygon.points[(index + 1) % polygon.points.length];
+		area += current.x * next.y - next.x * current.y;
+	}
+	return area / 2;
+}
+
+function segmentsIntersectOrTouch(
+	a1: BoardPoint,
+	a2: BoardPoint,
+	b1: BoardPoint,
+	b2: BoardPoint,
+): boolean {
+	if (properSegmentsIntersect(a1, a2, b1, b2)) {
+		return true;
+	}
+	return pointOnSegment(a1, b1, b2)
+		|| pointOnSegment(a2, b1, b2)
+		|| pointOnSegment(b1, a1, a2)
+		|| pointOnSegment(b2, a1, a2);
+}
+
+function polygonsIntersectOrTouch(
+	a: BoardPolygon,
+	b: BoardPolygon,
+): boolean {
+	return a.points.some((a1, index) => {
+		const a2 = a.points[(index + 1) % a.points.length];
+		return b.points.some((b1, otherIndex) => {
+			const b2 = b.points[(otherIndex + 1) % b.points.length];
+			return segmentsIntersectOrTouch(a1, a2, b1, b2);
+		});
+	});
+}
+
+function polygonStrictlyInside(
+	inner: BoardPolygon,
+	outer: BoardPolygon,
+): boolean {
+	if (polygonsIntersectOrTouch(inner, outer)) {
+		return false;
+	}
+	return inner.points.every(point => pointInOrOnPolygon(point, outer));
+}
+
+export function buildBoardRegionFromPolygons(
+	polygons: BoardPolygon[],
+): BoardRegionBuildResult {
+	const valid = polygons.filter(polygon => polygon.points.length >= 3);
+	if (!valid.length) {
+		return { ok: false, reason: '没有可验证的闭合 BOARD_OUTLINE 轮廓' };
+	}
+
+	const ordered = [...valid].sort(
+		(a, b) =>
+			Math.abs(polygonSignedArea(b))
+			- Math.abs(polygonSignedArea(a)),
+	);
+	const outer = ordered[0];
+	if (Math.abs(polygonSignedArea(outer)) <= EPSILON) {
+		return { ok: false, reason: 'BOARD_OUTLINE 外轮廓面积为 0' };
+	}
+
+	const holes: BoardPolygon[] = [];
+	for (const contour of ordered.slice(1)) {
+		if (!polygonStrictlyInside(contour, outer)) {
+			return {
+				ok: false,
+				reason:
+					'检测到不位于主外轮廓内部的额外 BOARD_OUTLINE；可能是拼板、多板或轮廓相交，按安全策略拒绝规划。',
+			};
+		}
+
+		const ambiguousHole = holes.find(hole =>
+			polygonsIntersectOrTouch(hole, contour)
+			|| polygonStrictlyInside(contour, hole)
+			|| polygonStrictlyInside(hole, contour),
+		);
+		if (ambiguousHole) {
+			return {
+				ok: false,
+				reason:
+					'检测到相交或嵌套的内部 BOARD_OUTLINE；当前版本无法安全区分 hole / island。',
+			};
+		}
+		holes.push(contour);
+	}
+
+	return {
+		ok: true,
+		region: {
+			outer,
+			holes,
+		},
+	};
+}
+
+export function buildBoardPolygonsFromSegments(
+	segments: BoardSegment[],
+): { ok: true; polygons: BoardPolygon[] } | { ok: false; reason: string } {
+	if (!segments.length) {
+		return { ok: true, polygons: [] };
+	}
+
+	const unused = [...segments];
+	const polygons: BoardPolygon[] = [];
+
+	while (unused.length) {
+		const first = unused.shift()!;
+		const points: BoardPoint[] = [
+			{ ...first.start },
+			{ ...first.end },
+		];
+		let current = first.end;
+		let closed = samePoint(current, points[0]);
+
+		while (!closed) {
+			const nextIndex = unused.findIndex(segment =>
+				samePoint(segment.start, current)
+				|| samePoint(segment.end, current),
+			);
+			if (nextIndex < 0) {
+				return {
+					ok: false,
+					reason: 'BOARD_OUTLINE 独立线段存在断点，无法形成闭合轮廓。',
+				};
+			}
+
+			const [segment] = unused.splice(nextIndex, 1);
+			const nextPoint = samePoint(segment.start, current)
+				? segment.end
+				: segment.start;
+			points.push({ ...nextPoint });
+			current = nextPoint;
+			closed = samePoint(current, points[0]);
+		}
+
+		const normalized = normalizePoints(points);
+		if (normalized.length < 3) {
+			return {
+				ok: false,
+				reason: 'BOARD_OUTLINE 闭合线段轮廓有效顶点少于 3 个。',
+			};
+		}
+		polygons.push({ points: normalized });
+	}
+
+	return { ok: true, polygons };
+}
+
+export function boxInsideBoardRegion(
+	box: Box,
+	region: BoardRegion,
+): boolean {
+	if (!boxInsideBoard(box, region.outer)) {
+		return false;
+	}
+	return region.holes.every(hole => !boxIntersectsPolygon(box, hole));
+}
