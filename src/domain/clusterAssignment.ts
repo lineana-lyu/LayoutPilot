@@ -11,6 +11,7 @@ export interface ClusterPlacementOption<T> {
 	cost: number;
 	bounds: ClusterBounds;
 	clearanceMil: number;
+	keepsCurrent: boolean;
 	payload: T;
 }
 
@@ -53,6 +54,9 @@ export function clusterOptionsConflict<T>(
 	b: ClusterPlacementOption<T>,
 ): boolean {
 	if (a.subjectId === b.subjectId) return false;
+	// Two no-op choices preserve an already existing board state. Clearance
+	// gates apply when at least one component is actually being relocated.
+	if (a.keepsCurrent && b.keepsCurrent) return false;
 	const clearance = Math.max(a.clearanceMil, b.clearanceMil);
 	return boundsOverlap(expandBounds(a.bounds, clearance), b.bounds)
 		|| boundsOverlap(expandBounds(b.bounds, clearance), a.bounds);
