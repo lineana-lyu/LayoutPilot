@@ -1403,7 +1403,7 @@ previewPlanBtn.addEventListener('click', async () => {
 			|| plan.status === 'applied'
 			|| plan.status === 'superseded'
 		) {
-			const result = await generateCurrentLayoutPlan(1);
+			const result = await generateCurrentLayoutPlan();
 			if (!result.ok) {
 				showToast(result.message);
 				return;
@@ -1413,7 +1413,7 @@ previewPlanBtn.addEventListener('click', async () => {
 		else {
 			const validation = await validateStoredLayoutPlanCurrent();
 			if (!validation.ok) {
-				const regenerated = await generateCurrentLayoutPlan(1);
+				const regenerated = await generateCurrentLayoutPlan();
 				if (!regenerated.ok) {
 					showToast(regenerated.message);
 					return;
