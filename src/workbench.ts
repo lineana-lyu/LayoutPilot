@@ -22,7 +22,6 @@ import {
 	type LayoutDiffPreviewMode,
 	type LayoutReviewScene,
 } from './domain/layoutDiffPreview';
-import type { CanvasRegion } from './domain/canvasRegion';
 import { collectAnalysisState, type AnalysisState } from './eda/analysisAdapter';
 import {
 	generateCurrentLayoutPlan,
