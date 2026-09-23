@@ -215,6 +215,48 @@ state = setAndArchiveWorkflowReferencePlan(
 assert.equal(state.layoutPlan?.id, referencePlan.id);
 assert.equal(state.referencePlans.length, 1);
 assert.equal(state.referencePlans[0].id, referencePlan.id);
+
+const referencePreview = createLayoutPreviewSession({
+	planId: referencePlan.id,
+	documentTabId: 'pcb-tab-reference',
+	createdAt: '2026-09-22T01:04:52.000Z',
+});
+state = setWorkflowLayoutPreviewSession(
+	state,
+	referencePreview,
+	'2026-09-22T01:04:52.000Z',
+);
+const repeatedSameOwnerDecision = createHumanOwnershipDecision(
+	{
+		snapshotId: snapshotA.id,
+		componentId: 'c14',
+		componentDesignator: 'C14',
+		ownerComponentId: 'u8',
+		ownerDesignator: 'U8',
+	},
+	'2026-09-22T01:04:53.000Z',
+);
+state = upsertWorkflowHumanDecision(
+	state,
+	repeatedSameOwnerDecision,
+	'2026-09-22T01:04:53.000Z',
+);
+assert.equal(
+	state.layoutPlan?.id,
+	referencePlan.id,
+	're-confirming the same Owner must not invalidate the active LayoutPlan',
+);
+assert.equal(
+	state.layoutPreviewSession?.planId,
+	referencePlan.id,
+	're-confirming the same Owner must preserve the active preview session',
+);
+assert.equal(
+	state.referencePlans.length,
+	1,
+	'idempotent Owner confirmation must not duplicate reference history',
+);
+
 assert.equal(Object.isFrozen(roundTrip), true);
 assert.equal(Object.isFrozen(roundTrip.semanticSnapshot), true);
 
