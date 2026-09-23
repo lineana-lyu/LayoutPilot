@@ -20,12 +20,10 @@ function finite(value: number): boolean {
 	return Number.isFinite(value);
 }
 
-export async function collectLayoutReviewScene(
+export async function collectLayoutReviewScenes(
 	plan: LayoutPlan,
-	itemIndex = 0,
-): Promise<LayoutReviewScene> {
-	const item = plan.items[itemIndex];
-	if (!item) {
+): Promise<LayoutReviewScene[]> {
+	if (!plan.items.length) {
 		throw new Error('布局方案中不存在可预览项。');
 	}
 
@@ -44,31 +42,7 @@ export async function collectLayoutReviewScene(
 		.map(buildLayoutReviewComponent)
 		.filter((value): value is LayoutReviewComponent => Boolean(value));
 
-	const subject = allComponentShapes.find(
-		component => component.id === item.subjectId,
-	);
-	if (!subject) {
-		throw new Error(`无法建立 ${item.subjectDesignator} 的审查显示几何。`);
-	}
-	const owner = allComponentShapes.find(
-		component => component.id === item.ownerId,
-	);
-
-	const viewport = buildLayoutReviewViewport(
-		item,
-		subject.bounds,
-		owner?.bounds,
-	);
-	const componentShapes = allComponentShapes.filter(component =>
-		boundsIntersectRegion(component.bounds, viewport)
-	);
-	const subjectTargetBounds = translateReviewBounds(
-		subject.bounds,
-		item.to.x - item.from.x,
-		item.to.y - item.from.y,
-	);
-
-	const traces: LayoutReviewTrace[] = lines
+	const rawTraces: LayoutReviewTrace[] = lines
 		.filter(line => Boolean(line.getState_Net()))
 		.map(line => ({
 			startX: line.getState_StartX(),
@@ -83,10 +57,9 @@ export async function collectLayoutReviewScene(
 			&& finite(trace.startY)
 			&& finite(trace.endX)
 			&& finite(trace.endY)
-			&& traceIntersectsRegion(trace, viewport)
 		);
 
-	const reviewVias: LayoutReviewVia[] = vias
+	const rawVias: LayoutReviewVia[] = vias
 		.filter(via => Boolean(via.getState_Net()))
 		.map(via => ({
 			x: via.getState_X(),
@@ -96,23 +69,66 @@ export async function collectLayoutReviewScene(
 		.filter(via =>
 			finite(via.x)
 			&& finite(via.y)
-			&& viaIntersectsRegion(via, viewport)
 		);
 
-	return {
-		planId: plan.id,
-		itemIndex,
-		item,
-		viewport,
-		boardOuter: board.region.outer.points.map(point => ({ ...point })),
-		boardHoles: board.region.holes.map(hole =>
-			hole.points.map(point => ({ ...point }))
-		),
-		components: componentShapes,
-		subject,
-		subjectTargetBounds,
-		owner,
-		traces,
-		vias: reviewVias,
-	};
+	return plan.items.map((item, itemIndex) => {
+		const subject = allComponentShapes.find(
+			component => component.id === item.subjectId,
+		);
+		if (!subject) {
+			throw new Error(
+				`无法建立 ${item.subjectDesignator} 的审查显示几何。`,
+			);
+		}
+		const owner = allComponentShapes.find(
+			component => component.id === item.ownerId,
+		);
+
+		const viewport = buildLayoutReviewViewport(
+			item,
+			subject.bounds,
+			owner?.bounds,
+		);
+		const componentShapes = allComponentShapes.filter(component =>
+			boundsIntersectRegion(component.bounds, viewport)
+		);
+		const subjectTargetBounds = translateReviewBounds(
+			subject.bounds,
+			item.to.x - item.from.x,
+			item.to.y - item.from.y,
+		);
+
+		return {
+			planId: plan.id,
+			itemIndex,
+			item,
+			viewport,
+			boardOuter: board.region.outer.points.map(point => ({ ...point })),
+			boardHoles: board.region.holes.map(hole =>
+				hole.points.map(point => ({ ...point }))
+			),
+			components: componentShapes,
+			subject,
+			subjectTargetBounds,
+			owner,
+			traces: rawTraces.filter(trace =>
+				traceIntersectsRegion(trace, viewport)
+			),
+			vias: rawVias.filter(via =>
+				viaIntersectsRegion(via, viewport)
+			),
+		};
+	});
+}
+
+export async function collectLayoutReviewScene(
+	plan: LayoutPlan,
+	itemIndex = 0,
+): Promise<LayoutReviewScene> {
+	const scenes = await collectLayoutReviewScenes(plan);
+	const scene = scenes[itemIndex];
+	if (!scene) {
+		throw new Error('布局方案中不存在可预览项。');
+	}
+	return scene;
 }
