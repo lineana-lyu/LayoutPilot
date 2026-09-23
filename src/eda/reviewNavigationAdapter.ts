@@ -112,7 +112,7 @@ async function zoomToRegion(
 export async function navigateReviewToPcb(
 	scene: LayoutReviewScene,
 	focus: ReviewNavigationFocus,
-): Promise<void> {
+): Promise<{ documentTabId: string }> {
 	const document = await eda.dmt_SelectControl.getCurrentDocumentInfo();
 	if (!document) {
 		throw new Error('无法获取当前 PCB 文档信息。');
@@ -123,6 +123,13 @@ export async function navigateReviewToPcb(
 
 	await eda.dmt_EditorControl.activateDocument(document.tabId);
 	await eda.dmt_EditorControl.removeIndicatorMarkers(document.tabId);
+
+	try {
+		await eda.pcb_SelectControl.clearSelected();
+	}
+	catch (error) {
+		console.warn('[LayoutPilot] unable to clear PCB selection before review navigation', error);
+	}
 
 	if (focus.selectPrimitiveId) {
 		try {
@@ -177,4 +184,8 @@ export async function navigateReviewToPcb(
 	}
 
 	await zoomToRegion(document.tabId, focus.region);
+
+	return {
+		documentTabId: document.tabId,
+	};
 }
