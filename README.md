@@ -132,6 +132,14 @@ Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
 
+## Next architecture — Native PCB Review Overlay
+
+The next review architecture is frozen in `docs/NATIVE_PCB_REVIEW_OVERLAY.md`.
+
+The key decision is to stop expanding the lightweight SVG renderer into a second PCB editor. For established / partially laid out boards, EasyEDA's native rendered canvas becomes the visual source of truth and LayoutPilot adds a non-destructive red/green placement diff. The current SVG scene remains as a fallback and as the basis for greenfield Proposal Canvas.
+
+P0 will not recolor native PCB primitives. Native canvas state remains untouched; preview state is disposable.
+
 ## Review geometry alignment
 
 v0.9.10 separates **safety geometry** from **review geometry**.
