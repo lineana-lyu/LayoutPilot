@@ -9,11 +9,21 @@ import type { PhysicalComponentSnapshot } from './physicalPlacement';
 
 export type LayoutDiffPreviewMode = 'original' | 'proposed' | 'diff';
 
+export interface LayoutReviewPad {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	rotation: number;
+}
+
 export interface LayoutReviewComponent {
 	id: string;
 	designator: string;
 	anchor: { x: number; y: number };
 	bounds: CanvasBounds;
+	layer: string;
+	pads: LayoutReviewPad[];
 	geometrySource: 'pad-envelope' | 'recentered-bbox';
 }
 
@@ -111,6 +121,14 @@ export function buildLayoutReviewComponent(
 			id: component.id,
 			designator: component.designator,
 			anchor: { x: component.x, y: component.y },
+			layer: component.layer,
+			pads: pads.map(pad => ({
+				x: pad.x,
+				y: pad.y,
+				width: pad.width,
+				height: pad.height,
+				rotation: pad.rotation,
+			})),
 			bounds: {
 				minX: xSpan.min,
 				minY: ySpan.min,
@@ -143,6 +161,8 @@ export function buildLayoutReviewComponent(
 			id: component.id,
 			designator: component.designator,
 			anchor: { x: component.x, y: component.y },
+			layer: component.layer,
+			pads: [],
 			bounds: {
 				minX: component.x - width / 2,
 				minY: component.y - height / 2,
