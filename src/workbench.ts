@@ -40,7 +40,6 @@ import {
 } from './ui/workbenchWindow';
 import { openEvidenceReviewBar, retireEvidenceReviewBar } from './ui/evidenceReviewWindow';
 import { clearActiveLayoutPreviewCanvas, openLayoutPreviewBar } from './ui/layoutPreviewWindow';
-import { renderLayoutDiffPreviewSvg } from './ui/layoutDiffPreview';
 import { renderFocusedLocalDetailCompare } from './ui/focusedPlacementDetail';
 import {
 	getStoredHumanOwnershipDecisions,
