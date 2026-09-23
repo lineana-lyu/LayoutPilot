@@ -304,3 +304,39 @@ export async function captureFocusedNativePcbReview(
 		}
 	}
 }
+
+
+export async function captureNativeBoardOverview(
+	scene: LayoutReviewScene,
+): Promise<{ documentTabId: string; overview: Blob }> {
+	const document = await eda.dmt_SelectControl.getCurrentDocumentInfo();
+	if (!document) {
+		throw new Error('无法获取当前 PCB 文档信息。');
+	}
+	if (document.documentType !== EDMT_EditorDocumentType.PCB) {
+		throw new Error('当前活动文档不是 PCB，无法获取原生整板定位图。');
+	}
+
+	await eda.dmt_EditorControl.activateDocument(document.tabId);
+	const regions = buildFocusedReviewRegions(scene);
+
+	try {
+		const overview = await captureRegion(
+			document.tabId,
+			regions.overview,
+			async () => undefined,
+		);
+		return {
+			documentTabId: document.tabId,
+			overview,
+		};
+	}
+	finally {
+		try {
+			await eda.dmt_EditorControl.removeIndicatorMarkers(document.tabId);
+		}
+		catch {
+			// Overview capture is read-only; marker cleanup failure is non-fatal.
+		}
+	}
+}
