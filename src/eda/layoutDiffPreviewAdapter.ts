@@ -76,6 +76,7 @@ export async function collectLayoutReviewScene(
 			endX: line.getState_EndX(),
 			endY: line.getState_EndY(),
 			width: Math.max(1, line.getState_LineWidth()),
+			layer: String(line.getState_Layer() ?? ''),
 		}))
 		.filter(trace =>
 			finite(trace.startX)
