@@ -12,7 +12,10 @@ import {
 	setAndArchiveStoredReferencePlan,
 	setStoredLayoutPlan,
 } from './eda/workflowStore';
-import { closeLayoutPreviewBarAndReturn } from './ui/layoutPreviewWindow';
+import {
+	closeLayoutPreviewBarAndReturn,
+	getLayoutPreviewBarContext,
+} from './ui/layoutPreviewWindow';
 
 const title = document.getElementById('title') as HTMLDivElement;
 const meta = document.getElementById('meta') as HTMLDivElement;
@@ -41,6 +44,10 @@ function currentPreviewPlan() {
 }
 
 function render(): void {
+	const context = getLayoutPreviewBarContext();
+	const navigationMode = context.mode === 'navigation';
+	document.body.classList.toggle('navigation-mode', navigationMode);
+
 	const plan = currentPreviewPlan();
 	if (!plan) {
 		title.textContent = 'LayoutPlan 已不存在';
@@ -50,6 +57,21 @@ function render(): void {
 		rejectBtn.disabled = true;
 		return;
 	}
+
+	if (navigationMode) {
+		title.textContent = context.label || 'PCB 定位核对';
+		meta.textContent = '已进入局部放大核对 · 可拖动或最小化此条';
+		items.textContent = '';
+		status.textContent = '';
+		returnBtn.textContent = '← 返回工作台';
+		rejectBtn.hidden = true;
+		acceptBtn.hidden = true;
+		return;
+	}
+
+	returnBtn.textContent = '返回工作台';
+	rejectBtn.hidden = false;
+	acceptBtn.hidden = false;
 
 	const blocked = plan.items.filter(item => item.executionBlockers.length > 0).length;
 	const acceptanceMode = layoutPlanAcceptanceMode(plan);
