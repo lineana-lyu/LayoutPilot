@@ -279,66 +279,40 @@ function renderLocalPcb(
 }
 
 function renderStructuredOverview(scene: LayoutReviewScene): string {
-	const regions = buildFocusedReviewRegions(scene);
-	const width = regions.overview.right - regions.overview.left;
-	const height = regions.overview.bottom - regions.overview.top;
-	const markerSize = Math.max(28, Math.min(56, Math.max(width, height) * 0.018));
-	const currentX = scene.subject.anchor.x;
-	const currentY = scene.subject.anchor.y;
-	const targetX = scene.item.to.x;
-	const targetY = scene.item.to.y;
-	const outer = scene.boardOuter.map(point => `${point.x},${-point.y}`).join(' ');
-
-	const navMarker = (
-		kind: 'current' | 'target',
-		x: number,
-		y: number,
-		color: string,
-		label: string,
-	) => `
-		<g class="review-hotspot minimap-marker"
-			data-review-nav="${kind}"
-			tabindex="0"
-			role="button"
-			aria-label="${escapeHtml(label)}，点击在真实 PCB 中定位">
-			<title>${escapeHtml(label)} · 点击在真实 PCB 中定位</title>
-			<rect class="review-focus-halo"
-				x="${x - markerSize * 0.85}"
-				y="${-y - markerSize * 0.85}"
-				width="${markerSize * 1.7}"
-				height="${markerSize * 1.7}"
-				rx="${markerSize * 0.18}"
-				fill="${color}"
-				fill-opacity=".08"
-				stroke="${color}"
-				stroke-width="3"
-				stroke-dasharray="8 5"
-				vector-effect="non-scaling-stroke"/>
-			<rect
-				x="${x - markerSize / 2}"
-				y="${-y - markerSize / 2}"
-				width="${markerSize}"
-				height="${markerSize}"
-				rx="${markerSize * 0.13}"
-				fill="${color}"
-				stroke="#ffffff"
-				stroke-width="2"
-				vector-effect="non-scaling-stroke"/>
-		</g>
-	`;
+	const subject = escapeHtml(scene.item.subjectDesignator);
+	const owner = escapeHtml(scene.item.ownerDesignator);
+	const movement = scene.item.movementMil.toFixed(1);
 
 	return `
-		<svg class="focused-vector-overview interactive"
-			viewBox="${regions.overview.left} ${-regions.overview.bottom} ${width} ${height}"
-			preserveAspectRatio="xMidYMid meet"
-			role="img">
-			<rect x="${regions.overview.left}" y="${-regions.overview.bottom}" width="${width}" height="${height}" fill="#2d3035"/>
-			<polygon points="${outer}" fill="#64132b" stroke="#c8b057" stroke-width="3" vector-effect="non-scaling-stroke"/>
-			<line x1="${currentX}" y1="${-currentY}" x2="${targetX}" y2="${-targetY}"
-				stroke="#cfd5da" stroke-width="2" stroke-dasharray="9 7" vector-effect="non-scaling-stroke"/>
-			${navMarker('current', currentX, currentY, '#d74444', `CURRENT · ${scene.item.subjectDesignator}`)}
-			${navMarker('target', targetX, targetY, '#24a66a', `TARGET · ${scene.item.subjectDesignator}`)}
-		</svg>
+		<div class="review-nav-strip" aria-label="布局位置导航">
+			<button
+				class="review-nav-node current"
+				data-review-nav="current"
+				type="button"
+				title="定位到 ${subject} 当前真实位置"
+			>
+				<span class="review-nav-kicker">CURRENT</span>
+				<strong>${subject}</strong>
+				<small>当前真实位置</small>
+			</button>
+
+			<div class="review-nav-move" aria-hidden="true">
+				<span class="review-nav-line"></span>
+				<strong>${movement} mil</strong>
+				<span>移动</span>
+			</div>
+
+			<button
+				class="review-nav-node target"
+				data-review-nav="target"
+				type="button"
+				title="定位到 ${subject} 的建议位置"
+			>
+				<span class="review-nav-kicker">TARGET</span>
+				<strong>${subject}</strong>
+				<small>near(${owner})</small>
+			</button>
+		</div>
 	`;
 }
 
@@ -353,8 +327,8 @@ export function renderFocusedLocalDetailCompare(input: {
 			<section class="focused-overview-card">
 				<div class="focused-section-head">
 					<div>
-						<strong>整板导航</strong>
-						<span>红色旧位置 → 绿色建议位置；点击方块直接跳到真实 PCB</span>
+						<strong>位置导航</strong>
+						<span>不再缩成整板小地图；直接选择“当前位置”或“建议位置”进入真实 PCB</span>
 					</div>
 				</div>
 				<div class="focused-overview-image-wrap">${renderStructuredOverview(input.scene)}</div>
