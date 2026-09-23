@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.17 Multi-Plan Layer Preview
+## Current stage — v0.9.18 Planning Correctness & Owner-Cluster Planning
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -131,6 +131,18 @@ v0.9.6 separates **accepting a recommendation** from **authorizing PCB mutation*
 Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with EasyEDA's explicit `zoomToRegion` API around current position, proposed position and available Owner bounds instead of preserving the user's previous zoom level. Evidence review uses the same explicit-region pattern rather than relying on `zoomToSelectedPrimitives`, whose internal selection BBox calculation can fail on real projects when a selected primitive has incomplete bounds.
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
+
+## v0.9.18 Planning Correctness & Owner-Cluster Planning
+
+v0.9.18 moves the product focus from richer preview presentation to placement correctness.
+
+1. **KEEP_CURRENT is a first-class candidate.** Current placement and proposed placements are evaluated by the same objective. A component is no longer moved merely because the planner can find a legal coordinate; a move must strictly improve the objective after relocation cost. Recommendations that make the loop proxy worse are filtered before LayoutPlan creation.
+
+2. **Owner neighborhoods are solved jointly.** Confirmed decoupling constraints sharing the same Owner / power / ground context are grouped into one placement cluster. Each member contributes several legal alternatives plus KEEP_CURRENT, then a deterministic branch-and-bound assignment minimizes total cluster cost while enforcing pairwise clearance. If the joint search cannot complete within its explicit state budget, the cluster fails closed instead of falling back to designator-ordered greedy placement.
+
+3. **Preview navigation is bound to the source PCB tab.** Review scenes freeze the exact EasyEDA PCB tab ID when they are collected. Clicking CURRENT, TARGET or a context component reactivates that exact tab before selection/markers/zoom, rather than rediscovering whichever document happens to be active after the workbench is hidden.
+
+The architecture intentionally keeps candidate generation, hard legality checks, objective scoring and cluster assignment separate. Tests remain under `tests/`; production code contains no fixture injection, hard-coded designators or test-only branches.
 
 ## v0.9.17 Multi-Plan Layer Preview
 
