@@ -1,4 +1,5 @@
 import { boxInsideBoardRegion, boxIntersectsPolygon, type BoardPolygon, type BoardRegion } from './boardBoundary';
+import { evaluatePlacementObjective, isStrictPlacementImprovement } from './placementObjective';
 
 export interface PhysicalPadSnapshot {
 	componentId: string;
@@ -367,7 +368,54 @@ export function validatePlacementTarget(input: {
 	return { valid: true, reasons: [] };
 }
 
-export function planDecouplingPlacement(input: {
+export type PhysicalPlacementAlternativeKind = 'keep-current' | 'move';
+
+export interface PhysicalPlacementAlternative {
+	kind: PhysicalPlacementAlternativeKind;
+	cost: number;
+	loopProxyMil: number;
+	movementMil: number;
+	target: PlacementPoint;
+	targetBounds: PhysicalBounds;
+	clearanceMil: number;
+	plan?: PhysicalPlacementPlan;
+}
+
+export interface PhysicalPlacementAlternatives {
+	ready: boolean;
+	reasons: string[];
+	executionBlockers: string[];
+	alternatives: PhysicalPlacementAlternative[];
+}
+
+function bestCurrentLoopProxy(input: {
+	subjectPowerPads: PhysicalPadSnapshot[];
+	subjectGroundPads: PhysicalPadSnapshot[];
+	ownerPowerPads: PhysicalPadSnapshot[];
+	ownerGroundPads: PhysicalPadSnapshot[];
+}): number | undefined {
+	let best = Number.POSITIVE_INFINITY;
+	for (const subjectPowerPad of input.subjectPowerPads) {
+		for (const ownerPowerPad of input.ownerPowerPads) {
+			const powerDistance = Math.hypot(
+				subjectPowerPad.x - ownerPowerPad.x,
+				subjectPowerPad.y - ownerPowerPad.y,
+			);
+			for (const subjectGroundPad of input.subjectGroundPads) {
+				for (const ownerGroundPad of input.ownerGroundPads) {
+					const groundDistance = Math.hypot(
+						subjectGroundPad.x - ownerGroundPad.x,
+						subjectGroundPad.y - ownerGroundPad.y,
+					);
+					best = Math.min(best, powerDistance + groundDistance);
+				}
+			}
+		}
+	}
+	return Number.isFinite(best) ? best : undefined;
+}
+
+export function enumerateDecouplingPlacementAlternatives(input: {
 	subject: PhysicalComponentSnapshot;
 	owner: PhysicalComponentSnapshot;
 	obstacles: PhysicalComponentSnapshot[];
@@ -377,7 +425,8 @@ export function planDecouplingPlacement(input: {
 	groundNet: string;
 	clearanceMil?: number;
 	mode?: 'preview' | 'execution';
-}): PlacementReadiness {
+	maxMoveAlternatives?: number;
+}): PhysicalPlacementAlternatives {
 	const {
 		subject,
 		owner,
@@ -389,6 +438,10 @@ export function planDecouplingPlacement(input: {
 	} = input;
 	const clearanceMil = input.clearanceMil ?? DEFAULT_CLEARANCE_MIL;
 	const mode = input.mode ?? 'execution';
+	const maxMoveAlternatives = Math.max(
+		1,
+		Math.min(input.maxMoveAlternatives ?? 8, 16),
+	);
 	const reasons = [
 		...validateComponentGeometry(subject),
 		...validateComponentGeometry(owner),
@@ -425,31 +478,23 @@ export function planDecouplingPlacement(input: {
 	const ownerGroundPads = owner.pads.filter(pad => pad.net === groundNet);
 
 	if (!subjectPowerPads.length) {
-		reasons.push(
-			`${subject.designator} 未找到电源网 ${powerNet} 的焊盘`,
-		);
+		reasons.push(`${subject.designator} 未找到电源网 ${powerNet} 的焊盘`);
 	}
 	if (!subjectGroundPads.length) {
-		reasons.push(
-			`${subject.designator} 未找到地网 ${groundNet} 的焊盘`,
-		);
+		reasons.push(`${subject.designator} 未找到地网 ${groundNet} 的焊盘`);
 	}
 	if (!ownerPowerPads.length) {
-		reasons.push(
-			`${owner.designator} 未找到同一电源网 ${powerNet} 的焊盘`,
-		);
+		reasons.push(`${owner.designator} 未找到同一电源网 ${powerNet} 的焊盘`);
 	}
 	if (!ownerGroundPads.length) {
-		reasons.push(
-			`${owner.designator} 未找到地网 ${groundNet} 的焊盘`,
-		);
+		reasons.push(`${owner.designator} 未找到地网 ${groundNet} 的焊盘`);
 	}
 	if (!Number.isFinite(clearanceMil) || clearanceMil <= 0) {
 		reasons.push('布局安全间距必须为正数');
 	}
 
 	if (reasons.length) {
-		return { ready: false, reasons, executionBlockers };
+		return { ready: false, reasons, executionBlockers, alternatives: [] };
 	}
 
 	const subjectBox = componentBox(subject);
@@ -459,6 +504,7 @@ export function planDecouplingPlacement(input: {
 			ready: false,
 			reasons: ['无法建立 subject / owner 的 EasyEDA 实测器件 BBox'],
 			executionBlockers,
+			alternatives: [],
 		};
 	}
 
@@ -474,13 +520,40 @@ export function planDecouplingPlacement(input: {
 				`无法确认 ${invalidObstacle.designator} 的 EasyEDA 实测 BBox，不能证明候选位置无碰撞`,
 			],
 			executionBlockers,
+			alternatives: [],
 		};
 	}
 
-	const candidates: Array<{
-		plan: PhysicalPlacementPlan;
-		score: number;
-	}> = [];
+	const currentLoopProxy = bestCurrentLoopProxy({
+		subjectPowerPads,
+		subjectGroundPads,
+		ownerPowerPads,
+		ownerGroundPads,
+	});
+	if (currentLoopProxy === undefined) {
+		return {
+			ready: false,
+			reasons: ['无法建立当前位置的去耦回路几何基线'],
+			executionBlockers,
+			alternatives: [],
+		};
+	}
+
+	const baselineObjective = evaluatePlacementObjective({
+		loopProxyMil: currentLoopProxy,
+		movementMil: 0,
+	});
+	const keepCurrent: PhysicalPlacementAlternative = {
+		kind: 'keep-current',
+		cost: baselineObjective.totalCost,
+		loopProxyMil: currentLoopProxy,
+		movementMil: 0,
+		target: { x: subject.x, y: subject.y },
+		targetBounds: { ...subjectBox },
+		clearanceMil,
+	};
+
+	const moveAlternatives: PhysicalPlacementAlternative[] = [];
 	const rejectionCounts = new Map<PlacementTargetFailureCode, number>();
 	const searchStepMil = localSearchStep(clearanceMil);
 	const searchRadiusMil = localSearchRadius(
@@ -488,11 +561,7 @@ export function planDecouplingPlacement(input: {
 		ownerBox,
 		clearanceMil,
 	);
-	const searchOffsets = buildLocalSearchOffsets(
-		searchStepMil,
-		searchRadiusMil,
-	);
-
+	const searchOffsets = buildLocalSearchOffsets(searchStepMil, searchRadiusMil);
 	const recordRejection = (code?: PlacementTargetFailureCode) => {
 		if (!code) return;
 		rejectionCounts.set(code, (rejectionCounts.get(code) ?? 0) + 1);
@@ -556,84 +625,125 @@ export function planDecouplingPlacement(input: {
 						}
 					}
 				}
+				if (!bestGroundPair) continue;
 
-				if (!bestGroundPair) {
+				const powerDistance = Math.hypot(offset.x, offset.y);
+				const loopProxy = powerDistance + bestGroundPair.distance;
+				const moveDistance = Math.hypot(dx, dy);
+				const objective = evaluatePlacementObjective({
+					loopProxyMil: loopProxy,
+					movementMil: moveDistance,
+				});
+				if (!isStrictPlacementImprovement(baselineObjective, objective)) {
 					continue;
 				}
 
-				const powerDistance = Math.hypot(offset.x, offset.y);
-				const currentPowerDistance = Math.hypot(
-					subjectPowerPad.x - ownerPowerPad.x,
-					subjectPowerPad.y - ownerPowerPad.y,
-				);
-				const currentGroundDistance = Math.hypot(
-					bestGroundPair.subjectPad.x - bestGroundPair.ownerPad.x,
-					bestGroundPair.subjectPad.y - bestGroundPair.ownerPad.y,
-				);
-				const currentLoopProxy = currentPowerDistance + currentGroundDistance;
-				const moveDistance = Math.hypot(dx, dy);
-				const loopProxy = powerDistance + bestGroundPair.distance;
-				const score = loopProxy + moveDistance * 0.05;
-
-				candidates.push({
-					score,
-					plan: {
-						subjectId: subject.id,
-						subjectDesignator: subject.designator,
-						ownerId: owner.id,
-						ownerDesignator: owner.designator,
-						powerNet,
-						groundNet,
-						ownerPowerPadNumber: ownerPowerPad.padNumber,
-						subjectPowerPadNumber: subjectPowerPad.padNumber,
-						ownerGroundPadNumber: bestGroundPair.ownerPad.padNumber,
-						subjectGroundPadNumber: bestGroundPair.subjectPad.padNumber,
-						currentLoopProxyMil: currentLoopProxy,
-						estimatedLoopProxyMil: loopProxy,
-						from: { x: subject.x, y: subject.y },
-						to,
-						clearanceMil,
-						rationale:
-							'以 owner 同电源网 Pad 为中心执行有界局部占用栅格搜索；每个候选仍通过板框、NO_COMPONENTS keepout 与 EasyEDA 实测器件 BBox 的统一硬约束校验，再用 power-pad 距离 + 最近 ground 返回距离作为去耦回路几何代理排序。搜索只扩大候选覆盖，不降低既有安全门槛。',
-					},
+				const plan: PhysicalPlacementPlan = {
+					subjectId: subject.id,
+					subjectDesignator: subject.designator,
+					ownerId: owner.id,
+					ownerDesignator: owner.designator,
+					powerNet,
+					groundNet,
+					ownerPowerPadNumber: ownerPowerPad.padNumber,
+					subjectPowerPadNumber: subjectPowerPad.padNumber,
+					ownerGroundPadNumber: bestGroundPair.ownerPad.padNumber,
+					subjectGroundPadNumber: bestGroundPair.subjectPad.padNumber,
+					currentLoopProxyMil: currentLoopProxy,
+					estimatedLoopProxyMil: loopProxy,
+					from: { x: subject.x, y: subject.y },
+					to,
+					clearanceMil,
+					rationale:
+						'当前位置作为正式 no-op 基线参与同一目标函数比较；仅保留严格优于当前状态的候选。候选通过板框、NO_COMPONENTS keepout 与 EasyEDA 实测器件 BBox 硬约束后，再按去耦回路几何代理与移动代价排序。',
+				};
+				moveAlternatives.push({
+					kind: 'move',
+					cost: objective.totalCost,
+					loopProxyMil: loopProxy,
+					movementMil: moveDistance,
+					target: { ...to },
+					targetBounds: translatedBox(subjectBox, dx, dy),
+					clearanceMil,
+					plan,
 				});
 			}
 		}
 	}
 
-	if (candidates.length) {
-		candidates.sort((a, b) =>
-			a.score - b.score
-			|| a.plan.to.x - b.plan.to.x
-			|| a.plan.to.y - b.plan.to.y,
-		);
+	moveAlternatives.sort((a, b) =>
+		a.cost - b.cost
+		|| a.target.x - b.target.x
+		|| a.target.y - b.target.y
+	);
+
+	if (!moveAlternatives.length) {
+		const rejectionSummary = [
+			['器件 BBox 碰撞', rejectionCounts.get('collision') ?? 0],
+			['板框 / 安全余量', rejectionCounts.get('board-boundary') ?? 0],
+			['NO_COMPONENTS keepout', rejectionCounts.get('keepout') ?? 0],
+			['障碍物几何无效', rejectionCounts.get('invalid-obstacle') ?? 0],
+			['候选输入无效', rejectionCounts.get('invalid-input') ?? 0],
+		]
+			.filter(([, count]) => Number(count) > 0)
+			.map(([label, count]) => `${label} ${count}`)
+			.join('，');
 		return {
 			ready: true,
-			reasons: [],
+			reasons: rejectionSummary
+				? [`没有新位置能够严格优于当前位置；候选拒绝统计：${rejectionSummary}。`]
+				: ['当前位置在当前目标函数下优于或等于全部合法新位置。'],
 			executionBlockers,
-			plan: candidates[0].plan,
+			alternatives: [keepCurrent],
 		};
 	}
 
-	const rejectionSummary = [
-		['器件 BBox 碰撞', rejectionCounts.get('collision') ?? 0],
-		['板框 / 安全余量', rejectionCounts.get('board-boundary') ?? 0],
-		['NO_COMPONENTS keepout', rejectionCounts.get('keepout') ?? 0],
-		['障碍物几何无效', rejectionCounts.get('invalid-obstacle') ?? 0],
-		['候选输入无效', rejectionCounts.get('invalid-input') ?? 0],
-	]
-		.filter(([, count]) => Number(count) > 0)
-		.map(([label, count]) => `${label} ${count}`)
-		.join('，');
-
 	return {
-		ready: false,
-		reasons: [
-			`在 Owner 电源 Pad 周围 ${searchRadiusMil.toFixed(0)} mil 的局部占用栅格内未找到合法候选位置（步长 ${searchStepMil.toFixed(0)} mil，安全间距 ${clearanceMil} mil）。`,
-			rejectionSummary
-				? `候选拒绝统计：${rejectionSummary}。`
-				: '没有候选通过当前物理安全门槛。',
-		],
+		ready: true,
+		reasons: [],
 		executionBlockers,
+		alternatives: [
+			keepCurrent,
+			...moveAlternatives.slice(0, maxMoveAlternatives),
+		],
+	};
+}
+
+export function planDecouplingPlacement(input: {
+	subject: PhysicalComponentSnapshot;
+	owner: PhysicalComponentSnapshot;
+	obstacles: PhysicalComponentSnapshot[];
+	board: BoardRegion;
+	componentKeepouts: BoardPolygon[];
+	powerNet: string;
+	groundNet: string;
+	clearanceMil?: number;
+	mode?: 'preview' | 'execution';
+}): PlacementReadiness {
+	const result = enumerateDecouplingPlacementAlternatives(input);
+	if (!result.ready) {
+		return {
+			ready: false,
+			reasons: result.reasons,
+			executionBlockers: result.executionBlockers,
+		};
+	}
+	const move = result.alternatives.find(alternative =>
+		alternative.kind === 'move' && alternative.plan
+	);
+	if (!move?.plan) {
+		return {
+			ready: false,
+			reasons: result.reasons.length
+				? result.reasons
+				: [`${input.subject.designator} 当前位置已是当前目标函数下的最优状态，无需移动。`],
+			executionBlockers: result.executionBlockers,
+		};
+	}
+	return {
+		ready: true,
+		reasons: [],
+		executionBlockers: result.executionBlockers,
+		plan: move.plan,
 	};
 }
