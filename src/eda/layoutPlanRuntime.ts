@@ -73,7 +73,7 @@ function buildPlanningCandidates(
 }
 
 export async function generateCurrentLayoutPlan(
-	maxItems = 4,
+	maxItems = 8,
 ): Promise<GenerateLayoutPlanResult> {
 	const session = await collectCurrentConstraintSession();
 	if (!session.ok) {
