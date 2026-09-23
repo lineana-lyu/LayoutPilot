@@ -108,6 +108,26 @@ Apply accepted LayoutPlan = explicit mutation boundary
 No external editor framework is bundled into the extension.
 
 
+## v0.9.9 plan-scoped physical identity
+
+A LayoutPlan physical fingerprint now has one explicit rule for routing evidence:
+
+> routing-state evidence is included only for component subjects that are actually present in that frozen LayoutPlan.
+
+The full-board component geometry, board region and keepouts remain part of the physical fingerprint as before.
+
+This fixes a false invalidation exposed when multiple Owner decisions exist but the current MVP freezes only one LayoutPlan item. Generation may inspect routing for several candidates while choosing a plan, but the finalized fingerprint projects that evidence onto the subjects that actually entered the plan. Validation uses the same projection.
+
+Therefore:
+
+```
+C21 plan subject routing changed → fingerprint changes
+C24 routing evidence collected but C24 not in plan → no false C21 invalidation
+board / component geometry / keepout changed → fingerprint changes
+```
+
+No stale-plan check is skipped.
+
 ## v0.9.8 workbench diff scene
 
 The primary review surface is now an inline workbench scene rather than the full EasyEDA canvas. This intentionally remains a **review renderer**, not a second PCB editor.
