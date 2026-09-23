@@ -27,6 +27,12 @@ export async function collectLayoutReviewScenes(
 		throw new Error('布局方案中不存在可预览项。');
 	}
 
+	const document = await eda.dmt_SelectControl.getCurrentDocumentInfo();
+	if (!document || document.documentType !== EDMT_EditorDocumentType.PCB) {
+		throw new Error('生成布局审查场景时当前活动文档不是 PCB。');
+	}
+	const documentTabId = document.tabId;
+
 	const [board, physicalComponents, lines, vias] = await Promise.all([
 		collectSimpleBoardBoundary(),
 		collectPhysicalComponents(),
@@ -99,6 +105,7 @@ export async function collectLayoutReviewScenes(
 		);
 
 		return {
+			documentTabId,
 			planId: plan.id,
 			itemIndex,
 			item,
