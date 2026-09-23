@@ -1118,7 +1118,26 @@ async function refresh(): Promise<void> {
 		el<HTMLDivElement>('metricPending').textContent = String(pending);
 		el<HTMLDivElement>('metricConstraints').textContent = String(model.constraintCount);
 		renderTasks(model.tasks, model);
-		renderCurrentTask(model.tasks, model);
+		if (inlineLayoutReview) {
+			const reviewPlan = [
+				model.layoutPlan,
+				...model.referencePlans,
+			].find(plan => plan?.id === inlineLayoutReview?.plan.id);
+			if (reviewPlan) {
+				inlineLayoutReview = {
+					...inlineLayoutReview,
+					plan: reviewPlan,
+				};
+				renderInlineLayoutReview();
+			}
+			else {
+				inlineLayoutReview = undefined;
+				renderCurrentTask(model.tasks, model);
+			}
+		}
+		else {
+			renderCurrentTask(model.tasks, model);
+		}
 		renderPlanPanel(model);
 
 		setStage('stageAnalyze', 'done');
@@ -1169,11 +1188,11 @@ async function refresh(): Promise<void> {
 		previewPlanBtn.disabled = model.previewEligibleCount === 0;
 		previewPlanBtn.textContent = plan
 			? plan.status === 'preview'
-				? '查看布局预览'
+				? '工作台预览'
 				: plan.status === 'accepted'
 					? planMode === 'reference-only'
 						? '查看参考方案'
-						: '查看已接受方案'
+						: '工作台预览'
 					: '重新生成布局预览'
 			: '生成布局预览';
 
@@ -1306,7 +1325,7 @@ previewPlanBtn.addEventListener('click', async () => {
 			}
 		}
 
-		await presentLayoutPlanPreview(plan);
+		await openInlineLayoutReview(plan);
 	}
 	catch (error) {
 		console.error('[LayoutPilot Workbench] layout preview failed', error);
