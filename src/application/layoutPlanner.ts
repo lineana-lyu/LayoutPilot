@@ -1,13 +1,18 @@
 import type { BoardPolygon, BoardRegion } from '../domain/boardBoundary';
 import {
+	solveClusterAssignment,
+	type ClusterPlacementMember,
+} from '../domain/clusterAssignment';
+import {
 	createLayoutPlan,
 	type LayoutPlan,
 	type LayoutPlanItem,
 } from '../domain/layoutPlan';
 import {
-	planDecouplingPlacement,
+	enumerateDecouplingPlacementAlternatives,
 	type PhysicalBounds,
 	type PhysicalComponentSnapshot,
+	type PhysicalPlacementAlternative,
 	type PhysicalPlacementPlan,
 } from '../domain/physicalPlacement';
 
@@ -27,9 +32,25 @@ export interface LayoutPlanningSkip {
 	reasons: string[];
 }
 
+export interface LayoutPlanningUnchanged {
+	constraintId: string;
+	subjectDesignator: string;
+	ownerDesignator: string;
+	currentLoopProxyMil: number;
+	reason: string;
+}
+
 export interface LocalLayoutPlanResult {
 	plan?: LayoutPlan;
 	skipped: LayoutPlanningSkip[];
+	unchanged: LayoutPlanningUnchanged[];
+}
+
+interface ClusterMemberPayload {
+	candidate: LayoutPlanningCandidate;
+	subject: PhysicalComponentSnapshot;
+	alternative: PhysicalPlacementAlternative;
+	executionBlockers: string[];
 }
 
 function translateBounds(
@@ -52,7 +73,6 @@ function planToItem(
 	executionBlockers: string[],
 ): LayoutPlanItem | undefined {
 	if (!subject.bounds) return undefined;
-
 	const dx = plan.to.x - plan.from.x;
 	const dy = plan.to.y - plan.from.y;
 
@@ -103,6 +123,25 @@ function translateComponent(
 	};
 }
 
+function clusterKey(candidate: LayoutPlanningCandidate): string {
+	return [
+		candidate.ownerId,
+		candidate.powerNet,
+		candidate.groundNet,
+	].join('|');
+}
+
+function moveAlternativeBudget(clusterSize: number): number {
+	// Keep the Cartesian search space below the explicit cluster solver budget
+	// without hard-coding one option count for every neighborhood size.
+	const stateTarget = 30_000;
+	const totalOptionsPerMember = Math.max(
+		3,
+		Math.min(13, Math.floor(stateTarget ** (1 / Math.max(1, clusterSize)))),
+	);
+	return totalOptionsPerMember - 1; // one option is reserved for KEEP_CURRENT
+}
+
 export function buildLocalLayoutPlan(input: {
 	snapshotId: string;
 	semanticFingerprint: string;
@@ -113,21 +152,26 @@ export function buildLocalLayoutPlan(input: {
 	componentKeepouts: BoardPolygon[];
 	maxItems?: number;
 }): LocalLayoutPlanResult {
-	const maxItems = Math.max(1, Math.min(input.maxItems ?? 4, 8));
 	const uniqueCandidates = new Map<string, LayoutPlanningCandidate>();
-
 	for (const candidate of input.candidates) {
 		if (!uniqueCandidates.has(candidate.subjectId)) {
 			uniqueCandidates.set(candidate.subjectId, candidate);
 		}
 	}
 
-	const ordered = [...uniqueCandidates.values()]
-		.sort((a, b) =>
-			a.ownerDesignator.localeCompare(b.ownerDesignator)
-			|| a.subjectDesignator.localeCompare(b.subjectDesignator),
-		)
-		.slice(0, maxItems);
+	const clusterMap = new Map<string, LayoutPlanningCandidate[]>();
+	for (const candidate of uniqueCandidates.values()) {
+		const key = clusterKey(candidate);
+		const members = clusterMap.get(key) ?? [];
+		members.push(candidate);
+		clusterMap.set(key, members);
+	}
+
+	// Larger electrical neighborhoods are solved first. Designators no longer
+	// determine who gets the best physical slots around an owner.
+	const clusters = [...clusterMap.entries()].sort((a, b) =>
+		b[1].length - a[1].length || a[0].localeCompare(b[0])
+	);
 
 	let virtualComponents: PhysicalComponentSnapshot[] = input.physicalComponents.map(component => ({
 		...component,
@@ -136,69 +180,153 @@ export function buildLocalLayoutPlan(input: {
 	}));
 	const items: LayoutPlanItem[] = [];
 	const skipped: LayoutPlanningSkip[] = [];
+	const unchanged: LayoutPlanningUnchanged[] = [];
 
-	for (const candidate of ordered) {
-		const subject = virtualComponents.find(
-			component => component.id === candidate.subjectId,
+	for (const [, clusterCandidates] of clusters) {
+		const clusterSubjectIds = new Set(clusterCandidates.map(candidate => candidate.subjectId));
+		const fixedObstacles = virtualComponents.filter(
+			component => !clusterSubjectIds.has(component.id),
 		);
-		const owner = virtualComponents.find(
-			component => component.id === candidate.ownerId,
-		);
+		const solverMembers: ClusterPlacementMember<ClusterMemberPayload>[] = [];
+		let clusterInvalid = false;
 
-		if (!subject || !owner) {
-			skipped.push({
-				constraintId: candidate.constraintId,
-				subjectDesignator: candidate.subjectDesignator,
-				reasons: ['无法在当前 PCB 物理快照中定位 subject 或 owner'],
+		for (const candidate of clusterCandidates) {
+			const subject = virtualComponents.find(component => component.id === candidate.subjectId);
+			const owner = virtualComponents.find(component => component.id === candidate.ownerId);
+			if (!subject || !owner) {
+				skipped.push({
+					constraintId: candidate.constraintId,
+					subjectDesignator: candidate.subjectDesignator,
+					reasons: ['无法在当前 PCB 物理快照中定位 subject 或 owner'],
+				});
+				clusterInvalid = true;
+				continue;
+			}
+
+			const alternatives = enumerateDecouplingPlacementAlternatives({
+				subject,
+				owner,
+				obstacles: fixedObstacles,
+				board: input.board,
+				componentKeepouts: input.componentKeepouts,
+				powerNet: candidate.powerNet,
+				groundNet: candidate.groundNet,
+				mode: 'preview',
+				maxMoveAlternatives: moveAlternativeBudget(clusterCandidates.length),
 			});
+			if (!alternatives.ready || !alternatives.alternatives.length) {
+				skipped.push({
+					constraintId: candidate.constraintId,
+					subjectDesignator: candidate.subjectDesignator,
+					reasons: alternatives.reasons.length
+						? [...alternatives.reasons]
+						: ['没有可参与联合规划的布局状态'],
+				});
+				clusterInvalid = true;
+				continue;
+			}
+
+			solverMembers.push({
+				subjectId: subject.id,
+				options: alternatives.alternatives.map((alternative, index) => ({
+					id: `${subject.id}:${alternative.kind}:${index}`,
+					subjectId: subject.id,
+					cost: alternative.cost,
+					bounds: { ...alternative.targetBounds },
+					clearanceMil: alternative.clearanceMil,
+					keepsCurrent: alternative.kind === 'keep-current',
+					payload: {
+						candidate,
+						subject,
+						alternative,
+						executionBlockers: [...alternatives.executionBlockers],
+					},
+				})),
+			});
+		}
+
+		// A partially missing cluster would make the remaining joint solution
+		// misleading, so fail closed for that cluster instead of reverting to
+		// sequential greedy placement.
+		if (clusterInvalid || solverMembers.length !== clusterCandidates.length) {
 			continue;
 		}
 
-		const readiness = planDecouplingPlacement({
-			subject,
-			owner,
-			obstacles: virtualComponents,
-			board: input.board,
-			componentKeepouts: input.componentKeepouts,
-			powerNet: candidate.powerNet,
-			groundNet: candidate.groundNet,
-			mode: 'preview',
-		});
-
-		if (!readiness.ready || !readiness.plan) {
-			skipped.push({
-				constraintId: candidate.constraintId,
-				subjectDesignator: candidate.subjectDesignator,
-				reasons: [...readiness.reasons],
-			});
+		const solution = solveClusterAssignment({ members: solverMembers });
+		if (!solution.complete) {
+			for (const candidate of clusterCandidates) {
+				skipped.push({
+					constraintId: candidate.constraintId,
+					subjectDesignator: candidate.subjectDesignator,
+					reasons: [solution.reason ?? 'Cluster 联合规划失败'],
+				});
+			}
 			continue;
 		}
 
-		const item = planToItem(
-			candidate,
-			subject,
-			readiness.plan,
-			readiness.executionBlockers,
-		);
-		if (!item) {
-			skipped.push({
-				constraintId: candidate.constraintId,
-				subjectDesignator: candidate.subjectDesignator,
-				reasons: ['缺少 subject 实测 BBox，无法建立 Ghost Preview 轮廓'],
-			});
-			continue;
-		}
+		for (const assignment of solution.assignments) {
+			const {
+				candidate,
+				subject,
+				alternative,
+				executionBlockers,
+			} = assignment.payload;
 
-		items.push(item);
-		virtualComponents = virtualComponents.map(component =>
-			component.id === subject.id
-				? translateComponent(component, readiness.plan!.to)
-				: component,
-		);
+			if (alternative.kind === 'keep-current' || !alternative.plan) {
+				unchanged.push({
+					constraintId: candidate.constraintId,
+					subjectDesignator: candidate.subjectDesignator,
+					ownerDesignator: candidate.ownerDesignator,
+					currentLoopProxyMil: alternative.loopProxyMil,
+					reason: '当前位置参与与新位置相同的目标函数比较，并在联合规划中胜出。',
+				});
+				continue;
+			}
+
+			const item = planToItem(
+				candidate,
+				subject,
+				alternative.plan,
+				executionBlockers,
+			);
+			if (!item) {
+				skipped.push({
+					constraintId: candidate.constraintId,
+					subjectDesignator: candidate.subjectDesignator,
+					reasons: ['缺少 subject 实测 BBox，无法建立 Ghost Preview 轮廓'],
+				});
+				continue;
+			}
+			items.push(item);
+			virtualComponents = virtualComponents.map(component =>
+				component.id === subject.id
+					? translateComponent(component, alternative.plan!.to)
+					: component
+			);
+		}
+	}
+
+	if (
+		input.maxItems !== undefined
+		&& items.length > Math.max(1, input.maxItems)
+	) {
+		return {
+			skipped: [
+				...skipped,
+				{
+					constraintId: 'layout-plan-capacity',
+					subjectDesignator: 'LayoutPlan',
+					reasons: [
+						`联合规划产生 ${items.length} 个必要移动，超过调用方允许的 ${input.maxItems} 项。为避免截断 Cluster 结果，已失败关闭。`,
+					],
+				},
+			],
+			unchanged,
+		};
 	}
 
 	if (!items.length) {
-		return { skipped };
+		return { skipped, unchanged };
 	}
 
 	return {
@@ -209,5 +337,6 @@ export function buildLocalLayoutPlan(input: {
 			items,
 		}),
 		skipped,
+		unchanged,
 	};
 }

@@ -141,6 +141,12 @@ interface InlineLayoutReviewState {
 		subjectDesignator: string;
 		reasons: string[];
 	}>;
+	unchanged: Array<{
+		subjectDesignator: string;
+		ownerDesignator: string;
+		currentLoopProxyMil: number;
+		reason: string;
+	}>;
 }
 
 let inlineLayoutReview: InlineLayoutReviewState | undefined;
@@ -453,7 +459,17 @@ function renderInlineLayoutReview(): void {
 			<div class="layout-review-head">
 				<div>
 					<div class="layout-review-title">布局差异预览 · ${escapeHtml(item.subjectDesignator)} → near(${escapeHtml(item.ownerDesignator)})</div>
-					<div class="layout-review-sub">${escapeHtml(planLabel)} · 共 ${scenes.length} 项修改 · 当前 ${activeItemIndex + 1}/${scenes.length} · ${escapeHtml(visualSourceLabel)}</div>
+					<div class="layout-review-sub">${escapeHtml(planLabel)} · ${scenes.length} 项建议移动 · ${review.unchanged.length} 项保持当前位置 · 当前 ${activeItemIndex + 1}/${scenes.length} · ${escapeHtml(visualSourceLabel)}</div>
+					${review.unchanged.length
+						? `<details class="layout-review-unchanged">
+							<summary>${review.unchanged.length} 项经联合规划后无需移动</summary>
+							<div>
+								${review.unchanged.slice(0, 8).map(unchanged =>
+									`<span><strong>${escapeHtml(unchanged.subjectDesignator)}</strong> → ${escapeHtml(unchanged.ownerDesignator)}：保持当前位置 · 回路代理 ${unchanged.currentLoopProxyMil.toFixed(1)} mil</span>`
+								).join('')}
+							</div>
+						</details>`
+						: ''}
 					${review.skipped.length
 						? `<details class="layout-review-skipped">
 							<summary>${review.skipped.length} 项已确认约束未形成合法位置</summary>
@@ -677,6 +693,12 @@ async function openInlineLayoutReview(
 		subjectDesignator: string;
 		reasons: string[];
 	}> = [],
+	unchanged: Array<{
+		subjectDesignator: string;
+		ownerDesignator: string;
+		currentLoopProxyMil: number;
+		reason: string;
+	}> = [],
 ): Promise<void> {
 	const validation = await validateLayoutPlanCurrent(plan);
 	if (!validation.ok) {
@@ -692,6 +714,12 @@ async function openInlineLayoutReview(
 		skipped: skipped.map(item => ({
 			subjectDesignator: item.subjectDesignator,
 			reasons: [...item.reasons],
+		})),
+		unchanged: unchanged.map(item => ({
+			subjectDesignator: item.subjectDesignator,
+			ownerDesignator: item.ownerDesignator,
+			currentLoopProxyMil: item.currentLoopProxyMil,
+			reason: item.reason,
 		})),
 	};
 	renderInlineLayoutReview();
@@ -1471,7 +1499,7 @@ previewPlanBtn.addEventListener('click', async () => {
 			showToast(generated.message);
 			return;
 		}
-		await openInlineLayoutReview(generated.plan, generated.skipped);
+		await openInlineLayoutReview(generated.plan, generated.skipped, generated.unchanged);
 	}
 	catch (error) {
 		console.error('[LayoutPilot Workbench] layout preview failed', error);

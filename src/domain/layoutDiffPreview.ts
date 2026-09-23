@@ -43,6 +43,7 @@ export interface LayoutReviewVia {
 }
 
 export interface LayoutReviewScene {
+	documentTabId: string;
 	planId: string;
 	itemIndex: number;
 	item: LayoutPlanItem;
