@@ -219,12 +219,17 @@ export function upsertWorkflowHumanDecision(
 		throw new Error('Human ownership decision does not belong to the active Semantic Snapshot.');
 	}
 
+	const existingDecision = state.humanOwnershipDecisions.find(item =>
+		item.snapshotId === decision.snapshotId
+		&& item.componentId === decision.componentId
+	);
+	const sameOwner = existingDecision?.ownerComponentId === decision.ownerComponentId;
 	const humanOwnershipDecisions = [
 		...state.humanOwnershipDecisions.filter(item =>
 			!(
 				item.snapshotId === decision.snapshotId
 				&& item.componentId === decision.componentId
-			),
+			)
 		),
 		decision,
 	];
@@ -232,8 +237,8 @@ export function upsertWorkflowHumanDecision(
 	return freezeDeep({
 		...state,
 		humanOwnershipDecisions,
-		layoutPlan: undefined,
-		layoutPreviewSession: undefined,
+		layoutPlan: sameOwner ? state.layoutPlan : undefined,
+		layoutPreviewSession: sameOwner ? state.layoutPreviewSession : undefined,
 		updatedAt,
 	});
 }
