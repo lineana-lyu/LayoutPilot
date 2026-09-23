@@ -215,6 +215,39 @@ function measuredObstacle(
 }
 
 {
+	const subject = component('c-preview-layer', 'C_PREVIEW', 300, 300, {
+		routed: 0,
+		layer: 'BOTTOM',
+	});
+	const owner = component('u-preview-layer', 'U_PREVIEW', 100, 100, {
+		layer: 'TOP',
+	});
+	const result = planDecouplingPlacement({
+		subject,
+		owner,
+		obstacles: [subject, owner],
+		board,
+		componentKeepouts: [],
+		powerNet: '3V3',
+		groundNet: 'GND',
+		mode: 'preview',
+	});
+
+	assert.equal(
+		result.ready,
+		true,
+		'cross-layer owner may produce a reference preview',
+	);
+	assert.ok(result.plan);
+	assert.ok(
+		result.executionBlockers.some(reason =>
+			reason.includes('不在同一器件层')
+		),
+		'cross-layer preview must remain blocked from automatic execution',
+	);
+}
+
+{
 	const subject = component('c1', 'C1', 300, 300, { routed: 0 });
 	const owner = component('u1', 'U1', 100, 100);
 	const unknownObstacle: PhysicalComponentSnapshot = {
