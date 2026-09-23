@@ -209,6 +209,7 @@ assert.ok(subject);
 
 const nativeOverlay = renderNativeSnapshotDiffOverlay(
 	{
+		documentTabId: 'pcb-tab-test',
 		planId: 'layout-plan-test',
 		itemIndex: 0,
 		item,
@@ -236,6 +237,7 @@ assert.match(nativeOverlay, /TARGET · C21/);
 assert.match(nativeOverlay, /OWNER · U11/);
 
 const focusedScene = {
+	documentTabId: 'pcb-tab-test',
 	planId: 'layout-plan-focused',
 	itemIndex: 0,
 	item,
