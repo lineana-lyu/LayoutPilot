@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.13 Focused Placement Compare
+## Current stage — v0.9.14 Local Detail Diff
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -131,6 +131,33 @@ v0.9.6 separates **accepting a recommendation** from **authorizing PCB mutation*
 Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with EasyEDA's explicit `zoomToRegion` API around current position, proposed position and available Owner bounds instead of preserving the user's previous zoom level. Evidence review uses the same explicit-region pattern rather than relying on `zoomToSelectedPrimitives`, whose internal selection BBox calculation can fail on real projects when a selected primitive has incomplete bounds.
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
+
+## v0.9.14 Local Detail Diff
+
+Real-board validation showed that EasyEDA's beta canvas snapshot can silently return a stale whole-board frame after `zoomToRegion()`. This made the v0.9.13 local panes look almost identical even though their requested regions were different.
+
+v0.9.14 removes native snapshots from the *local* comparison path.
+
+The review is now hybrid:
+
+```
+whole-board orientation
+  → EasyEDA native snapshot when available
+
+CURRENT local detail
+  → structured PCB renderer
+  → real pads + traces + vias + designators
+  → subject emphasized in red
+
+PROPOSED local detail
+  → same physical scale
+  → old subject removed
+  → translated real pad footprint inserted in green
+```
+
+The local renderer follows the same practical split used by EasyEDA's open-source Interactive HTML BOM and PcbDraw: render PCB structure from primitives, then highlight only the review subject. It intentionally does not attempt to reproduce every editor decoration, copper-pour visual effect, or post-route result.
+
+This avoids relying on stale viewport screenshots for the one place where pixel-level focus matters most.
 
 ## v0.9.13 Focused Placement Compare
 

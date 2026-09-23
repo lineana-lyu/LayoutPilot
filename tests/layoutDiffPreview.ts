@@ -11,6 +11,7 @@ import {
 import type { LayoutPlanItem } from '../src/domain/layoutPlan';
 import { buildFocusedReviewRegions } from '../src/domain/focusedPlacementCompare';
 import { renderNativeSnapshotDiffOverlay } from '../src/ui/nativeSnapshotDiff';
+import { renderFocusedLocalDetailCompare } from '../src/ui/focusedPlacementDetail';
 
 const item: LayoutPlanItem = {
 	constraintId: 'C21:near:U11',
@@ -75,7 +76,7 @@ assert.equal(
 
 assert.equal(
 	traceIntersectsRegion(
-		{ startX: 900, startY: 1000, endX: 2050, endY: 1500, width: 8 },
+		{ startX: 900, startY: 1000, endX: 2050, endY: 1500, width: 8, layer: 'TopLayer' },
 		viewport,
 	),
 	true,
@@ -288,5 +289,14 @@ assert.ok(
 	&& focused.overview.bottom > 2200,
 	'overview must contain the whole board with a margin',
 );
+
+const focusedHtml = renderFocusedLocalDetailCompare({
+	scene: focusedScene,
+});
+assert.match(focusedHtml, /BEFORE/);
+assert.match(focusedHtml, /AFTER/);
+assert.match(focusedHtml, /CURRENT · C21/);
+assert.match(focusedHtml, /PROPOSED · C21/);
+assert.match(focusedHtml, /绿色双环/);
 
 console.log('Layout diff preview geometry tests passed.');

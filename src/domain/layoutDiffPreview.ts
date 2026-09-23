@@ -33,6 +33,7 @@ export interface LayoutReviewTrace {
 	endX: number;
 	endY: number;
 	width: number;
+	layer: string;
 }
 
 export interface LayoutReviewVia {

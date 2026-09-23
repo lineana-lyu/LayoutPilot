@@ -29,7 +29,7 @@ import {
 	validateStoredLayoutPlanCurrent,
 } from './eda/layoutPlanRuntime';
 import { collectLayoutReviewScene } from './eda/layoutDiffPreviewAdapter';
-import { captureFocusedNativePcbReview } from './eda/nativeSnapshotReviewAdapter';
+import { captureNativeBoardOverview } from './eda/nativeSnapshotReviewAdapter';
 import { showLayoutPlanGhost } from './eda/layoutPreviewAdapter';
 import { beginPcbEvidenceReview, collectPadEvidenceComponents, endPcbEvidenceReview } from './eda/pcbPhysicalAdapter';
 import {
@@ -40,8 +40,7 @@ import {
 } from './ui/workbenchWindow';
 import { openEvidenceReviewBar, retireEvidenceReviewBar } from './ui/evidenceReviewWindow';
 import { clearActiveLayoutPreviewCanvas, openLayoutPreviewBar } from './ui/layoutPreviewWindow';
-import { renderLayoutDiffPreviewSvg } from './ui/layoutDiffPreview';
-import { renderFocusedPlacementCompare } from './ui/nativeSnapshotDiff';
+import { renderFocusedLocalDetailCompare } from './ui/focusedPlacementDetail';
 import {
 	getStoredHumanOwnershipDecisions,
 	inspectStoredWorkflowState,
@@ -131,13 +130,9 @@ interface InlineLayoutReviewState {
 	plan: LayoutPlan;
 	scene: LayoutReviewScene;
 	mode: LayoutDiffPreviewMode;
-	nativeSnapshot?: {
-		overviewUrl: string;
-		currentUrl: string;
-		proposedUrl: string;
+	nativeOverview?: {
+		imageUrl: string;
 		documentTabId: string;
-		focusWidthMil: number;
-		focusHeightMil: number;
 	};
 	fallbackReason?: string;
 }
@@ -145,11 +140,9 @@ interface InlineLayoutReviewState {
 let inlineLayoutReview: InlineLayoutReviewState | undefined;
 
 function releaseInlineLayoutReview(): void {
-	const snapshot = inlineLayoutReview?.nativeSnapshot;
-	if (snapshot) {
-		URL.revokeObjectURL(snapshot.overviewUrl);
-		URL.revokeObjectURL(snapshot.currentUrl);
-		URL.revokeObjectURL(snapshot.proposedUrl);
+	const imageUrl = inlineLayoutReview?.nativeOverview?.imageUrl;
+	if (imageUrl) {
+		URL.revokeObjectURL(imageUrl);
 	}
 	inlineLayoutReview = undefined;
 }
@@ -431,21 +424,13 @@ function renderInlineLayoutReview(): void {
 	if (!review) return;
 
 	const { plan, scene, mode } = review;
-	const reviewVisual = review.nativeSnapshot
-		? renderFocusedPlacementCompare({
-			overviewUrl: review.nativeSnapshot.overviewUrl,
-			currentUrl: review.nativeSnapshot.currentUrl,
-			proposedUrl: review.nativeSnapshot.proposedUrl,
-			subjectDesignator: scene.item.subjectDesignator,
-			ownerDesignator: scene.item.ownerDesignator,
-			layer: scene.subject.layer,
-			focusWidthMil: review.nativeSnapshot.focusWidthMil,
-			focusHeightMil: review.nativeSnapshot.focusHeightMil,
-		})
-		: renderLayoutDiffPreviewSvg(scene, mode);
-	const visualSourceLabel = review.nativeSnapshot
-		? 'EasyEDA 原生 PCB · 聚焦式同尺度对比'
-		: '几何回退预览';
+	const reviewVisual = renderFocusedLocalDetailCompare({
+		scene,
+		overviewUrl: review.nativeOverview?.imageUrl,
+	});
+	const visualSourceLabel = review.nativeOverview
+		? 'EasyEDA 整板定位 + 结构化局部高对比'
+		: '结构化局部高对比';
 	const item = scene.item;
 	const metrics = layoutPlanItemReviewMetrics(item);
 	const reduction = metrics.reductionPercent;
@@ -478,13 +463,7 @@ function renderInlineLayoutReview(): void {
 			</div>
 
 			<div class="layout-review-toolbar">
-				${review.nativeSnapshot
-					? '<div class="focused-review-hint"><strong>总览看位置，局部看差异</strong><span>左右局部保持同一物理尺度，不再为了同时容纳 Current / Target 而缩成整板。</span></div>'
-					: `<div class="review-segment" role="group" aria-label="布局预览模式">
-						<button class="btn small ${mode === 'original' ? 'active' : ''}" data-review-mode="original">原始</button>
-						<button class="btn small ${mode === 'proposed' ? 'active' : ''}" data-review-mode="proposed">建议</button>
-						<button class="btn small ${mode === 'diff' ? 'active' : ''}" data-review-mode="diff">差异</button>
-					</div>`}
+				<div class="focused-review-hint"><strong>红色 BEFORE，绿色 AFTER</strong><span>左右局部固定同一物理尺度；建议图会移除旧器件并在 Target 位置重建真实 Pad Footprint。</span></div>
 				<div class="layout-review-legend">
 					<span><i class="legend-chip current-red"></i>当前位置</span>
 					<span><i class="legend-chip target-green"></i>建议位置 / Footprint Ghost</span>
@@ -516,9 +495,8 @@ function renderInlineLayoutReview(): void {
 			</div>
 
 			<div class="layout-review-note">
-				${review.nativeSnapshot
-					? '局部图直接来自 <strong>EasyEDA 原生 PCB 渲染</strong>，保持板子原色和细节；建议侧仅叠加绿色 Pad Footprint Ghost。'
-					: `原生画布快照不可用，已自动回退到几何预览。${review.fallbackReason ? ` 原因：${escapeHtml(review.fallbackReason)}` : ''}`}
+				局部对比不再依赖 EasyEDA 的易缓存局部截图；它直接使用当前 PCB 的真实 Pad、Track、Via 与器件位号构建高清局部。
+				${review.nativeOverview ? '上方整板定位仍来自 EasyEDA 原生渲染。' : '原生整板定位图不可用，局部对比仍可正常工作。'}
 				建议侧仍是<strong>位置预览</strong>：原走线尚未重布、铺铜尚未重算；真正执行仍必须经过物理预检。
 			</div>
 		</div>
@@ -574,28 +552,24 @@ async function openInlineLayoutReview(plan: LayoutPlan): Promise<void> {
 	}
 
 	const scene = await collectLayoutReviewScene(plan, 0);
-	let nativeSnapshot: InlineLayoutReviewState['nativeSnapshot'];
+	let nativeOverview: InlineLayoutReviewState['nativeOverview'];
 	let fallbackReason: string | undefined;
 
 	try {
-		const captured = await captureFocusedNativePcbReview(scene);
+		const captured = await captureNativeBoardOverview(scene);
 		const postCaptureValidation = await validateLayoutPlanCurrent(plan);
 		if (!postCaptureValidation.ok) {
 			throw new Error(postCaptureValidation.message);
 		}
-		nativeSnapshot = {
-			overviewUrl: URL.createObjectURL(captured.overview),
-			currentUrl: URL.createObjectURL(captured.current),
-			proposedUrl: URL.createObjectURL(captured.proposed),
+		nativeOverview = {
+			imageUrl: URL.createObjectURL(captured.overview),
 			documentTabId: captured.documentTabId,
-			focusWidthMil: captured.focusWidthMil,
-			focusHeightMil: captured.focusHeightMil,
 		};
 	}
 	catch (error) {
 		fallbackReason = String(error);
 		console.warn(
-			'[LayoutPilot Workbench] native PCB snapshot unavailable; falling back to geometry review',
+			'[LayoutPilot Workbench] native board overview unavailable; local structured review remains active',
 			error,
 		);
 	}
@@ -605,7 +579,7 @@ async function openInlineLayoutReview(plan: LayoutPlan): Promise<void> {
 		plan,
 		scene,
 		mode: 'diff',
-		nativeSnapshot,
+		nativeOverview,
 		fallbackReason,
 	};
 	renderInlineLayoutReview();

@@ -3,7 +3,7 @@
   "uuid": "1a2b3c4d5e6f77889900aabbccddeeff",
   "displayName": "LayoutPilot",
   "description": "面向 PCB 布局阶段的 AI 协作插件：理解电路结构、提取布局约束并辅助生成可确认的布局方案。",
-  "version": "0.9.13",
+  "version": "0.9.14",
   "publisher": "lineana-lyu",
   "engines": {
     "eda": "^3.2.0"
