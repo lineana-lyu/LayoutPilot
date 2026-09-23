@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.14 Local Detail Diff
+## Current stage — v0.9.15 Interactive Review Navigator
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -131,6 +131,34 @@ v0.9.6 separates **accepting a recommendation** from **authorizing PCB mutation*
 Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with EasyEDA's explicit `zoomToRegion` API around current position, proposed position and available Owner bounds instead of preserving the user's previous zoom level. Evidence review uses the same explicit-region pattern rather than relying on `zoomToSelectedPrimitives`, whose internal selection BBox calculation can fail on real projects when a selected primitive has incomplete bounds.
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
+
+## v0.9.15 Interactive Review Navigator
+
+v0.9.15 turns the focused comparison from a static illustration into a PCB review navigator.
+
+The local renderer no longer draws permanent red / green spotlight circles. The changed footprint itself carries the color semantics:
+
+- red footprint = CURRENT;
+- green footprint = TARGET;
+- neutral context = unchanged PCB.
+
+A lightweight dashed focus box appears only on hover or keyboard focus.
+
+Every rendered component is now a review hotspot. Clicking a real component:
+
+```
+Preview component
+→ resolve its real PCB bounds
+→ EasyEDA selection
+→ zoomToRegion()
+→ open the compact real-PCB review bar
+```
+
+Clicking the green TARGET uses the frozen LayoutPlan target bounds instead of selecting a nonexistent primitive, so the editor jumps directly to the proposed placement area.
+
+The top overview is no longer based on the beta EasyEDA screenshot cache. It is a deterministic board mini-map with clickable CURRENT / TARGET squares and a movement link.
+
+This keeps the review scalable when future plans contain many changed components: color identifies change by default; focus decoration appears only for the component the reviewer is actually inspecting.
 
 ## v0.9.14 Local Detail Diff
 

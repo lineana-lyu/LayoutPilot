@@ -25,6 +25,51 @@ function traceColor(layer: string): string {
 	return '#d64545';
 }
 
+function translateBounds(
+	bounds: { minX: number; minY: number; maxX: number; maxY: number },
+	dx: number,
+	dy: number,
+) {
+	return {
+		minX: bounds.minX + dx,
+		minY: bounds.minY + dy,
+		maxX: bounds.maxX + dx,
+		maxY: bounds.maxY + dy,
+	};
+}
+
+function renderHoverHalo(
+	bounds: { minX: number; minY: number; maxX: number; maxY: number },
+	color: string,
+): string {
+	const margin = Math.max(
+		8,
+		Math.min(
+			22,
+			Math.max(
+				bounds.maxX - bounds.minX,
+				bounds.maxY - bounds.minY,
+			) * 0.18,
+		),
+	);
+	return `
+		<rect
+			class="review-focus-halo"
+			x="${bounds.minX - margin}"
+			y="${-(bounds.maxY + margin)}"
+			width="${bounds.maxX - bounds.minX + margin * 2}"
+			height="${bounds.maxY - bounds.minY + margin * 2}"
+			rx="${Math.min(10, margin * 0.45)}"
+			fill="${color}"
+			fill-opacity=".08"
+			stroke="${color}"
+			stroke-width="3"
+			stroke-dasharray="8 5"
+			vector-effect="non-scaling-stroke"
+		/>
+	`;
+}
+
 function renderPad(
 	x: number,
 	y: number,
@@ -60,6 +105,7 @@ function renderComponent(
 		muted?: boolean;
 		accent?: 'current' | 'target' | 'owner';
 		showDesignator?: boolean;
+		navigationKind?: 'component' | 'current' | 'target';
 	},
 ): string {
 	const dx = options?.dx ?? 0;
@@ -80,7 +126,13 @@ function renderComponent(
 			: accent === 'owner'
 				? '#a8b4c0'
 				: '#f2d75e';
-	const opacity = muted ? 0.54 : 0.92;
+	const opacity = muted ? 0.5 : 0.94;
+	const translatedBounds = translateBounds(component.bounds, dx, dy);
+	const navigationKind = options?.navigationKind ?? 'component';
+	const componentId = navigationKind === 'target' ? '' : component.id;
+	const dataComponent = componentId
+		? ` data-review-component-id="${escapeHtml(componentId)}"`
+		: '';
 
 	const pads = component.pads.length
 		? component.pads.map(pad =>
@@ -97,12 +149,12 @@ function renderComponent(
 		).join('')
 		: `
 			<rect
-				x="${component.bounds.minX + dx}"
-				y="${-(component.bounds.maxY + dy)}"
-				width="${component.bounds.maxX - component.bounds.minX}"
-				height="${component.bounds.maxY - component.bounds.minY}"
+				x="${translatedBounds.minX}"
+				y="${-translatedBounds.maxY}"
+				width="${translatedBounds.maxX - translatedBounds.minX}"
+				height="${translatedBounds.maxY - translatedBounds.minY}"
 				fill="${padFill}"
-				fill-opacity="${muted ? 0.16 : 0.28}"
+				fill-opacity="${muted ? 0.15 : 0.3}"
 				stroke="${padStroke}"
 				stroke-width="1.5"
 				vector-effect="non-scaling-stroke"
@@ -127,7 +179,27 @@ function renderComponent(
 			>${escapeHtml(component.designator)}</text>
 		`;
 
-	return `<g>${pads}${label}</g>`;
+	const haloColor = accent === 'current'
+		? '#ff4a4a'
+		: accent === 'target'
+			? '#29cc7b'
+			: '#77a7ff';
+
+	return `
+		<g
+			class="review-hotspot ${accent ? `accent-${accent}` : ''}"
+			data-review-nav="${navigationKind}"
+			${dataComponent}
+			tabindex="0"
+			role="button"
+			aria-label="${escapeHtml(component.designator)}，点击在真实 PCB 中定位"
+		>
+			<title>${escapeHtml(component.designator)} · 点击在真实 PCB 中定位</title>
+			${renderHoverHalo(translatedBounds, haloColor)}
+			${pads}
+			${label}
+		</g>
+	`;
 }
 
 function renderLocalPcb(
@@ -172,71 +244,120 @@ function renderLocalPcb(
 			renderComponent(component, {
 				muted: component.id !== scene.owner?.id,
 				accent: component.id === scene.owner?.id ? 'owner' : undefined,
+				navigationKind: 'component',
 			})
 		).join('');
 
 	const subject = mode === 'current'
-		? renderComponent(scene.subject, { accent: 'current' })
+		? renderComponent(scene.subject, {
+			accent: 'current',
+			navigationKind: 'current',
+		})
 		: renderComponent(scene.subject, {
 			dx: scene.item.to.x - scene.subject.anchor.x,
 			dy: scene.item.to.y - scene.subject.anchor.y,
 			accent: 'target',
+			navigationKind: 'target',
 		});
 
-	const focus = mode === 'current'
-		? scene.subject.anchor
-		: scene.item.to;
-	const accent = mode === 'current' ? '#ff3f3f' : '#21c879';
-	const focusTitle = mode === 'current' ? 'CURRENT' : 'PROPOSED';
+	const statusColor = mode === 'current' ? '#d74444' : '#24a66a';
+	const statusText = mode === 'current' ? 'BEFORE' : 'AFTER';
 
 	return `
 		<svg class="focused-vector-svg" viewBox="${viewBox}" preserveAspectRatio="xMidYMid meet" role="img">
 			<rect x="${region.left}" y="${-region.bottom}" width="${width}" height="${height}" fill="#52051d"/>
 			<g opacity=".62">${traces}${vias}</g>
 			<g>${components}</g>
-			<circle cx="${focus.x}" cy="${-focus.y}" r="${Math.max(72, Math.min(width, height) * 0.14)}"
-				fill="${accent}" fill-opacity=".10" stroke="${accent}" stroke-opacity=".9"
-				stroke-width="4" stroke-dasharray="10 7" vector-effect="non-scaling-stroke"/>
-			<circle cx="${focus.x}" cy="${-focus.y}" r="${Math.max(42, Math.min(width, height) * 0.08)}"
-				fill="none" stroke="${accent}" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
 			${subject}
-			<g transform="translate(${focus.x} ${-focus.y})">
-				<rect x="-58" y="-86" width="116" height="28" rx="5" fill="${accent}" fill-opacity=".96"/>
-				<text x="0" y="-67" text-anchor="middle" font-size="16" font-family="Segoe UI,sans-serif"
-					font-weight="700" fill="#fff">${focusTitle} · ${escapeHtml(scene.item.subjectDesignator)}</text>
+			<g pointer-events="none" transform="translate(${region.left + 18} ${-(region.top + 18)})">
+				<rect x="0" y="0" width="92" height="24" rx="4" fill="${statusColor}" fill-opacity=".95"/>
+				<text x="46" y="17" text-anchor="middle" font-size="13" font-family="Segoe UI,sans-serif"
+					font-weight="700" fill="#fff">${statusText}</text>
 			</g>
+		</svg>
+	`;
+}
+
+function renderStructuredOverview(scene: LayoutReviewScene): string {
+	const regions = buildFocusedReviewRegions(scene);
+	const width = regions.overview.right - regions.overview.left;
+	const height = regions.overview.bottom - regions.overview.top;
+	const markerSize = Math.max(28, Math.min(56, Math.max(width, height) * 0.018));
+	const currentX = scene.subject.anchor.x;
+	const currentY = scene.subject.anchor.y;
+	const targetX = scene.item.to.x;
+	const targetY = scene.item.to.y;
+	const outer = scene.boardOuter.map(point => `${point.x},${-point.y}`).join(' ');
+
+	const navMarker = (
+		kind: 'current' | 'target',
+		x: number,
+		y: number,
+		color: string,
+		label: string,
+	) => `
+		<g class="review-hotspot minimap-marker"
+			data-review-nav="${kind}"
+			tabindex="0"
+			role="button"
+			aria-label="${escapeHtml(label)}，点击在真实 PCB 中定位">
+			<title>${escapeHtml(label)} · 点击在真实 PCB 中定位</title>
+			<rect class="review-focus-halo"
+				x="${x - markerSize * 0.85}"
+				y="${-y - markerSize * 0.85}"
+				width="${markerSize * 1.7}"
+				height="${markerSize * 1.7}"
+				rx="${markerSize * 0.18}"
+				fill="${color}"
+				fill-opacity=".08"
+				stroke="${color}"
+				stroke-width="3"
+				stroke-dasharray="8 5"
+				vector-effect="non-scaling-stroke"/>
+			<rect
+				x="${x - markerSize / 2}"
+				y="${-y - markerSize / 2}"
+				width="${markerSize}"
+				height="${markerSize}"
+				rx="${markerSize * 0.13}"
+				fill="${color}"
+				stroke="#ffffff"
+				stroke-width="2"
+				vector-effect="non-scaling-stroke"/>
+		</g>
+	`;
+
+	return `
+		<svg class="focused-vector-overview interactive"
+			viewBox="${regions.overview.left} ${-regions.overview.bottom} ${width} ${height}"
+			preserveAspectRatio="xMidYMid meet"
+			role="img">
+			<rect x="${regions.overview.left}" y="${-regions.overview.bottom}" width="${width}" height="${height}" fill="#2d3035"/>
+			<polygon points="${outer}" fill="#64132b" stroke="#c8b057" stroke-width="3" vector-effect="non-scaling-stroke"/>
+			<line x1="${currentX}" y1="${-currentY}" x2="${targetX}" y2="${-targetY}"
+				stroke="#cfd5da" stroke-width="2" stroke-dasharray="9 7" vector-effect="non-scaling-stroke"/>
+			${navMarker('current', currentX, currentY, '#d74444', `CURRENT · ${scene.item.subjectDesignator}`)}
+			${navMarker('target', targetX, targetY, '#24a66a', `TARGET · ${scene.item.subjectDesignator}`)}
 		</svg>
 	`;
 }
 
 export function renderFocusedLocalDetailCompare(input: {
 	scene: LayoutReviewScene;
-	overviewUrl?: string;
 }): string {
 	const regions = buildFocusedReviewRegions(input.scene);
 	const scale = `${regions.focusWidthMil.toFixed(0)} × ${regions.focusHeightMil.toFixed(0)} mil`;
-	const overview = input.overviewUrl
-		? `<img class="focused-native-image overview" src="${escapeHtml(input.overviewUrl)}" alt="整板定位图" draggable="false"/>`
-		: `
-			<svg class="focused-vector-overview" viewBox="${regions.overview.left} ${-regions.overview.bottom} ${regions.overview.right - regions.overview.left} ${regions.overview.bottom - regions.overview.top}">
-				<rect x="${regions.overview.left}" y="${-regions.overview.bottom}"
-					width="${regions.overview.right - regions.overview.left}"
-					height="${regions.overview.bottom - regions.overview.top}" fill="#52051d"/>
-				<circle cx="${input.scene.subject.anchor.x}" cy="${-input.scene.subject.anchor.y}" r="38" fill="#ff4545"/>
-				<circle cx="${input.scene.item.to.x}" cy="${-input.scene.item.to.y}" r="38" fill="#24c978"/>
-			</svg>
-		`;
 
 	return `
-		<div class="focused-placement-review local-detail">
+		<div class="focused-placement-review local-detail interactive-review">
 			<section class="focused-overview-card">
 				<div class="focused-section-head">
 					<div>
-						<strong>整板定位</strong>
-						<span>只看“从哪里 → 到哪里”；真正判断布局看下面两张局部图</span>
+						<strong>整板导航</strong>
+						<span>红色旧位置 → 绿色建议位置；点击方块直接跳到真实 PCB</span>
 					</div>
 				</div>
-				<div class="focused-overview-image-wrap">${overview}</div>
+				<div class="focused-overview-image-wrap">${renderStructuredOverview(input.scene)}</div>
 			</section>
 
 			<div class="focused-compare-grid">
@@ -249,7 +370,7 @@ export function renderFocusedLocalDetailCompare(input: {
 						<span class="focused-scale">同尺度 · ${escapeHtml(scale)}</span>
 					</div>
 					<div class="focused-pane-image-wrap vector">${renderLocalPcb(input.scene, regions.current, 'current')}</div>
-					<div class="focused-pane-caption">红色双环 + 红色 Footprint = 当前待移动器件</div>
+					<div class="focused-pane-caption">器件本体直接用红色 Footprint 表示；悬停显示定位框，点击跳到真实 PCB</div>
 				</section>
 
 				<section class="focused-compare-pane proposed">
@@ -261,7 +382,7 @@ export function renderFocusedLocalDetailCompare(input: {
 						<span class="focused-scale">同尺度 · ${escapeHtml(scale)}</span>
 					</div>
 					<div class="focused-pane-image-wrap vector">${renderLocalPcb(input.scene, regions.proposed, 'proposed')}</div>
-					<div class="focused-pane-caption">旧器件位置已从建议图移除；绿色双环 + 绿色真实 Pad Footprint = 建议位置</div>
+					<div class="focused-pane-caption">绿色真实 Pad Footprint = 建议位置；点击它可直接跳到 Target 在真实 PCB 中核对</div>
 				</section>
 			</div>
 		</div>

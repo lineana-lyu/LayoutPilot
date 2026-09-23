@@ -18,10 +18,11 @@ import {
 	formatLayoutPlanItemReview,
 	layoutPlanItemReviewMetrics,
 } from './domain/layoutPlanReview';
+import type { LayoutReviewScene } from './domain/layoutDiffPreview';
 import {
-	type LayoutDiffPreviewMode,
-	type LayoutReviewScene,
-} from './domain/layoutDiffPreview';
+	resolveReviewNavigationFocus,
+	type ReviewNavigationKind,
+} from './domain/reviewNavigator';
 import { collectAnalysisState, type AnalysisState } from './eda/analysisAdapter';
 import {
 	generateCurrentLayoutPlan,
@@ -29,8 +30,11 @@ import {
 	validateStoredLayoutPlanCurrent,
 } from './eda/layoutPlanRuntime';
 import { collectLayoutReviewScene } from './eda/layoutDiffPreviewAdapter';
-import { captureNativeBoardOverview } from './eda/nativeSnapshotReviewAdapter';
-import { showLayoutPlanGhost } from './eda/layoutPreviewAdapter';
+import {
+	showLayoutPlanGhost,
+	type LayoutPreviewFocusOptions,
+} from './eda/layoutPreviewAdapter';
+import { navigateReviewToPcb } from './eda/reviewNavigationAdapter';
 import { beginPcbEvidenceReview, collectPadEvidenceComponents, endPcbEvidenceReview } from './eda/pcbPhysicalAdapter';
 import {
 	getLayoutPilotWorkbenchSizeMode,
@@ -129,21 +133,11 @@ let busy = false;
 interface InlineLayoutReviewState {
 	plan: LayoutPlan;
 	scene: LayoutReviewScene;
-	mode: LayoutDiffPreviewMode;
-	nativeOverview?: {
-		imageUrl: string;
-		documentTabId: string;
-	};
-	fallbackReason?: string;
 }
 
 let inlineLayoutReview: InlineLayoutReviewState | undefined;
 
 function releaseInlineLayoutReview(): void {
-	const imageUrl = inlineLayoutReview?.nativeOverview?.imageUrl;
-	if (imageUrl) {
-		URL.revokeObjectURL(imageUrl);
-	}
 	inlineLayoutReview = undefined;
 }
 
@@ -423,14 +417,9 @@ function renderInlineLayoutReview(): void {
 	const review = inlineLayoutReview;
 	if (!review) return;
 
-	const { plan, scene, mode } = review;
-	const reviewVisual = renderFocusedLocalDetailCompare({
-		scene,
-		overviewUrl: review.nativeOverview?.imageUrl,
-	});
-	const visualSourceLabel = review.nativeOverview
-		? 'EasyEDA 整板定位 + 结构化局部高对比'
-		: '结构化局部高对比';
+	const { plan, scene } = review;
+	const reviewVisual = renderFocusedLocalDetailCompare({ scene });
+	const visualSourceLabel = '结构化局部高对比 · 可点击导航';
 	const item = scene.item;
 	const metrics = layoutPlanItemReviewMetrics(item);
 	const reduction = metrics.reductionPercent;
@@ -495,27 +484,70 @@ function renderInlineLayoutReview(): void {
 			</div>
 
 			<div class="layout-review-note">
-				局部对比不再依赖 EasyEDA 的易缓存局部截图；它直接使用当前 PCB 的真实 Pad、Track、Via 与器件位号构建高清局部。
-				${review.nativeOverview ? '上方整板定位仍来自 EasyEDA 原生渲染。' : '原生整板定位图不可用，局部对比仍可正常工作。'}
-				建议侧仍是<strong>位置预览</strong>：原走线尚未重布、铺铜尚未重算；真正执行仍必须经过物理预检。
+				局部对比直接使用当前 PCB 的真实 Pad、Track、Via 与器件位号；大圆圈不再常驻，只有悬停 / 键盘聚焦时显示定位框。
+				点击任一器件或顶部红/绿方块，会跳到真实 PCB 对应区域。建议侧仍是<strong>位置预览</strong>：原走线尚未重布、铺铜尚未重算。
 			</div>
 		</div>
 	`;
 
-	for (const node of mainPanel.querySelectorAll<HTMLButtonElement>('[data-review-mode]')) {
+	const navigateToPcb = async (node: HTMLElement): Promise<void> => {
+		if (busy || !inlineLayoutReview) return;
+		const kind = node.dataset.reviewNav as ReviewNavigationKind | undefined;
+		if (
+			kind !== 'component'
+			&& kind !== 'current'
+			&& kind !== 'target'
+		) return;
+
+		setBusy(true);
+		try {
+			const validation = await validateLayoutPlanCurrent(
+				inlineLayoutReview.plan,
+			);
+			if (!validation.ok) {
+				showToast(validation.message);
+				return;
+			}
+
+			const focus = resolveReviewNavigationFocus(
+				inlineLayoutReview.scene,
+				{
+					kind,
+					componentId: node.dataset.reviewComponentId,
+				},
+			);
+
+			await clearActiveLayoutPreviewCanvas();
+			const canvas = await navigateReviewToPcb(
+				inlineLayoutReview.scene,
+				focus,
+			);
+			await setStoredLayoutPreviewSession(
+				createLayoutPreviewSession({
+					planId: inlineLayoutReview.plan.id,
+					documentTabId: canvas.documentTabId,
+				}),
+			);
+			await openLayoutPreviewBar();
+			await hideLayoutPilotWorkbench();
+		}
+		catch (error) {
+			console.error('[LayoutPilot Workbench] preview navigation failed', error);
+			showToast(`PCB 定位失败：${String(error)}`);
+		}
+		finally {
+			setBusy(false);
+		}
+	};
+
+	for (const node of mainPanel.querySelectorAll<HTMLElement>('[data-review-nav]')) {
 		node.addEventListener('click', () => {
-			if (!inlineLayoutReview) return;
-			const nextMode = node.dataset.reviewMode as LayoutDiffPreviewMode;
-			if (
-				nextMode !== 'original'
-				&& nextMode !== 'proposed'
-				&& nextMode !== 'diff'
-			) return;
-			inlineLayoutReview = {
-				...inlineLayoutReview,
-				mode: nextMode,
-			};
-			renderInlineLayoutReview();
+			void navigateToPcb(node);
+		});
+		node.addEventListener('keydown', event => {
+			if (event.key !== 'Enter' && event.key !== ' ') return;
+			event.preventDefault();
+			void navigateToPcb(node);
 		});
 	}
 
@@ -552,35 +584,10 @@ async function openInlineLayoutReview(plan: LayoutPlan): Promise<void> {
 	}
 
 	const scene = await collectLayoutReviewScene(plan, 0);
-	let nativeOverview: InlineLayoutReviewState['nativeOverview'];
-	let fallbackReason: string | undefined;
-
-	try {
-		const captured = await captureNativeBoardOverview(scene);
-		const postCaptureValidation = await validateLayoutPlanCurrent(plan);
-		if (!postCaptureValidation.ok) {
-			throw new Error(postCaptureValidation.message);
-		}
-		nativeOverview = {
-			imageUrl: URL.createObjectURL(captured.overview),
-			documentTabId: captured.documentTabId,
-		};
-	}
-	catch (error) {
-		fallbackReason = String(error);
-		console.warn(
-			'[LayoutPilot Workbench] native board overview unavailable; local structured review remains active',
-			error,
-		);
-	}
-
 	releaseInlineLayoutReview();
 	inlineLayoutReview = {
 		plan,
 		scene,
-		mode: 'diff',
-		nativeOverview,
-		fallbackReason,
 	};
 	renderInlineLayoutReview();
 }
@@ -1320,9 +1327,12 @@ sizeWideBtn.addEventListener('click', () => {
 	void changeWorkbenchSize('wide');
 });
 
-async function presentLayoutPlanPreview(plan: LayoutPlan): Promise<void> {
+async function presentLayoutPlanPreview(
+	plan: LayoutPlan,
+	focus?: LayoutPreviewFocusOptions,
+): Promise<void> {
 	await clearActiveLayoutPreviewCanvas();
-	const canvas = await showLayoutPlanGhost(plan);
+	const canvas = await showLayoutPlanGhost(plan, focus);
 	await setStoredLayoutPreviewSession(
 		createLayoutPreviewSession({
 			planId: plan.id,

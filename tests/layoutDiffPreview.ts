@@ -10,6 +10,7 @@ import {
 } from '../src/domain/layoutDiffPreview';
 import type { LayoutPlanItem } from '../src/domain/layoutPlan';
 import { buildFocusedReviewRegions } from '../src/domain/focusedPlacementCompare';
+import { resolveReviewNavigationFocus } from '../src/domain/reviewNavigator';
 import { renderNativeSnapshotDiffOverlay } from '../src/ui/nativeSnapshotDiff';
 import { renderFocusedLocalDetailCompare } from '../src/ui/focusedPlacementDetail';
 
@@ -296,7 +297,39 @@ const focusedHtml = renderFocusedLocalDetailCompare({
 assert.match(focusedHtml, /BEFORE/);
 assert.match(focusedHtml, /AFTER/);
 assert.match(focusedHtml, /CURRENT · C21/);
-assert.match(focusedHtml, /PROPOSED · C21/);
-assert.match(focusedHtml, /绿色双环/);
+assert.match(focusedHtml, /TARGET · C21/);
+assert.match(focusedHtml, /data-review-nav="current"/);
+assert.match(focusedHtml, /data-review-nav="target"/);
+assert.match(focusedHtml, /data-review-nav="component"/);
+assert.match(focusedHtml, /review-focus-halo/);
+assert.doesNotMatch(
+	focusedHtml,
+	/绿色双环/,
+	'permanent spotlight circles must not be part of the review copy',
+);
+
+const currentFocus = resolveReviewNavigationFocus(
+	focusedScene,
+	{ kind: 'current' },
+);
+assert.equal(currentFocus.selectPrimitiveId, 'c21');
+assert.ok(currentFocus.region.left < subject.bounds.minX);
+assert.ok(currentFocus.region.right > subject.bounds.maxX);
+
+const componentFocus = resolveReviewNavigationFocus(
+	focusedScene,
+	{ kind: 'component', componentId: 'u11' },
+);
+assert.equal(componentFocus.selectPrimitiveId, 'u11');
+assert.ok(componentFocus.region.left < padAnchored.bounds.minX);
+assert.ok(componentFocus.region.right > padAnchored.bounds.maxX);
+
+const targetFocus = resolveReviewNavigationFocus(
+	focusedScene,
+	{ kind: 'target' },
+);
+assert.equal(targetFocus.selectPrimitiveId, undefined);
+assert.ok(targetFocus.region.left < focusedScene.subjectTargetBounds.minX);
+assert.ok(targetFocus.region.right > focusedScene.subjectTargetBounds.maxX);
 
 console.log('Layout diff preview geometry tests passed.');
