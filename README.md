@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.7 Review Workflow Freeze
+## Current stage — v0.9.8 Inline Layout Diff Preview
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -131,6 +131,22 @@ v0.9.6 separates **accepting a recommendation** from **authorizing PCB mutation*
 Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with EasyEDA's explicit `zoomToRegion` API around current position, proposed position and available Owner bounds instead of preserving the user's previous zoom level. Evidence review uses the same explicit-region pattern rather than relying on `zoomToSelectedPrimitives`, whose internal selection BBox calculation can fail on real projects when a selected primitive has incomplete bounds.
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
+
+## Inline Layout Diff Preview
+
+v0.9.8 makes the workbench the primary place to review a placement recommendation. It adds a lightweight, read-only PCB diff scene instead of attempting to duplicate the EasyEDA editor.
+
+The scene reuses existing board / component geometry and reads only inexpensive context primitives: board boundary, nearby measured component BBoxes, net-bearing line tracks and vias. Unchanged context is rendered in grayscale. The proposed component location is the only strongly colored geometry; Diff mode additionally shows the current outline and movement vector. The Owner remains grayscale because it is evidence context, not a modification.
+
+Three views are available inside the workbench:
+
+- **原始** — current component location with grayscale board context;
+- **建议** — proposed component location as the only highlighted modification;
+- **差异** — current + proposed positions plus movement direction.
+
+The panel also exposes movement distance and the existing before → after loop-geometry proxy. It explicitly states that background routing is the current PCB and that the preview does not simulate rerouting, repouring or SI/PI results. A separate “在真实 PCB 中核对” action retains the existing EasyEDA Ghost Preview as a second-stage verification path.
+
+The rendering architecture borrows the proven data → scene → renderer separation used by PCB visualization projects such as PcbDraw / tracespace, and the parallel primitive-collection pattern used by EasyEDA's open-source interactive HTML BOM extension. LayoutPilot uses native SVG and adds no rendering dependency.
 
 ## Review workflow freeze
 
