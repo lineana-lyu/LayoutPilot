@@ -9,7 +9,10 @@ import {
 	viaIntersectsRegion,
 } from '../src/domain/layoutDiffPreview';
 import type { LayoutPlanItem } from '../src/domain/layoutPlan';
+
+const sceneCenterX = (value: number) => value;
 import { renderNativeSnapshotDiffOverlay } from '../src/ui/nativeSnapshotDiff';
+import { buildFocusedReviewRegions } from '../src/domain/focusedPlacementCompare';
 
 const item: LayoutPlanItem = {
 	constraintId: 'C21:near:U11',
@@ -231,5 +234,61 @@ assert.match(nativeOverlay, /#24a66a/, 'native diff must mark TARGET in green');
 assert.match(nativeOverlay, /CURRENT · C21/);
 assert.match(nativeOverlay, /TARGET · C21/);
 assert.match(nativeOverlay, /OWNER · U11/);
+
+const focusedScene = {
+	planId: 'layout-plan-focused',
+	itemIndex: 0,
+	item,
+	viewport,
+	boardOuter: [
+		{ x: 0, y: 0 },
+		{ x: 3000, y: 0 },
+		{ x: 3000, y: 2200 },
+		{ x: 0, y: 2200 },
+	],
+	boardHoles: [],
+	components: [subject, padAnchored],
+	subject,
+	subjectTargetBounds: translateReviewBounds(
+		subject.bounds,
+		item.to.x - item.from.x,
+		item.to.y - item.from.y,
+	),
+	owner: padAnchored,
+	traces: [],
+	vias: [],
+};
+
+const focused = buildFocusedReviewRegions(focusedScene);
+const currentWidth = focused.current.right - focused.current.left;
+const currentHeight = focused.current.bottom - focused.current.top;
+const proposedWidth = focused.proposed.right - focused.proposed.left;
+const proposedHeight = focused.proposed.bottom - focused.proposed.top;
+
+assert.equal(
+	currentWidth,
+	proposedWidth,
+	'CURRENT and PROPOSED panes must use the same physical width',
+);
+assert.equal(
+	currentHeight,
+	proposedHeight,
+	'CURRENT and PROPOSED panes must use the same physical height',
+);
+assert.equal(
+	(focused.current.left + focused.current.right) / 2,
+	sceneCenterX(focusedScene.subject.anchor.x),
+);
+assert.equal(
+	(focused.proposed.left + focused.proposed.right) / 2,
+	focusedScene.item.to.x,
+);
+assert.ok(
+	focused.overview.left < 0
+	&& focused.overview.right > 3000
+	&& focused.overview.top < 0
+	&& focused.overview.bottom > 2200,
+	'overview must contain the whole board with a margin',
+);
 
 console.log('Layout diff preview geometry tests passed.');
