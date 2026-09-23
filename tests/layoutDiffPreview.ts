@@ -296,8 +296,9 @@ const focusedHtml = renderFocusedLocalDetailCompare({
 });
 assert.match(focusedHtml, /BEFORE/);
 assert.match(focusedHtml, /AFTER/);
-assert.match(focusedHtml, /CURRENT · C21/);
-assert.match(focusedHtml, /TARGET · C21/);
+assert.match(focusedHtml, /CURRENT/);
+assert.match(focusedHtml, /TARGET/);
+assert.match(focusedHtml, />C21</);
 assert.match(focusedHtml, /data-review-nav="current"/);
 assert.match(focusedHtml, /data-review-nav="target"/);
 assert.match(focusedHtml, /review-nav-strip/);
