@@ -34,6 +34,7 @@ import {
 	showLayoutPlanGhost,
 	type LayoutPreviewFocusOptions,
 } from './eda/layoutPreviewAdapter';
+import { navigateReviewToPcb } from './eda/reviewNavigationAdapter';
 import { beginPcbEvidenceReview, collectPadEvidenceComponents, endPcbEvidenceReview } from './eda/pcbPhysicalAdapter';
 import {
 	getLayoutPilotWorkbenchSizeMode,
@@ -515,10 +516,20 @@ function renderInlineLayoutReview(): void {
 					componentId: node.dataset.reviewComponentId,
 				},
 			);
-			await presentLayoutPlanPreview(inlineLayoutReview.plan, {
-				region: focus.region,
-				selectPrimitiveId: focus.selectPrimitiveId,
-			});
+
+			await clearActiveLayoutPreviewCanvas();
+			const canvas = await navigateReviewToPcb(
+				inlineLayoutReview.scene,
+				focus,
+			);
+			await setStoredLayoutPreviewSession(
+				createLayoutPreviewSession({
+					planId: inlineLayoutReview.plan.id,
+					documentTabId: canvas.documentTabId,
+				}),
+			);
+			await openLayoutPreviewBar();
+			await hideLayoutPilotWorkbench();
 		}
 		catch (error) {
 			console.error('[LayoutPilot Workbench] preview navigation failed', error);
