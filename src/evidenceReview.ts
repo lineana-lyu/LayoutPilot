@@ -17,7 +17,11 @@ const confirmBtn = document.getElementById('confirmBtn') as HTMLButtonElement;
 
 function setBusy(value: boolean): void {
 	returnBtn.disabled = value;
-	confirmBtn.disabled = value;
+	if (value) {
+		confirmBtn.disabled = true;
+		return;
+	}
+	render();
 }
 
 function render(): void {
