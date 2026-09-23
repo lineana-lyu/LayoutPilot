@@ -1,6 +1,6 @@
 {
   "name": "layoutpilot",
-  "version": "0.9.7",
+  "version": "0.9.8",
   "description": "AI-assisted PCB layout planning for JLCEDA / EasyEDA Pro",
   "author": "lineana-lyu",
   "license": "Apache-2.0",
@@ -13,7 +13,7 @@
     "lint": "eslint",
     "fix": "eslint --fix",
     "build": "npm run compile && ts-node ./build/packaged.ts",
-    "test": "npm run test:domain && npm run test:net-informativeness && npm run test:constraint-policy && npm run test:core-association && npm run test:ownership-relation && npm run test:ownership-capability && npm run test:semantic-snapshot && npm run test:human-ownership && npm run test:physical-placement && npm run test:placement-command && npm run test:board-boundary && npm run test:placement-transaction && npm run test:workflow-state && npm run test:physical-evidence && npm run test:physical-fingerprint && npm run test:canvas-region && npm run test:layout-plan",
+    "test": "npm run test:domain && npm run test:net-informativeness && npm run test:constraint-policy && npm run test:core-association && npm run test:ownership-relation && npm run test:ownership-capability && npm run test:semantic-snapshot && npm run test:human-ownership && npm run test:physical-placement && npm run test:placement-command && npm run test:board-boundary && npm run test:placement-transaction && npm run test:workflow-state && npm run test:physical-evidence && npm run test:physical-fingerprint && npm run test:canvas-region && npm run test:layout-diff-preview && npm run test:layout-plan",
     "test:domain": "ts-node ./tests/domain.ts",
     "test:net-informativeness": "ts-node ./tests/netInformativeness.ts",
     "test:constraint-policy": "ts-node ./tests/constraintPolicy.ts",
@@ -31,6 +31,7 @@
     "test:physical-evidence": "ts-node ./tests/physicalEvidence.ts",
     "test:physical-fingerprint": "ts-node ./tests/physicalFingerprint.ts",
     "test:canvas-region": "ts-node ./tests/canvasRegion.ts",
+    "test:layout-diff-preview": "ts-node ./tests/layoutDiffPreview.ts",
     "test:layout-plan": "ts-node ./tests/layoutPlan.ts"
   },
   "devDependencies": {
