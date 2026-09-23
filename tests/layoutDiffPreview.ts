@@ -9,10 +9,8 @@ import {
 	viaIntersectsRegion,
 } from '../src/domain/layoutDiffPreview';
 import type { LayoutPlanItem } from '../src/domain/layoutPlan';
-
-const sceneCenterX = (value: number) => value;
-import { renderNativeSnapshotDiffOverlay } from '../src/ui/nativeSnapshotDiff';
 import { buildFocusedReviewRegions } from '../src/domain/focusedPlacementCompare';
+import { renderNativeSnapshotDiffOverlay } from '../src/ui/nativeSnapshotDiff';
 
 const item: LayoutPlanItem = {
 	constraintId: 'C21:near:U11',
@@ -277,7 +275,7 @@ assert.equal(
 );
 assert.equal(
 	(focused.current.left + focused.current.right) / 2,
-	sceneCenterX(focusedScene.subject.anchor.x),
+	focusedScene.subject.anchor.x,
 );
 assert.equal(
 	(focused.proposed.left + focused.proposed.right) / 2,
