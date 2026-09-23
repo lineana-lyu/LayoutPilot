@@ -711,6 +711,9 @@ function renderPlanPanel(model?: RuntimeModel): void {
 						</div>
 					`).join('')}
 				</div>
+				${plan.status === 'preview' || plan.status === 'accepted'
+					? '<div style="margin-top:7px"><button class="btn small" data-view-current-plan>工作台预览</button></div>'
+					: ''}
 			</div>`
 		: '';
 
@@ -736,7 +739,7 @@ function renderPlanPanel(model?: RuntimeModel): void {
 								</div>
 								<div style="margin-top:6px">
 									<button class="btn small" data-view-reference-plan="${escapeHtml(reference.id)}">
-										查看参考方案
+										工作台预览
 									</button>
 								</div>
 							</div>`;
@@ -765,6 +768,24 @@ function renderPlanPanel(model?: RuntimeModel): void {
 		${renderConstraintArea(model)}
 	`;
 
+	const currentPlanPreview = planPanel.querySelector<HTMLButtonElement>(
+		'[data-view-current-plan]',
+	);
+	currentPlanPreview?.addEventListener('click', async () => {
+		if (busy || !plan) return;
+		setBusy(true);
+		try {
+			await openInlineLayoutReview(plan);
+		}
+		catch (error) {
+			console.error('[LayoutPilot Workbench] inline current-plan preview failed', error);
+			showToast(`工作台预览失败：${String(error)}`);
+		}
+		finally {
+			setBusy(false);
+		}
+	});
+
 	for (const node of planPanel.querySelectorAll<HTMLButtonElement>(
 		'[data-view-reference-plan]',
 	)) {
@@ -776,12 +797,7 @@ function renderPlanPanel(model?: RuntimeModel): void {
 
 			setBusy(true);
 			try {
-				const validation = await validateLayoutPlanCurrent(reference);
-				if (!validation.ok) {
-					showToast('参考方案已保留，但当前 PCB / Snapshot 已变化，不能叠加旧 Ghost。');
-					return;
-				}
-				await presentLayoutPlanPreview(reference);
+				await openInlineLayoutReview(reference);
 			}
 			catch (error) {
 				console.error('[LayoutPilot Workbench] reference preview failed', error);
