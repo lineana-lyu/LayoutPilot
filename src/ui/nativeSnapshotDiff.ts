@@ -191,3 +191,66 @@ export function renderNativeSnapshotImageFrame(imageUrl: string): string {
 		</div>
 	`;
 }
+
+
+export function renderFocusedPlacementCompare(input: {
+	overviewUrl: string;
+	currentUrl: string;
+	proposedUrl: string;
+	subjectDesignator: string;
+	ownerDesignator: string;
+	layer: string;
+	focusWidthMil: number;
+	focusHeightMil: number;
+}): string {
+	const scale = `${input.focusWidthMil.toFixed(0)} × ${input.focusHeightMil.toFixed(0)} mil`;
+	return `
+		<div class="focused-placement-review">
+			<section class="focused-overview-card">
+				<div class="focused-section-head">
+					<div>
+						<strong>整板定位</strong>
+						<span>只用于确认改动发生在板子的哪里</span>
+					</div>
+					<div class="focused-overview-legend">
+						<span><i class="legend-chip current-red"></i>当前</span>
+						<span><i class="legend-chip target-green"></i>建议</span>
+					</div>
+				</div>
+				<div class="focused-overview-image-wrap">
+					<img class="focused-native-image overview" src="${escapeHtml(input.overviewUrl)}" alt="整板布局定位图" draggable="false"/>
+				</div>
+			</section>
+
+			<div class="focused-compare-grid">
+				<section class="focused-compare-pane current">
+					<div class="focused-pane-head">
+						<div>
+							<span class="focused-kicker current">CURRENT</span>
+							<strong>${escapeHtml(input.subjectDesignator)} · ${escapeHtml(input.layer)}</strong>
+						</div>
+						<span class="focused-scale">同尺度 · ${escapeHtml(scale)}</span>
+					</div>
+					<div class="focused-pane-image-wrap">
+						<img class="focused-native-image" src="${escapeHtml(input.currentUrl)}" alt="当前布局局部图" draggable="false"/>
+					</div>
+					<div class="focused-pane-caption">真实 PCB 当前局部 · 红色轮廓标出待移动器件</div>
+				</section>
+
+				<section class="focused-compare-pane proposed">
+					<div class="focused-pane-head">
+						<div>
+							<span class="focused-kicker proposed">PROPOSED</span>
+							<strong>${escapeHtml(input.subjectDesignator)} → near(${escapeHtml(input.ownerDesignator)})</strong>
+						</div>
+						<span class="focused-scale">同尺度 · ${escapeHtml(scale)}</span>
+					</div>
+					<div class="focused-pane-image-wrap">
+						<img class="focused-native-image" src="${escapeHtml(input.proposedUrl)}" alt="建议布局局部图" draggable="false"/>
+					</div>
+					<div class="focused-pane-caption">当前 PCB 环境 + 绿色真实 Pad Footprint Ghost · 尚未重新布线</div>
+				</section>
+			</div>
+		</div>
+	`;
+}
