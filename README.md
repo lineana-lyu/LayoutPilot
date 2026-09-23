@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.8 Inline Layout Diff Preview
+## Current stage — v0.9.9 Stable Plan Fingerprint Scope
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -131,6 +131,14 @@ v0.9.6 separates **accepting a recommendation** from **authorizing PCB mutation*
 Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with EasyEDA's explicit `zoomToRegion` API around current position, proposed position and available Owner bounds instead of preserving the user's previous zoom level. Evidence review uses the same explicit-region pattern rather than relying on `zoomToSelectedPrimitives`, whose internal selection BBox calculation can fail on real projects when a selected primitive has incomplete bounds.
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
+
+## Stable LayoutPlan fingerprint scope
+
+v0.9.9 fixes a real multi-Owner review failure exposed after confirming a second decoupling Owner. Routing evidence is now hashed only for the subjects that actually exist in the frozen LayoutPlan. Generation and validation therefore use the same physical identity scope.
+
+This preserves the intended safety property: a routing-state change on the actual planned subject invalidates the plan, while routing evidence that was collected for another candidate but did not enter the plan can no longer create a false stale-plan result.
+
+The fix does not bypass stale-plan validation and does not weaken component geometry, board, keepout or routing safety checks.
 
 ## Inline Layout Diff Preview
 
