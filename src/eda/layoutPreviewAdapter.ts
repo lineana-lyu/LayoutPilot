@@ -132,17 +132,11 @@ export async function showLayoutPlanGhost(
 	await eda.dmt_EditorControl.activateDocument(document.tabId);
 	await eda.dmt_EditorControl.removeIndicatorMarkers(document.tabId);
 
-	const eligibleItems = plan.items.filter(
-		item => item.executionBlockers.length === 0,
-	);
-	const previewOnlyItems = plan.items.filter(
-		item => item.executionBlockers.length > 0,
-	);
 	const ownerBounds = await collectOwnerBounds(plan);
 
 	await eda.dmt_EditorControl.generateIndicatorMarkers(
 		plan.items.flatMap(currentMarkers),
-		{ r: 116, g: 126, b: 139, alpha: 0.85 },
+		{ r: 215, g: 68, b: 68, alpha: 0.92 },
 		1,
 		false,
 		document.tabId,
@@ -151,27 +145,17 @@ export async function showLayoutPlanGhost(
 	if (ownerBounds.length) {
 		await eda.dmt_EditorControl.generateIndicatorMarkers(
 			ownerBounds.flatMap(ownerMarkers),
-			{ r: 35, g: 130, b: 95, alpha: 0.95 },
+			{ r: 138, g: 147, b: 156, alpha: 0.92 },
 			2,
 			false,
 			document.tabId,
 		);
 	}
 
-	if (eligibleItems.length) {
+	if (plan.items.length) {
 		await eda.dmt_EditorControl.generateIndicatorMarkers(
-			eligibleItems.flatMap(targetMarkers),
-			{ r: 64, g: 126, b: 220, alpha: 0.95 },
-			2,
-			false,
-			document.tabId,
-		);
-	}
-
-	if (previewOnlyItems.length) {
-		await eda.dmt_EditorControl.generateIndicatorMarkers(
-			previewOnlyItems.flatMap(targetMarkers),
-			{ r: 196, g: 132, b: 38, alpha: 0.95 },
+			plan.items.flatMap(targetMarkers),
+			{ r: 36, g: 166, b: 106, alpha: 0.96 },
 			2,
 			false,
 			document.tabId,
