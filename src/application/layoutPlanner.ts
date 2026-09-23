@@ -131,6 +131,17 @@ function clusterKey(candidate: LayoutPlanningCandidate): string {
 	].join('|');
 }
 
+function moveAlternativeBudget(clusterSize: number): number {
+	// Keep the Cartesian search space below the explicit cluster solver budget
+	// without hard-coding one option count for every neighborhood size.
+	const stateTarget = 30_000;
+	const totalOptionsPerMember = Math.max(
+		3,
+		Math.min(13, Math.floor(stateTarget ** (1 / Math.max(1, clusterSize)))),
+	);
+	return totalOptionsPerMember - 1; // one option is reserved for KEEP_CURRENT
+}
+
 export function buildLocalLayoutPlan(input: {
 	snapshotId: string;
 	semanticFingerprint: string;
@@ -201,7 +212,7 @@ export function buildLocalLayoutPlan(input: {
 				powerNet: candidate.powerNet,
 				groundNet: candidate.groundNet,
 				mode: 'preview',
-				maxMoveAlternatives: 8,
+				maxMoveAlternatives: moveAlternativeBudget(clusterCandidates.length),
 			});
 			if (!alternatives.ready || !alternatives.alternatives.length) {
 				skipped.push({
