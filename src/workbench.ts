@@ -632,6 +632,9 @@ function renderTasks(
 
 	for (const node of taskList.querySelectorAll<HTMLButtonElement>('[data-task]')) {
 		node.addEventListener('click', async () => {
+			if (inlineLayoutReview) {
+				releaseInlineLayoutReview();
+			}
 			selectedComponentId = node.dataset.task;
 			const selectedTask = tasks.find(
 				task => task.componentId === selectedComponentId,
