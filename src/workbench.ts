@@ -1436,35 +1436,14 @@ previewPlanBtn.addEventListener('click', async () => {
 	if (busy || previewPlanBtn.disabled) return;
 	setBusy(true);
 	try {
-		const workflow = inspectStoredWorkflowState();
-		let plan = workflow.layoutPlan;
-
-		if (
-			!plan
-			|| plan.status === 'rejected'
-			|| plan.status === 'applied'
-			|| plan.status === 'superseded'
-		) {
-			const result = await generateCurrentLayoutPlan();
-			if (!result.ok) {
-				showToast(result.message);
-				return;
-			}
-			plan = result.plan;
+		// “生成布局预览” always rebuilds from the current Owner decisions.
+		// Existing plans remain accessible from the plan/history pane.
+		const generated = await generateCurrentLayoutPlan();
+		if (!generated.ok) {
+			showToast(generated.message);
+			return;
 		}
-		else {
-			const validation = await validateStoredLayoutPlanCurrent();
-			if (!validation.ok) {
-				const regenerated = await generateCurrentLayoutPlan();
-				if (!regenerated.ok) {
-					showToast(regenerated.message);
-					return;
-				}
-				plan = regenerated.plan;
-			}
-		}
-
-		await openInlineLayoutReview(plan);
+		await openInlineLayoutReview(generated.plan);
 	}
 	catch (error) {
 		console.error('[LayoutPilot Workbench] layout preview failed', error);
