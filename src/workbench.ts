@@ -582,11 +582,13 @@ function renderInlineLayoutReview(): void {
 		node.addEventListener('click', () => {
 			void navigateToPcb(node);
 		});
-		node.addEventListener('keydown', event => {
-			if (event.key !== 'Enter' && event.key !== ' ') return;
-			event.preventDefault();
-			void navigateToPcb(node);
-		});
+		if (node.tagName !== 'BUTTON') {
+			node.addEventListener('keydown', event => {
+				if (event.key !== 'Enter' && event.key !== ' ') return;
+				event.preventDefault();
+				void navigateToPcb(node);
+			});
+		}
 	}
 
 	document.getElementById('reviewBackBtn')?.addEventListener('click', () => {
