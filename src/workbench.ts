@@ -137,6 +137,10 @@ interface InlineLayoutReviewState {
 	plan: LayoutPlan;
 	scenes: LayoutReviewScene[];
 	activeItemIndex: number;
+	skipped: Array<{
+		subjectDesignator: string;
+		reasons: string[];
+	}>;
 }
 
 let inlineLayoutReview: InlineLayoutReviewState | undefined;
@@ -450,6 +454,16 @@ function renderInlineLayoutReview(): void {
 				<div>
 					<div class="layout-review-title">布局差异预览 · ${escapeHtml(item.subjectDesignator)} → near(${escapeHtml(item.ownerDesignator)})</div>
 					<div class="layout-review-sub">${escapeHtml(planLabel)} · 共 ${scenes.length} 项修改 · 当前 ${activeItemIndex + 1}/${scenes.length} · ${escapeHtml(visualSourceLabel)}</div>
+					${review.skipped.length
+						? `<details class="layout-review-skipped">
+							<summary>${review.skipped.length} 项已确认约束未形成合法位置</summary>
+							<div>
+								${review.skipped.slice(0, 6).map(skipped =>
+									`<span><strong>${escapeHtml(skipped.subjectDesignator)}</strong>：${escapeHtml(skipped.reasons.join('；'))}</span>`
+								).join('')}
+							</div>
+						</details>`
+						: ''}
 					${scenes.length > 1
 						? `<div class="layout-review-item-tabs">
 							${scenes.map((candidateScene, index) => `
@@ -657,7 +671,13 @@ function renderInlineLayoutReview(): void {
 	});
 }
 
-async function openInlineLayoutReview(plan: LayoutPlan): Promise<void> {
+async function openInlineLayoutReview(
+	plan: LayoutPlan,
+	skipped: Array<{
+		subjectDesignator: string;
+		reasons: string[];
+	}> = [],
+): Promise<void> {
 	const validation = await validateLayoutPlanCurrent(plan);
 	if (!validation.ok) {
 		throw new Error(validation.message);
@@ -669,6 +689,10 @@ async function openInlineLayoutReview(plan: LayoutPlan): Promise<void> {
 		plan,
 		scenes,
 		activeItemIndex: 0,
+		skipped: skipped.map(item => ({
+			subjectDesignator: item.subjectDesignator,
+			reasons: [...item.reasons],
+		})),
 	};
 	renderInlineLayoutReview();
 }
@@ -1319,6 +1343,7 @@ async function refresh(): Promise<void> {
 		const planHasPreflightCandidate = plan?.items.some(
 			item => item.executionBlockers.length === 0,
 		) ?? false;
+		const planIsSingleItem = plan?.items.length === 1;
 
 		previewPlanBtn.disabled = model.previewEligibleCount === 0;
 		previewPlanBtn.textContent = plan
@@ -1331,10 +1356,14 @@ async function refresh(): Promise<void> {
 					: '重新生成布局预览'
 			: '生成布局预览';
 
-		applyBtn.disabled = !acceptedPlan || !planHasPreflightCandidate;
+		applyBtn.disabled = !acceptedPlan
+			|| !planHasPreflightCandidate
+			|| !planIsSingleItem;
 		applyBtn.textContent = planMode === 'reference-only'
 			? '仅参考 · 不执行'
-			: '物理预检并应用';
+			: plan && plan.items.length > 1
+				? '多项方案 · 暂不自动执行'
+				: '物理预检并应用';
 		undoBtn.disabled = command?.status !== 'applied';
 
 		const firstProvider = workflow.semanticSnapshot.entries
@@ -1442,7 +1471,7 @@ previewPlanBtn.addEventListener('click', async () => {
 			showToast(generated.message);
 			return;
 		}
-		await openInlineLayoutReview(generated.plan);
+		await openInlineLayoutReview(generated.plan, generated.skipped);
 	}
 	catch (error) {
 		console.error('[LayoutPilot Workbench] layout preview failed', error);
