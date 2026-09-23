@@ -1,5 +1,6 @@
 import {
 	paddedCanvasRegion,
+	unionCanvasBounds,
 	type CanvasBounds,
 	type CanvasRegion,
 } from './canvasRegion';
@@ -22,11 +23,14 @@ export interface ReviewNavigationFocus {
 	selectPrimitiveId?: string;
 }
 
-function focusRegion(bounds: CanvasBounds): CanvasRegion {
+function focusRegion(
+	bounds: CanvasBounds,
+	minSpanMil = 460,
+): CanvasRegion {
 	return paddedCanvasRegion(bounds, {
-		marginRatio: 0.32,
-		minMarginMil: 36,
-		minSpanMil: 180,
+		marginRatio: 0.28,
+		minMarginMil: 72,
+		minSpanMil,
 	});
 }
 
@@ -35,9 +39,13 @@ export function resolveReviewNavigationFocus(
 	request: ReviewNavigationRequest,
 ): ReviewNavigationFocus {
 	if (request.kind === 'target') {
+		const targetContext = unionCanvasBounds([
+			scene.subjectTargetBounds,
+			scene.owner?.bounds,
+		]) ?? scene.subjectTargetBounds;
 		return {
 			kind: 'target',
-			region: focusRegion(scene.subjectTargetBounds),
+			region: focusRegion(targetContext, 560),
 		};
 	}
 
