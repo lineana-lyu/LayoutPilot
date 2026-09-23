@@ -2,6 +2,7 @@ import {
 	paddedCanvasRegion,
 	unionCanvasBounds,
 	type CanvasBounds,
+	type CanvasRegion,
 } from '../domain/canvasRegion';
 import type { LayoutPlan, LayoutPlanItem } from '../domain/layoutPlan';
 
@@ -44,19 +45,7 @@ function boundsMarkers(box: CanvasBounds) {
 }
 
 function ownerMarkers(box: CanvasBounds) {
-	const center = {
-		x: (box.minX + box.maxX) / 2,
-		y: (box.minY + box.maxY) / 2,
-	};
-	return [
-		...boundsMarkers(box),
-		{
-			type: EDMT_IndicatorMarkerType.CIRCLE,
-			x: center.x,
-			y: center.y,
-			r: 14,
-		},
-	];
+	return boundsMarkers(box);
 }
 
 function targetMarkers(item: LayoutPlanItem) {
@@ -69,25 +58,11 @@ function targetMarkers(item: LayoutPlanItem) {
 			endX: item.to.x,
 			endY: item.to.y,
 		},
-		{
-			type: EDMT_IndicatorMarkerType.CIRCLE,
-			x: item.to.x,
-			y: item.to.y,
-			r: 18,
-		},
 	];
 }
 
 function currentMarkers(item: LayoutPlanItem) {
-	return [
-		...boundsMarkers(item.fromBounds),
-		{
-			type: EDMT_IndicatorMarkerType.CIRCLE,
-			x: item.from.x,
-			y: item.from.y,
-			r: 12,
-		},
-	];
+	return boundsMarkers(item.fromBounds);
 }
 
 async function collectOwnerBounds(plan: LayoutPlan): Promise<CanvasBounds[]> {
@@ -118,8 +93,14 @@ async function collectOwnerBounds(plan: LayoutPlan): Promise<CanvasBounds[]> {
 	return bounds;
 }
 
+export interface LayoutPreviewFocusOptions {
+	region?: CanvasRegion;
+	selectPrimitiveId?: string;
+}
+
 export async function showLayoutPlanGhost(
 	plan: LayoutPlan,
+	focus?: LayoutPreviewFocusOptions,
 ): Promise<LayoutPreviewCanvasSession> {
 	const document = await eda.dmt_SelectControl.getCurrentDocumentInfo();
 	if (!document) {
@@ -162,19 +143,40 @@ export async function showLayoutPlanGhost(
 		);
 	}
 
-	const viewportBounds = unionCanvasBounds(
-		[
-			...plan.items.flatMap(item => [item.fromBounds, item.toBounds]),
-			...ownerBounds,
-		],
-		plan.items.flatMap(item => [item.from, item.to]),
-	);
-	if (viewportBounds) {
-		const region = paddedCanvasRegion(viewportBounds, {
-			marginRatio: 0.16,
-			minMarginMil: 60,
-			minSpanMil: 220,
-		});
+	let region = focus?.region;
+	if (!region) {
+		const viewportBounds = unionCanvasBounds(
+			[
+				...plan.items.flatMap(item => [item.fromBounds, item.toBounds]),
+				...ownerBounds,
+			],
+			plan.items.flatMap(item => [item.from, item.to]),
+		);
+		if (viewportBounds) {
+			region = paddedCanvasRegion(viewportBounds, {
+				marginRatio: 0.16,
+				minMarginMil: 60,
+				minSpanMil: 220,
+			});
+		}
+	}
+
+	if (focus?.selectPrimitiveId) {
+		try {
+			await eda.pcb_SelectControl.clearSelected();
+			await eda.pcb_SelectControl.doSelectPrimitives(
+				focus.selectPrimitiveId,
+			);
+		}
+		catch (error) {
+			console.warn('[LayoutPilot] unable to select focused review component', {
+				primitiveId: focus.selectPrimitiveId,
+				error,
+			});
+		}
+	}
+
+	if (region) {
 		try {
 			const zoomed = await eda.dmt_EditorControl.zoomToRegion(
 				region.left,
