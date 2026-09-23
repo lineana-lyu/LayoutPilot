@@ -116,4 +116,99 @@ assert.notEqual(
 	'a real component move must still change the physical fingerprint',
 );
 
+const routingComponents = [
+	{
+		...components[0],
+		id: 'c1',
+		designator: 'C1',
+		pads: components[0].pads.map(pad => ({
+			...pad,
+			componentId: 'c1',
+			designator: 'C1',
+			connectedPrimitiveCount: 3,
+		})),
+	},
+	{
+		...components[0],
+		id: 'c2',
+		designator: 'C2',
+		x: 200,
+		y: 200,
+		bounds: { minX: 190, minY: 190, maxX: 210, maxY: 210 },
+		pads: components[0].pads.map(pad => ({
+			...pad,
+			componentId: 'c2',
+			designator: 'C2',
+			x: pad.x + 100,
+			y: pad.y + 100,
+			connectedPrimitiveCount: 7,
+		})),
+	},
+];
+
+const scoped = buildPhysicalBoardFingerprint({
+	components: routingComponents,
+	board: {
+		outer: { points: ring },
+		holes: [],
+		approximationToleranceMil: 0,
+	},
+	componentKeepouts: [],
+	routingEvidenceComponentIds: ['c1'],
+});
+
+const sameScopedWithOtherRoutingUnknown = buildPhysicalBoardFingerprint({
+	components: routingComponents.map(component =>
+		component.id === 'c2'
+			? {
+				...component,
+				pads: component.pads.map(pad => ({
+					...pad,
+					connectedPrimitiveCount: undefined,
+				})),
+			}
+			: component
+	),
+	board: {
+		outer: { points: ring },
+		holes: [],
+		approximationToleranceMil: 0,
+	},
+	componentKeepouts: [],
+	routingEvidenceComponentIds: ['c1'],
+});
+
+assert.equal(
+	scoped,
+	sameScopedWithOtherRoutingUnknown,
+	'routing evidence outside the LayoutPlan scope must not change the fingerprint',
+);
+
+const scopedSubjectRoutingChanged = buildPhysicalBoardFingerprint({
+	components: routingComponents.map(component =>
+		component.id === 'c1'
+			? {
+				...component,
+				pads: component.pads.map(pad => ({
+					...pad,
+					connectedPrimitiveCount: (pad.connectedPrimitiveCount ?? 0) + 1,
+				})),
+			}
+			: component
+	),
+	board: {
+		outer: { points: ring },
+		holes: [],
+		approximationToleranceMil: 0,
+	},
+	componentKeepouts: [],
+	routingEvidenceComponentIds: ['c1'],
+});
+
+assert.notEqual(
+	scoped,
+	scopedSubjectRoutingChanged,
+	'routing evidence for the actual LayoutPlan subject must still invalidate the fingerprint',
+);
+
 console.log('Physical fingerprint canonicalization tests passed.');

@@ -74,7 +74,11 @@ export function buildPhysicalBoardFingerprint(input: {
 	components: PhysicalComponentSnapshot[];
 	board: BoardRegion;
 	componentKeepouts: BoardPolygon[];
+	routingEvidenceComponentIds?: string[];
 }): string {
+	const routingEvidenceScope = input.routingEvidenceComponentIds
+		? new Set(input.routingEvidenceComponentIds)
+		: undefined;
 	const components = [...input.components]
 		.sort((a, b) => a.id.localeCompare(b.id))
 		.map(component => ({
@@ -111,7 +115,10 @@ export function buildPhysicalBoardFingerprint(input: {
 					width: numeric(pad.width),
 					height: numeric(pad.height),
 					rotation: numeric(pad.rotation),
-					connectedPrimitiveCount: pad.connectedPrimitiveCount ?? null,
+					connectedPrimitiveCount:
+						!routingEvidenceScope || routingEvidenceScope.has(component.id)
+							? pad.connectedPrimitiveCount ?? null
+							: null,
 				})),
 		}));
 
