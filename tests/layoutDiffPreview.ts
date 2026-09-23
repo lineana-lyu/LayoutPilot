@@ -325,12 +325,12 @@ assert.equal(currentFocus.selectPrimitiveId, 'c21');
 assert.ok(currentFocus.region.left < subject.bounds.minX);
 assert.ok(currentFocus.region.right > subject.bounds.maxX);
 assert.ok(
-	currentFocus.region.right - currentFocus.region.left <= 220,
-	'CURRENT hotspot navigation should keep a tight local horizontal span',
+	currentFocus.region.right - currentFocus.region.left >= 460,
+	'CURRENT hotspot navigation should retain enough PCB context around a small component',
 );
 assert.ok(
-	currentFocus.region.bottom - currentFocus.region.top <= 220,
-	'CURRENT hotspot navigation should keep a tight local vertical span',
+	currentFocus.region.bottom - currentFocus.region.top >= 460,
+	'CURRENT hotspot navigation should retain enough vertical PCB context around a small component',
 );
 
 const componentFocus = resolveReviewNavigationFocus(
@@ -348,5 +348,10 @@ const targetFocus = resolveReviewNavigationFocus(
 assert.equal(targetFocus.selectPrimitiveId, undefined);
 assert.ok(targetFocus.region.left < focusedScene.subjectTargetBounds.minX);
 assert.ok(targetFocus.region.right > focusedScene.subjectTargetBounds.maxX);
+assert.ok(
+	targetFocus.region.left < padAnchored.bounds.minX
+	&& targetFocus.region.right > padAnchored.bounds.maxX,
+	'TARGET navigation should include Owner context when available',
+);
 
 console.log('Layout diff preview geometry tests passed.');
