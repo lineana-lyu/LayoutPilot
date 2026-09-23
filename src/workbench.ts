@@ -27,7 +27,6 @@ import { collectAnalysisState, type AnalysisState } from './eda/analysisAdapter'
 import {
 	generateCurrentLayoutPlan,
 	validateLayoutPlanCurrent,
-	validateStoredLayoutPlanCurrent,
 } from './eda/layoutPlanRuntime';
 import { collectLayoutReviewScenes } from './eda/layoutDiffPreviewAdapter';
 import {
