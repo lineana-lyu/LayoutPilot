@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.11 Native Snapshot Diff
+## Current stage — v0.9.12 Native Marker Snapshot
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -131,6 +131,29 @@ v0.9.6 separates **accepting a recommendation** from **authorizing PCB mutation*
 Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with EasyEDA's explicit `zoomToRegion` API around current position, proposed position and available Owner bounds instead of preserving the user's previous zoom level. Evidence review uses the same explicit-region pattern rather than relying on `zoomToSelectedPrimitives`, whose internal selection BBox calculation can fail on real projects when a selected primitive has incomplete bounds.
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
+
+## v0.9.12 Native Marker Snapshot
+
+v0.9.11 exposed a runtime incompatibility in EasyEDA's beta `zoomTo()` API when all coordinate arguments were omitted and the method was used as a viewport getter. On a real PCB this could throw an internal `minX undefined` error and force the workbench back to the v0.9.10 geometry renderer.
+
+v0.9.12 removes that unsupported assumption entirely.
+
+The native review path is now:
+
+```
+zoomToRegion(review area)
+→ EasyEDA native indicator markers
+   - CURRENT red
+   - TARGET green
+   - OWNER neutral
+→ getCurrentRenderedAreaImage()
+→ remove indicator markers
+→ show the exact native marked frame in the workbench
+```
+
+No PCB-world-to-image reprojection is required. Marker alignment is therefore owned by EasyEDA's native canvas coordinate system.
+
+The review still falls back to the geometry renderer if native capture itself fails.
 
 ## Native PCB Review Overlay
 

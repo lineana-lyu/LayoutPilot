@@ -177,3 +177,17 @@ export function renderNativeSnapshotDiffFrame(input: {
 		</div>
 	`;
 }
+
+
+export function renderNativeSnapshotImageFrame(imageUrl: string): string {
+	return `
+		<div class="native-review-frame">
+			<img
+				class="native-review-image native-review-image-marked"
+				src="${escapeHtml(imageUrl)}"
+				alt="EasyEDA 原生 PCB 布局审查快照"
+				draggable="false"
+			/>
+		</div>
+	`;
+}

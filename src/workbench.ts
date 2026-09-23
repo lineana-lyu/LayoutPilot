@@ -22,7 +22,6 @@ import {
 	type LayoutDiffPreviewMode,
 	type LayoutReviewScene,
 } from './domain/layoutDiffPreview';
-import type { CanvasRegion } from './domain/canvasRegion';
 import { collectAnalysisState, type AnalysisState } from './eda/analysisAdapter';
 import {
 	generateCurrentLayoutPlan,
@@ -30,7 +29,7 @@ import {
 	validateStoredLayoutPlanCurrent,
 } from './eda/layoutPlanRuntime';
 import { collectLayoutReviewScene } from './eda/layoutDiffPreviewAdapter';
-import { captureNativePcbReviewSnapshot } from './eda/nativeSnapshotReviewAdapter';
+import { captureNativePcbReviewSnapshots } from './eda/nativeSnapshotReviewAdapter';
 import { showLayoutPlanGhost } from './eda/layoutPreviewAdapter';
 import { beginPcbEvidenceReview, collectPadEvidenceComponents, endPcbEvidenceReview } from './eda/pcbPhysicalAdapter';
 import {
@@ -42,7 +41,7 @@ import {
 import { openEvidenceReviewBar, retireEvidenceReviewBar } from './ui/evidenceReviewWindow';
 import { clearActiveLayoutPreviewCanvas, openLayoutPreviewBar } from './ui/layoutPreviewWindow';
 import { renderLayoutDiffPreviewSvg } from './ui/layoutDiffPreview';
-import { renderNativeSnapshotDiffFrame } from './ui/nativeSnapshotDiff';
+import { renderNativeSnapshotImageFrame } from './ui/nativeSnapshotDiff';
 import {
 	getStoredHumanOwnershipDecisions,
 	inspectStoredWorkflowState,
@@ -133,8 +132,7 @@ interface InlineLayoutReviewState {
 	scene: LayoutReviewScene;
 	mode: LayoutDiffPreviewMode;
 	nativeSnapshot?: {
-		imageUrl: string;
-		viewport: CanvasRegion;
+		imageUrls: Record<LayoutDiffPreviewMode, string>;
 		documentTabId: string;
 	};
 	fallbackReason?: string;
@@ -143,9 +141,11 @@ interface InlineLayoutReviewState {
 let inlineLayoutReview: InlineLayoutReviewState | undefined;
 
 function releaseInlineLayoutReview(): void {
-	const imageUrl = inlineLayoutReview?.nativeSnapshot?.imageUrl;
-	if (imageUrl) {
-		URL.revokeObjectURL(imageUrl);
+	const imageUrls = inlineLayoutReview?.nativeSnapshot?.imageUrls;
+	if (imageUrls) {
+		for (const imageUrl of Object.values(imageUrls)) {
+			URL.revokeObjectURL(imageUrl);
+		}
 	}
 	inlineLayoutReview = undefined;
 }
@@ -428,12 +428,9 @@ function renderInlineLayoutReview(): void {
 
 	const { plan, scene, mode } = review;
 	const reviewVisual = review.nativeSnapshot
-		? renderNativeSnapshotDiffFrame({
-			imageUrl: review.nativeSnapshot.imageUrl,
-			scene,
-			viewport: review.nativeSnapshot.viewport,
-			mode,
-		})
+		? renderNativeSnapshotImageFrame(
+			review.nativeSnapshot.imageUrls[mode],
+		)
 		: renderLayoutDiffPreviewSvg(scene, mode);
 	const visualSourceLabel = review.nativeSnapshot
 		? 'EasyEDA 原生 PCB 快照'
@@ -568,14 +565,17 @@ async function openInlineLayoutReview(plan: LayoutPlan): Promise<void> {
 	let fallbackReason: string | undefined;
 
 	try {
-		const captured = await captureNativePcbReviewSnapshot(scene.viewport);
+		const captured = await captureNativePcbReviewSnapshots(scene);
 		const postCaptureValidation = await validateLayoutPlanCurrent(plan);
 		if (!postCaptureValidation.ok) {
 			throw new Error(postCaptureValidation.message);
 		}
 		nativeSnapshot = {
-			imageUrl: URL.createObjectURL(captured.blob),
-			viewport: captured.viewport,
+			imageUrls: {
+				original: URL.createObjectURL(captured.images.original),
+				proposed: URL.createObjectURL(captured.images.proposed),
+				diff: URL.createObjectURL(captured.images.diff),
+			},
 			documentTabId: captured.documentTabId,
 		};
 	}
