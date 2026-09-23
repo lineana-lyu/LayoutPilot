@@ -296,10 +296,19 @@ const focusedHtml = renderFocusedLocalDetailCompare({
 });
 assert.match(focusedHtml, /BEFORE/);
 assert.match(focusedHtml, /AFTER/);
-assert.match(focusedHtml, /CURRENT · C21/);
-assert.match(focusedHtml, /TARGET · C21/);
+assert.match(focusedHtml, /CURRENT/);
+assert.match(focusedHtml, /TARGET/);
+assert.match(focusedHtml, />C21</);
 assert.match(focusedHtml, /data-review-nav="current"/);
 assert.match(focusedHtml, /data-review-nav="target"/);
+assert.match(focusedHtml, /review-nav-strip/);
+assert.match(focusedHtml, /当前位置/);
+assert.match(focusedHtml, /建议位置/);
+assert.doesNotMatch(
+	focusedHtml,
+	/focused-vector-overview/,
+	'position navigation should not rely on a misleading miniature board map',
+);
 assert.match(focusedHtml, /data-review-nav="component"/);
 assert.match(focusedHtml, /review-focus-halo/);
 assert.doesNotMatch(
@@ -315,6 +324,14 @@ const currentFocus = resolveReviewNavigationFocus(
 assert.equal(currentFocus.selectPrimitiveId, 'c21');
 assert.ok(currentFocus.region.left < subject.bounds.minX);
 assert.ok(currentFocus.region.right > subject.bounds.maxX);
+assert.ok(
+	currentFocus.region.right - currentFocus.region.left <= 220,
+	'CURRENT hotspot navigation should keep a tight local horizontal span',
+);
+assert.ok(
+	currentFocus.region.bottom - currentFocus.region.top <= 220,
+	'CURRENT hotspot navigation should keep a tight local vertical span',
+);
 
 const componentFocus = resolveReviewNavigationFocus(
 	focusedScene,

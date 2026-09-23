@@ -93,6 +93,18 @@ function footprintMarkers(
 		: boundsMarkers(component, dx, dy);
 }
 
+function reviewZoomRatio(region: CanvasRegion): number {
+	const span = Math.max(
+		region.right - region.left,
+		region.bottom - region.top,
+	);
+	if (span <= 220) return 800;
+	if (span <= 360) return 700;
+	if (span <= 560) return 600;
+	if (span <= 900) return 500;
+	return 420;
+}
+
 async function zoomToRegion(
 	documentTabId: string,
 	region: CanvasRegion,
@@ -106,6 +118,18 @@ async function zoomToRegion(
 	);
 	if (!zoomed) {
 		throw new Error('EasyEDA 拒绝定位当前审查区域。');
+	}
+
+	const centerX = (region.left + region.right) / 2;
+	const centerY = (region.top + region.bottom) / 2;
+	const focused = await eda.dmt_EditorControl.zoomTo(
+		centerX,
+		centerY,
+		reviewZoomRatio(region),
+		documentTabId,
+	);
+	if (!focused) {
+		console.warn('[LayoutPilot] explicit review zoom ratio was rejected; region fit remains active');
 	}
 }
 
@@ -131,61 +155,67 @@ export async function navigateReviewToPcb(
 		console.warn('[LayoutPilot] unable to clear PCB selection before review navigation', error);
 	}
 
-	if (focus.selectPrimitiveId) {
-		try {
-			await eda.pcb_SelectControl.clearSelected();
-			await eda.pcb_SelectControl.doSelectPrimitives(
-				focus.selectPrimitiveId,
+	try {
+		if (focus.selectPrimitiveId) {
+			try {
+				await eda.pcb_SelectControl.doSelectPrimitives(
+					focus.selectPrimitiveId,
+				);
+			}
+			catch (error) {
+				console.warn('[LayoutPilot] review navigation selection failed', {
+					primitiveId: focus.selectPrimitiveId,
+					error,
+				});
+			}
+		}
+
+		if (focus.kind === 'target') {
+			const dx = scene.item.to.x - scene.subject.anchor.x;
+			const dy = scene.item.to.y - scene.subject.anchor.y;
+			const markers = footprintMarkers(
+				scene.subject,
+				dx,
+				dy,
 			);
+
+			const generated = await eda.dmt_EditorControl.generateIndicatorMarkers(
+				markers,
+				{ r: 36, g: 166, b: 106, alpha: 0.98 },
+				3,
+				false,
+				document.tabId,
+			);
+			if (!generated) {
+				throw new Error('EasyEDA 未能生成 TARGET Footprint Ghost。');
+			}
 		}
-		catch (error) {
-			console.warn('[LayoutPilot] review navigation selection failed', {
-				primitiveId: focus.selectPrimitiveId,
-				error,
-			});
+		else if (focus.kind === 'current') {
+			const generated = await eda.dmt_EditorControl.generateIndicatorMarkers(
+				footprintMarkers(scene.subject),
+				{ r: 215, g: 68, b: 68, alpha: 0.96 },
+				2,
+				false,
+				document.tabId,
+			);
+			if (!generated) {
+				console.warn('[LayoutPilot] unable to generate CURRENT review marker');
+			}
 		}
+
+		await zoomToRegion(document.tabId, focus.region);
+
+		return {
+			documentTabId: document.tabId,
+		};
 	}
-
-	if (focus.kind === 'target') {
-		const dx = scene.item.to.x - scene.subject.anchor.x;
-		const dy = scene.item.to.y - scene.subject.anchor.y;
-		const markers = [
-			...footprintMarkers(scene.subject, dx, dy),
-			{
-				type: EDMT_IndicatorMarkerType.CIRCLE,
-				x: scene.item.to.x,
-				y: scene.item.to.y,
-				r: 14,
-			} satisfies IDMT_IndicatorMarkerShape,
-		];
-
-		const generated = await eda.dmt_EditorControl.generateIndicatorMarkers(
-			markers,
-			{ r: 36, g: 166, b: 106, alpha: 0.98 },
-			3,
-			false,
-			document.tabId,
-		);
-		if (!generated) {
-			throw new Error('EasyEDA 未能生成 TARGET Footprint Ghost。');
+	catch (error) {
+		try {
+			await eda.dmt_EditorControl.removeIndicatorMarkers(document.tabId);
 		}
-	}
-	else if (focus.kind === 'current') {
-		const generated = await eda.dmt_EditorControl.generateIndicatorMarkers(
-			footprintMarkers(scene.subject),
-			{ r: 215, g: 68, b: 68, alpha: 0.96 },
-			2,
-			false,
-			document.tabId,
-		);
-		if (!generated) {
-			console.warn('[LayoutPilot] unable to generate CURRENT review marker');
+		catch (cleanupError) {
+			console.warn('[LayoutPilot] unable to clear failed review navigation markers', cleanupError);
 		}
+		throw error;
 	}
-
-	await zoomToRegion(document.tabId, focus.region);
-
-	return {
-		documentTabId: document.tabId,
-	};
 }

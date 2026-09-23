@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.15 Interactive Review Navigator
+## Current stage — v0.9.16 Review Navigation UX
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -132,6 +132,21 @@ Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
 
+## v0.9.16 Review Navigation UX
+
+Real-board review exposed three usability problems in v0.9.15: the return window could cover the inspected area, the board mini-map could be misleading on complex outlines, and `zoomToRegion()` alone could still leave a small component visually too distant.
+
+v0.9.16 tightens the review loop:
+
+- hotspot navigation opens a compact, top-right return bar instead of the full centered plan-review window;
+- the compact bar can be minimized and keeps only the current review target plus **返回工作台**;
+- the final PCB zoom runs *after* the compact bar changes the editor viewport;
+- explicit `zoomTo(x, y, scaleRatio)` is used with a bounded review scale after `zoomToRegion()`, so tiny passives get a meaningful close-up instead of a board-level fit;
+- TARGET navigation shows only the selected component's green pad ghost, not the whole LayoutPlan;
+- the misleading board mini-map is replaced by a deterministic CURRENT → TARGET position navigator with movement distance.
+
+The change remains review-only. Planner, physical fingerprint, collision, keepout, routing safety, preflight and apply behavior are unchanged.
+
 ## v0.9.15 Interactive Review Navigator
 
 v0.9.15 turns the focused comparison from a static illustration into a PCB review navigator.
@@ -156,7 +171,7 @@ Preview component
 
 Clicking the green TARGET uses the frozen LayoutPlan target bounds instead of selecting a nonexistent primitive, so the editor jumps directly to the proposed placement area.
 
-The top overview is no longer based on the beta EasyEDA screenshot cache. It is a deterministic board mini-map with clickable CURRENT / TARGET squares and a movement link.
+The top overview is no longer based on the beta EasyEDA screenshot cache. v0.9.16 further replaces the miniature board drawing with a deterministic CURRENT → TARGET position navigator, avoiding misleading board-outline reduction on complex designs.
 
 This keeps the review scalable when future plans contain many changed components: color identifies change by default; focus decoration appears only for the component the reviewer is actually inspecting.
 
