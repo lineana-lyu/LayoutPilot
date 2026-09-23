@@ -5,9 +5,11 @@ import {
 	buildLayoutReviewComponent,
 	buildLayoutReviewViewport,
 	traceIntersectsRegion,
+	translateReviewBounds,
 	viaIntersectsRegion,
 } from '../src/domain/layoutDiffPreview';
 import type { LayoutPlanItem } from '../src/domain/layoutPlan';
+import { renderNativeSnapshotDiffOverlay } from '../src/ui/nativeSnapshotDiff';
 
 const item: LayoutPlanItem = {
 	constraintId: 'C21:near:U11',
@@ -167,5 +169,67 @@ assert.equal(
 	2000,
 	'fallback display BBox must be recentered on the component anchor',
 );
+
+const subject = buildLayoutReviewComponent({
+	id: 'c21',
+	designator: 'C21',
+	x: 1000,
+	y: 1000,
+	rotation: 0,
+	layer: 'TOP',
+	locked: false,
+	bounds: item.fromBounds,
+	pads: [
+		{
+			componentId: 'c21',
+			designator: 'C21',
+			padNumber: '1',
+			x: 990,
+			y: 1000,
+			width: 10,
+			height: 16,
+			rotation: 0,
+		},
+		{
+			componentId: 'c21',
+			designator: 'C21',
+			padNumber: '2',
+			x: 1010,
+			y: 1000,
+			width: 10,
+			height: 16,
+			rotation: 0,
+		},
+	],
+});
+assert.ok(subject);
+
+const nativeOverlay = renderNativeSnapshotDiffOverlay(
+	{
+		planId: 'layout-plan-test',
+		itemIndex: 0,
+		item,
+		viewport,
+		boardOuter: [],
+		boardHoles: [],
+		components: [subject, padAnchored],
+		subject,
+		subjectTargetBounds: translateReviewBounds(
+			subject.bounds,
+			item.to.x - item.from.x,
+			item.to.y - item.from.y,
+		),
+		owner: padAnchored,
+		traces: [],
+		vias: [],
+	},
+	viewport,
+	'diff',
+);
+assert.match(nativeOverlay, /#d74444/, 'native diff must mark CURRENT in red');
+assert.match(nativeOverlay, /#24a66a/, 'native diff must mark TARGET in green');
+assert.match(nativeOverlay, /CURRENT · C21/);
+assert.match(nativeOverlay, /TARGET · C21/);
+assert.match(nativeOverlay, /OWNER · U11/);
 
 console.log('Layout diff preview geometry tests passed.');

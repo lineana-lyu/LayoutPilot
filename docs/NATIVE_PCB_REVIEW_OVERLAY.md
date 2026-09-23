@@ -1,7 +1,7 @@
 # Native PCB Review Overlay — Product & Technical Design
 
-Status: DESIGN FREEZE
-Target: post-v0.9.10
+Status: P0 IMPLEMENTED IN v0.9.11
+Target: v0.9.11
 Scope: placement review only
 Non-goal: second PCB editor / full rerouter / SI/PI simulator
 
