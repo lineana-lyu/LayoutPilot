@@ -108,6 +108,28 @@ Apply accepted LayoutPlan = explicit mutation boundary
 No external editor framework is bundled into the extension.
 
 
+## v0.9.10 review geometry alignment
+
+The workbench diff renderer no longer treats the conservative primitive BBox as the visible footprint body.
+
+Two geometry models are now intentionally separate:
+
+```
+Safety geometry
+  = EasyEDA measured primitive BBox
+  → collision / board / keepout / preflight
+
+Review geometry
+  = component anchor + pad envelope
+  → grayscale context / CURRENT / TARGET / OWNER
+```
+
+The review envelope is built from real pad coordinates and pad dimensions and therefore stays aligned with the actual component placement. The component X/Y anchor is preserved explicitly and is used for CURRENT / TARGET / OWNER labels and movement vectors.
+
+If a component has no usable pads, the renderer falls back to the measured BBox dimensions but recenters the display shape on the component anchor. This avoids attached text or graphics shifting the apparent component position.
+
+The beta EasyEDA `getPrimitiveBoardLine()` API was deliberately not made a core dependency because the official API documentation marks it as preview-only.
+
 ## v0.9.9 plan-scoped physical identity
 
 A LayoutPlan physical fingerprint now has one explicit rule for routing evidence:

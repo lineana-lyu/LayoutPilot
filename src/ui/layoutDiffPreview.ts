@@ -23,18 +23,6 @@ function polygonPoints(points: Array<{ x: number; y: number }>): string {
 	return points.map(point => `${point.x},${-point.y}`).join(' ');
 }
 
-function center(bounds: {
-	minX: number;
-	minY: number;
-	maxX: number;
-	maxY: number;
-}): { x: number; y: number } {
-	return {
-		x: (bounds.minX + bounds.maxX) / 2,
-		y: (bounds.minY + bounds.maxY) / 2,
-	};
-}
-
 export function renderLayoutDiffPreviewSvg(
 	scene: LayoutReviewScene,
 	mode: LayoutDiffPreviewMode,
@@ -85,7 +73,7 @@ export function renderLayoutDiffPreviewSvg(
 	const current = mode === 'proposed'
 		? ''
 		: rectSvg(
-			item.fromBounds,
+			scene.subject.bounds,
 			mode === 'original'
 				? 'fill="#87929d" fill-opacity=".2" stroke="#56616c" stroke-width="3" vector-effect="non-scaling-stroke"'
 				: 'fill="none" stroke="#69737e" stroke-width="2.4" stroke-dasharray="8 5" vector-effect="non-scaling-stroke"',
@@ -95,16 +83,16 @@ export function renderLayoutDiffPreviewSvg(
 	const target = mode === 'original'
 		? ''
 		: rectSvg(
-			item.toBounds,
+			scene.subjectTargetBounds,
 			`fill="${targetColor}" fill-opacity=".22" stroke="${targetColor}" stroke-width="4" vector-effect="non-scaling-stroke"`,
 		);
 
-	const currentCenter = center(item.fromBounds);
-	const targetCenter = center(item.toBounds);
-	const ownerCenter = scene.owner ? center(scene.owner.bounds) : undefined;
+	const currentAnchor = scene.subject.anchor;
+	const targetAnchor = item.to;
+	const ownerAnchor = scene.owner?.anchor;
 
 	const arrow = mode === 'diff'
-		? `<line x1="${currentCenter.x}" y1="${-currentCenter.y}" x2="${targetCenter.x}" y2="${-targetCenter.y}" stroke="${targetColor}" stroke-width="2.4" stroke-dasharray="7 5" marker-end="url(#lp-arrow)" vector-effect="non-scaling-stroke"/>`
+		? `<line x1="${currentAnchor.x}" y1="${-currentAnchor.y}" x2="${targetAnchor.x}" y2="${-targetAnchor.y}" stroke="${targetColor}" stroke-width="2.4" stroke-dasharray="7 5" marker-end="url(#lp-arrow)" vector-effect="non-scaling-stroke"/>`
 		: '';
 
 	const label = (
@@ -147,13 +135,13 @@ export function renderLayoutDiffPreviewSvg(
 
 	const labels = [
 		mode !== 'proposed'
-			? label(`CURRENT · ${item.subjectDesignator}`, currentCenter.x, currentCenter.y, 'muted')
+			? label(`CURRENT · ${item.subjectDesignator}`, currentAnchor.x, currentAnchor.y, 'muted')
 			: '',
 		mode !== 'original'
-			? label(`TARGET · ${item.subjectDesignator}`, targetCenter.x, targetCenter.y, 'target')
+			? label(`TARGET · ${item.subjectDesignator}`, targetAnchor.x, targetAnchor.y, 'target')
 			: '',
-		ownerCenter
-			? label(`OWNER · ${item.ownerDesignator}`, ownerCenter.x, ownerCenter.y, 'muted')
+		ownerAnchor
+			? label(`OWNER · ${item.ownerDesignator}`, ownerAnchor.x, ownerAnchor.y, 'muted')
 			: '',
 	].join('');
 

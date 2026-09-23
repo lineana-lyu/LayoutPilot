@@ -1,7 +1,9 @@
 import {
 	boundsIntersectRegion,
+	buildLayoutReviewComponent,
 	buildLayoutReviewViewport,
 	traceIntersectsRegion,
+	translateReviewBounds,
 	viaIntersectsRegion,
 	type LayoutReviewComponent,
 	type LayoutReviewScene,
@@ -9,39 +11,13 @@ import {
 	type LayoutReviewVia,
 } from '../domain/layoutDiffPreview';
 import type { LayoutPlan } from '../domain/layoutPlan';
-import { collectSimpleBoardBoundary } from './pcbPhysicalAdapter';
+import {
+	collectPhysicalComponents,
+	collectSimpleBoardBoundary,
+} from './pcbPhysicalAdapter';
 
 function finite(value: number): boolean {
 	return Number.isFinite(value);
-}
-
-async function readComponentBounds(
-	id: string,
-): Promise<LayoutReviewComponent['bounds'] | undefined> {
-	try {
-		const box = await eda.pcb_Primitive.getPrimitivesBBox([id]);
-		if (
-			box
-			&& finite(box.minX)
-			&& finite(box.minY)
-			&& finite(box.maxX)
-			&& finite(box.maxY)
-		) {
-			return {
-				minX: box.minX,
-				minY: box.minY,
-				maxX: box.maxX,
-				maxY: box.maxY,
-			};
-		}
-	}
-	catch (error) {
-		console.warn('[LayoutPilot] unable to read review component BBox', {
-			id,
-			error,
-		});
-	}
-	return undefined;
 }
 
 export async function collectLayoutReviewScene(
@@ -53,10 +29,9 @@ export async function collectLayoutReviewScene(
 		throw new Error('布局方案中不存在可预览项。');
 	}
 
-	const [board, ownerBounds, components, lines, vias] = await Promise.all([
+	const [board, physicalComponents, lines, vias] = await Promise.all([
 		collectSimpleBoardBoundary(),
-		readComponentBounds(item.ownerId),
-		eda.pcb_PrimitiveComponent.getAll(),
+		collectPhysicalComponents(),
 		eda.pcb_PrimitiveLine.getAll(),
 		eda.pcb_PrimitiveVia.getAll(),
 	]);
@@ -65,36 +40,33 @@ export async function collectLayoutReviewScene(
 		throw new Error(`无法建立布局审查板框：${board.reason}`);
 	}
 
-	const viewport = buildLayoutReviewViewport(item, ownerBounds);
+	const allComponentShapes = physicalComponents
+		.map(buildLayoutReviewComponent)
+		.filter((value): value is LayoutReviewComponent => Boolean(value));
 
-	const componentShapes = (
-		await Promise.all(
-			components.map(async component => {
-				const id = component.getState_PrimitiveId();
-				const bounds = await readComponentBounds(id);
-				if (!bounds || !boundsIntersectRegion(bounds, viewport)) {
-					return undefined;
-				}
-				return {
-					id,
-					designator:
-						component.getState_Designator()
-						?? component.getState_Name()
-						?? id,
-					bounds,
-				} satisfies LayoutReviewComponent;
-			}),
-		)
-	).filter((value): value is LayoutReviewComponent => Boolean(value));
+	const subject = allComponentShapes.find(
+		component => component.id === item.subjectId,
+	);
+	if (!subject) {
+		throw new Error(`无法建立 ${item.subjectDesignator} 的审查显示几何。`);
+	}
+	const owner = allComponentShapes.find(
+		component => component.id === item.ownerId,
+	);
 
-	const owner = componentShapes.find(component => component.id === item.ownerId)
-		?? (ownerBounds
-			? {
-				id: item.ownerId,
-				designator: item.ownerDesignator,
-				bounds: ownerBounds,
-			}
-			: undefined);
+	const viewport = buildLayoutReviewViewport(
+		item,
+		subject.bounds,
+		owner?.bounds,
+	);
+	const componentShapes = allComponentShapes.filter(component =>
+		boundsIntersectRegion(component.bounds, viewport)
+	);
+	const subjectTargetBounds = translateReviewBounds(
+		subject.bounds,
+		item.to.x - item.from.x,
+		item.to.y - item.from.y,
+	);
 
 	const traces: LayoutReviewTrace[] = lines
 		.filter(line => Boolean(line.getState_Net()))
@@ -136,6 +108,8 @@ export async function collectLayoutReviewScene(
 			hole.points.map(point => ({ ...point }))
 		),
 		components: componentShapes,
+		subject,
+		subjectTargetBounds,
 		owner,
 		traces,
 		vias: reviewVias,

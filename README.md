@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.9 Stable Plan Fingerprint Scope
+## Current stage — v0.9.10 Review Geometry Alignment
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -131,6 +131,24 @@ v0.9.6 separates **accepting a recommendation** from **authorizing PCB mutation*
 Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with EasyEDA's explicit `zoomToRegion` API around current position, proposed position and available Owner bounds instead of preserving the user's previous zoom level. Evidence review uses the same explicit-region pattern rather than relying on `zoomToSelectedPrimitives`, whose internal selection BBox calculation can fail on real projects when a selected primitive has incomplete bounds.
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
+
+## Next architecture — Native PCB Review Overlay
+
+The next review architecture is frozen in `docs/NATIVE_PCB_REVIEW_OVERLAY.md`.
+
+The key decision is to stop expanding the lightweight SVG renderer into a second PCB editor. For established / partially laid out boards, EasyEDA's native rendered canvas becomes the visual source of truth and LayoutPilot adds a non-destructive red/green placement diff. The current SVG scene remains as a fallback and as the basis for greenfield Proposal Canvas.
+
+P0 will not recolor native PCB primitives. Native canvas state remains untouched; preview state is disposable.
+
+## Review geometry alignment
+
+v0.9.10 separates **safety geometry** from **review geometry**.
+
+The placement engine continues to use EasyEDA measured primitive BBoxes for conservative collision / board / keepout checks. The workbench preview no longer renders those BBoxes as if they were the visible component body, because a primitive BBox may include attached text or other graphics and shift the apparent visual centre.
+
+For review rendering, LayoutPilot now builds a lightweight footprint envelope from the component's real pad coordinates and pad sizes, anchored at the component's actual X/Y position. Components without usable pads fall back to a bounded BBox recentered on the component anchor.
+
+This follows a common PCB-tool separation between conservative placement geometry and presentation geometry: review visuals may be simplified, but they must preserve real placement anchors and must never weaken execution safety.
 
 ## Stable LayoutPlan fingerprint scope
 
