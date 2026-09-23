@@ -22,6 +22,7 @@ import {
 	type LayoutDiffPreviewMode,
 	type LayoutReviewScene,
 } from './domain/layoutDiffPreview';
+import type { CanvasRegion } from './domain/canvasRegion';
 import { collectAnalysisState, type AnalysisState } from './eda/analysisAdapter';
 import {
 	generateCurrentLayoutPlan,
@@ -29,6 +30,7 @@ import {
 	validateStoredLayoutPlanCurrent,
 } from './eda/layoutPlanRuntime';
 import { collectLayoutReviewScene } from './eda/layoutDiffPreviewAdapter';
+import { captureNativePcbReviewSnapshot } from './eda/nativeSnapshotReviewAdapter';
 import { showLayoutPlanGhost } from './eda/layoutPreviewAdapter';
 import { beginPcbEvidenceReview, collectPadEvidenceComponents, endPcbEvidenceReview } from './eda/pcbPhysicalAdapter';
 import {
@@ -40,6 +42,7 @@ import {
 import { openEvidenceReviewBar, retireEvidenceReviewBar } from './ui/evidenceReviewWindow';
 import { clearActiveLayoutPreviewCanvas, openLayoutPreviewBar } from './ui/layoutPreviewWindow';
 import { renderLayoutDiffPreviewSvg } from './ui/layoutDiffPreview';
+import { renderNativeSnapshotDiffFrame } from './ui/nativeSnapshotDiff';
 import {
 	getStoredHumanOwnershipDecisions,
 	inspectStoredWorkflowState,
@@ -129,9 +132,23 @@ interface InlineLayoutReviewState {
 	plan: LayoutPlan;
 	scene: LayoutReviewScene;
 	mode: LayoutDiffPreviewMode;
+	nativeSnapshot?: {
+		imageUrl: string;
+		viewport: CanvasRegion;
+		documentTabId: string;
+	};
+	fallbackReason?: string;
 }
 
 let inlineLayoutReview: InlineLayoutReviewState | undefined;
+
+function releaseInlineLayoutReview(): void {
+	const imageUrl = inlineLayoutReview?.nativeSnapshot?.imageUrl;
+	if (imageUrl) {
+		URL.revokeObjectURL(imageUrl);
+	}
+	inlineLayoutReview = undefined;
+}
 
 function escapeHtml(value: unknown): string {
 	return String(value ?? '')
@@ -410,6 +427,17 @@ function renderInlineLayoutReview(): void {
 	if (!review) return;
 
 	const { plan, scene, mode } = review;
+	const reviewVisual = review.nativeSnapshot
+		? renderNativeSnapshotDiffFrame({
+			imageUrl: review.nativeSnapshot.imageUrl,
+			scene,
+			viewport: review.nativeSnapshot.viewport,
+			mode,
+		})
+		: renderLayoutDiffPreviewSvg(scene, mode);
+	const visualSourceLabel = review.nativeSnapshot
+		? 'EasyEDA 原生 PCB 快照'
+		: '几何回退预览';
 	const item = scene.item;
 	const metrics = layoutPlanItemReviewMetrics(item);
 	const reduction = metrics.reductionPercent;
@@ -433,7 +461,7 @@ function renderInlineLayoutReview(): void {
 			<div class="layout-review-head">
 				<div>
 					<div class="layout-review-title">布局差异预览 · ${escapeHtml(item.subjectDesignator)} → near(${escapeHtml(item.ownerDesignator)})</div>
-					<div class="layout-review-sub">${escapeHtml(planLabel)} · 其他未修改内容降权为灰色，彩色区域表示当前布局建议。</div>
+					<div class="layout-review-sub">${escapeHtml(planLabel)} · ${escapeHtml(visualSourceLabel)} · 红色为当前位置，绿色为建议位置。</div>
 				</div>
 				<div class="layout-review-actions">
 					<button class="btn" id="reviewBackBtn">返回决策</button>
@@ -448,13 +476,14 @@ function renderInlineLayoutReview(): void {
 					<button class="btn small ${mode === 'diff' ? 'active' : ''}" data-review-mode="diff">差异</button>
 				</div>
 				<div class="layout-review-legend">
-					<span><i class="legend-chip muted"></i>未改动 PCB 上下文</span>
-					<span><i class="legend-chip accent"></i>建议位置</span>
+					<span><i class="legend-chip current-red"></i>当前位置</span>
+					<span><i class="legend-chip target-green"></i>建议位置</span>
+					<span><i class="legend-chip muted"></i>未改动上下文</span>
 				</div>
 			</div>
 
 			<div class="layout-review-canvas">
-				${renderLayoutDiffPreviewSvg(scene, mode)}
+				${reviewVisual}
 			</div>
 
 			<div class="layout-review-metrics">
@@ -477,8 +506,10 @@ function renderInlineLayoutReview(): void {
 			</div>
 
 			<div class="layout-review-note">
-				这是<strong>器件位置几何审查图</strong>：灰色走线、Via 和周边器件来自当前 PCB，仅提供空间上下文；
-				不会模拟重新布线、铺铜重算或 SI/PI 结果。真正执行仍必须经过物理预检。
+				${review.nativeSnapshot
+					? '背景来自 <strong>EasyEDA 当前可见 PCB 的原生渲染快照</strong>；仅在审查层叠加红/绿位置差异。'
+					: `原生画布快照不可用，已自动回退到几何预览。${review.fallbackReason ? ` 原因：${escapeHtml(review.fallbackReason)}` : ''}`}
+				不会模拟重新布线、铺铜重算或 SI/PI 结果；真正执行仍必须经过物理预检。
 			</div>
 		</div>
 	`;
@@ -501,7 +532,7 @@ function renderInlineLayoutReview(): void {
 	}
 
 	document.getElementById('reviewBackBtn')?.addEventListener('click', () => {
-		inlineLayoutReview = undefined;
+		releaseInlineLayoutReview();
 		void refresh();
 	});
 
@@ -533,10 +564,36 @@ async function openInlineLayoutReview(plan: LayoutPlan): Promise<void> {
 	}
 
 	const scene = await collectLayoutReviewScene(plan, 0);
+	let nativeSnapshot: InlineLayoutReviewState['nativeSnapshot'];
+	let fallbackReason: string | undefined;
+
+	try {
+		const captured = await captureNativePcbReviewSnapshot(scene.viewport);
+		const postCaptureValidation = await validateLayoutPlanCurrent(plan);
+		if (!postCaptureValidation.ok) {
+			throw new Error(postCaptureValidation.message);
+		}
+		nativeSnapshot = {
+			imageUrl: URL.createObjectURL(captured.blob),
+			viewport: captured.viewport,
+			documentTabId: captured.documentTabId,
+		};
+	}
+	catch (error) {
+		fallbackReason = String(error);
+		console.warn(
+			'[LayoutPilot Workbench] native PCB snapshot unavailable; falling back to geometry review',
+			error,
+		);
+	}
+
+	releaseInlineLayoutReview();
 	inlineLayoutReview = {
 		plan,
 		scene,
 		mode: 'diff',
+		nativeSnapshot,
+		fallbackReason,
 	};
 	renderInlineLayoutReview();
 }
@@ -1370,3 +1427,8 @@ window.setInterval(() => {
 
 syncWindowSizeButtons();
 void refresh();
+
+
+window.addEventListener('beforeunload', () => {
+	releaseInlineLayoutReview();
+});
