@@ -153,12 +153,34 @@
     .legend-chip.accent{background:#d88716;border-color:#d88716}
     .legend-chip.current-red{background:#d74444;border-color:#d74444}
     .legend-chip.target-green{background:#24a66a;border-color:#24a66a}
-    .layout-review-canvas{min-height:260px;padding:10px 12px;background:#e7eaee;overflow:hidden}
+    .layout-review-canvas{min-height:260px;padding:10px 12px;background:#eef0f2;overflow:auto}
     .layout-diff-svg{display:block;width:100%;height:100%;min-height:240px;background:#eef0f2;border:1px solid #d2d7dc}
     .native-review-frame{position:relative;width:100%;height:100%;min-height:240px;overflow:hidden;background:#30343a;border:1px solid #c9cfd6}
-    .native-review-image{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;filter:grayscale(1) saturate(.1) brightness(1.12) contrast(.82);opacity:.94;user-select:none;pointer-events:none}
-    .native-review-image-marked{filter:grayscale(.55) saturate(.75) brightness(1.08) contrast(.86);opacity:1}
+    .native-review-image{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;user-select:none;pointer-events:none}
+    .native-review-image-marked{filter:none;opacity:1}
     .native-review-overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+    .focused-review-hint{display:flex;align-items:baseline;gap:8px;min-width:0}
+    .focused-review-hint strong{font-size:9px;font-weight:600;color:#37414a}
+    .focused-review-hint span{font-size:8px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .focused-placement-review{height:100%;min-height:470px;display:grid;grid-template-rows:142px minmax(300px,1fr);gap:10px}
+    .focused-overview-card,.focused-compare-pane{min-width:0;border:1px solid #cfd5db;background:#fff;overflow:hidden}
+    .focused-overview-card{display:grid;grid-template-rows:34px minmax(0,1fr)}
+    .focused-section-head,.focused-pane-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 8px;border-bottom:1px solid #e3e6e9;background:#fafbfc}
+    .focused-section-head>div:first-child{display:flex;align-items:baseline;gap:7px}
+    .focused-section-head strong,.focused-pane-head strong{font-size:9px;font-weight:600;color:#303941}
+    .focused-section-head span,.focused-scale{font-size:8px;color:var(--muted)}
+    .focused-overview-legend{display:flex;align-items:center;gap:9px;font-size:8px;color:var(--muted)}
+    .focused-overview-legend span{display:flex;align-items:center;gap:4px}
+    .focused-overview-image-wrap,.focused-pane-image-wrap{min-height:0;background:#20252b;display:grid;place-items:center;overflow:hidden}
+    .focused-native-image{display:block;width:100%;height:100%;object-fit:contain;filter:none;opacity:1;user-select:none;pointer-events:none}
+    .focused-compare-grid{min-height:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .focused-compare-pane{display:grid;grid-template-rows:42px minmax(240px,1fr) 28px}
+    .focused-pane-head>div:first-child{display:flex;align-items:center;gap:7px;min-width:0}
+    .focused-pane-head strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .focused-kicker{font-family:var(--mono);font-size:8px;font-weight:700;letter-spacing:.04em;padding:2px 5px;border-radius:2px}
+    .focused-kicker.current{background:#fbe9e9;color:#b93333;border:1px solid #e9b8b8}
+    .focused-kicker.proposed{background:#e8f6ef;color:#187f4d;border:1px solid #addbc4}
+    .focused-pane-caption{padding:6px 8px;border-top:1px solid #e3e6e9;background:#fafbfc;font-size:8px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .layout-review-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
     .review-metric{padding:7px 10px;border-right:1px solid var(--line)}
     .review-metric:last-child{border-right:0}
@@ -190,6 +212,9 @@
       .layout-review-actions{margin-left:0}
       .layout-review-toolbar{align-items:flex-start;flex-direction:column}
       .layout-review-legend{margin-left:0}
+      .focused-placement-review{height:auto;grid-template-rows:120px auto}
+      .focused-compare-grid{grid-template-columns:1fr}
+      .focused-compare-pane{min-height:330px}
       .layout-review-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
       .review-metric:nth-child(2){border-right:0}
       .review-metric:nth-child(-n+2){border-bottom:1px solid var(--line)}

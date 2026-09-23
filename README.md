@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.12 Native Marker Snapshot
+## Current stage — v0.9.13 Focused Placement Compare
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -131,6 +131,28 @@ v0.9.6 separates **accepting a recommendation** from **authorizing PCB mutation*
 Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with EasyEDA's explicit `zoomToRegion` API around current position, proposed position and available Owner bounds instead of preserving the user's previous zoom level. Evidence review uses the same explicit-region pattern rather than relying on `zoomToSelectedPrimitives`, whose internal selection BBox calculation can fail on real projects when a selected primitive has incomplete bounds.
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
+
+## v0.9.13 Focused Placement Compare
+
+v0.9.13 changes the review information architecture rather than increasing marker intensity.
+
+The native review now follows the mature visual-diff pattern used by PCB/CAD comparison tools:
+
+```
+Overview
+  → locate the change on the whole board
+
+CURRENT local view        PROPOSED local view
+same physical scale       same physical scale
+native PCB colors         native PCB colors
+red current footprint     green target footprint ghost
+```
+
+The local pair no longer zooms out merely to keep CURRENT and TARGET in one frame. Both panes use the same physical width/height so spacing and density can be compared directly.
+
+The PROPOSED side renders the subject's real pad geometry translated to the frozen LayoutPlan target. It remains a placement preview: existing routing is not rerouted and copper pours are not recomputed.
+
+The design borrows the useful principles of KiCad-Diff (before/after synchronized comparison), kicadiff (red old / green new visual semantics), and PcbDraw (keep the board readable and highlight only the changed component) without adding those projects as runtime dependencies.
 
 ## v0.9.12 Native Marker Snapshot
 
