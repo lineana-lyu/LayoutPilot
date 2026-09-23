@@ -122,7 +122,7 @@
     .host-actions{display:flex;gap:5px;align-items:center;justify-content:flex-start;flex-wrap:wrap}
     .inline-plan{display:none}
     .plan-scroll{overflow:auto}
-    .plan-overview{display:grid;grid-template-columns:repeat(2,1fr);border-bottom:1px solid var(--line)}
+    .plan-overview{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid var(--line)}
     .plan-stat{padding:8px 10px;border-right:1px solid var(--line)}
     .plan-stat:last-child{border-right:0}
     .plan-stat strong{font-family:var(--mono);font-size:15px;font-weight:600;display:block}
@@ -197,23 +197,23 @@
 
   <div class="statusbar">
     <div class="stage" id="stageAnalyze">
-      <div class="stage-index">1</div>
+      <div class="stage-index">语</div>
       <div class="stage-label">电路理解</div>
       <div class="stage-meta" id="stageAnalyzeMeta">等待分析</div>
     </div>
     <div class="stage" id="stageOwner">
-      <div class="stage-index">2</div>
-      <div class="stage-label">Owner 确认</div>
+      <div class="stage-index">属</div>
+      <div class="stage-label">Owner 决策</div>
       <div class="stage-meta" id="stageOwnerMeta">等待证据</div>
     </div>
     <div class="stage" id="stageConstraint">
-      <div class="stage-index">3</div>
-      <div class="stage-label">布局约束</div>
+      <div class="stage-index">布</div>
+      <div class="stage-label">布局建议</div>
       <div class="stage-meta" id="stageConstraintMeta">0 条约束</div>
     </div>
     <div class="stage" id="stageExecute">
-      <div class="stage-index">4</div>
-      <div class="stage-label">物理预检 / 执行</div>
+      <div class="stage-index">执</div>
+      <div class="stage-label">执行安全</div>
       <div class="stage-meta" id="stageExecuteMeta">尚未进入</div>
     </div>
   </div>

@@ -14,8 +14,13 @@ import {
 	layoutPlanAcceptanceMode,
 	type LayoutPlan,
 } from './domain/layoutPlan';
+import { formatLayoutPlanItemReview } from './domain/layoutPlanReview';
 import { collectAnalysisState, type AnalysisState } from './eda/analysisAdapter';
-import { generateCurrentLayoutPlan, validateStoredLayoutPlanCurrent } from './eda/layoutPlanRuntime';
+import {
+	generateCurrentLayoutPlan,
+	validateLayoutPlanCurrent,
+	validateStoredLayoutPlanCurrent,
+} from './eda/layoutPlanRuntime';
 import { showLayoutPlanGhost } from './eda/layoutPreviewAdapter';
 import { beginPcbEvidenceReview, collectPadEvidenceComponents, endPcbEvidenceReview } from './eda/pcbPhysicalAdapter';
 import {
@@ -80,6 +85,7 @@ interface RuntimeModel {
 	previewEligibleCount: number;
 	evaluation?: ReturnType<typeof buildConstraintEvaluation>;
 	layoutPlan?: LayoutPlan;
+	referencePlans: LayoutPlan[];
 }
 
 const el = <T extends HTMLElement>(id: string): T => {
@@ -207,6 +213,7 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 				constraintCount: 0,
 				previewEligibleCount: 0,
 				layoutPlan: workflow.layoutPlan,
+				referencePlans: workflow.referencePlans,
 			};
 		}
 
@@ -225,6 +232,7 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 				constraintCount: 0,
 				previewEligibleCount: 0,
 				layoutPlan: workflow.layoutPlan,
+				referencePlans: workflow.referencePlans,
 			};
 		}
 
@@ -360,6 +368,7 @@ function buildRuntimeModel(): Promise<RuntimeModel> {
 			previewEligibleCount: evaluation.merged.previewEligibleCount,
 			evaluation,
 			layoutPlan: workflow.layoutPlan,
+			referencePlans: workflow.referencePlans,
 		};
 	})();
 }
@@ -524,12 +533,15 @@ function renderPlanPanel(model?: RuntimeModel): void {
 	const preflightEligibleItems = plan?.items.filter(
 		item => item.executionBlockers.length === 0,
 	).length ?? 0;
+	const archivedReferences = model.referencePlans
+		.filter(reference => reference.id !== plan?.id)
+		.slice(0, 6);
 
 	const planArtifact = plan
 		? `
 			<div class="constraint-area" style="border-bottom:1px solid var(--line)">
 				<div class="constraint-summary">
-					<span>LayoutPlan · ${escapeHtml(planStatus)}</span>
+					<span>当前 LayoutPlan · ${escapeHtml(planStatus)}</span>
 					<span class="constraint-state">${plan.items.length} 个位置 · ${preflightEligibleItems} 个可预检</span>
 				</div>
 				<div class="constraint-list">
@@ -538,13 +550,44 @@ function renderPlanPanel(model?: RuntimeModel): void {
 							<div class="constraint-title">${escapeHtml(item.subjectDesignator)} → near(${escapeHtml(item.ownerDesignator)})</div>
 							<div class="constraint-meta">
 								移动 ${item.movementMil.toFixed(1)} mil ·
-								回路几何代理 ${item.estimatedLoopProxyMil.toFixed(1)} mil ·
+								${escapeHtml(formatLayoutPlanItemReview(item))} ·
 								${item.executionBlockers.length
 									? `仅预览：${escapeHtml(item.executionBlockers[0])}`
 									: '可进入物理预检'}
 							</div>
 						</div>
 					`).join('')}
+				</div>
+			</div>`
+		: '';
+
+	const referenceHistory = archivedReferences.length
+		? `
+			<div class="constraint-area reference-history">
+				<div class="constraint-summary">
+					<span>已保存参考方案</span>
+					<span class="constraint-state">${model.referencePlans.length} 条历史</span>
+				</div>
+				<div class="constraint-list">
+					${archivedReferences.map(reference => {
+						const first = reference.items[0];
+						return `
+							<div class="constraint-row">
+								<div class="constraint-title">
+									${escapeHtml(first?.subjectDesignator ?? 'Unknown')}
+									→ near(${escapeHtml(first?.ownerDesignator ?? 'Unknown')})
+								</div>
+								<div class="constraint-meta">
+									${first ? escapeHtml(formatLayoutPlanItemReview(first)) : '无可显示项'} ·
+									${escapeHtml(new Date(reference.createdAt).toLocaleString())}
+								</div>
+								<div style="margin-top:6px">
+									<button class="btn small" data-view-reference-plan="${escapeHtml(reference.id)}">
+										查看参考方案
+									</button>
+								</div>
+							</div>`;
+					}).join('')}
 				</div>
 			</div>`
 		: '';
@@ -557,12 +600,45 @@ function renderPlanPanel(model?: RuntimeModel): void {
 			</div>
 			<div class="plan-stat">
 				<strong>${plan?.items.length ?? 0}</strong>
-				<span>布局预览位置</span>
+				<span>当前布局位置</span>
+			</div>
+			<div class="plan-stat">
+				<strong>${model.referencePlans.length}</strong>
+				<span>参考方案历史</span>
 			</div>
 		</div>
 		${planArtifact}
+		${referenceHistory}
 		${renderConstraintArea(model)}
 	`;
+
+	for (const node of planPanel.querySelectorAll<HTMLButtonElement>(
+		'[data-view-reference-plan]',
+	)) {
+		node.addEventListener('click', async () => {
+			if (busy) return;
+			const planId = node.dataset.viewReferencePlan;
+			const reference = model.referencePlans.find(item => item.id === planId);
+			if (!reference) return;
+
+			setBusy(true);
+			try {
+				const validation = await validateLayoutPlanCurrent(reference);
+				if (!validation.ok) {
+					showToast('参考方案已保留，但当前 PCB / Snapshot 已变化，不能叠加旧 Ghost。');
+					return;
+				}
+				await presentLayoutPlanPreview(reference);
+			}
+			catch (error) {
+				console.error('[LayoutPilot Workbench] reference preview failed', error);
+				showToast(`参考方案查看失败：${String(error)}`);
+			}
+			finally {
+				setBusy(false);
+			}
+		});
+	}
 }
 
 function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
@@ -676,7 +752,7 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 								<div class="host-cell host-actions-cell">
 									<div class="host-actions">
 										<button class="btn small" data-locate-owner="${escapeHtml(candidate.id)}">定位核对</button>
-										<button class="btn small ${selected ? '' : 'primary'}" data-confirm-owner="${escapeHtml(candidate.id)}">${selected ? '已确认' : '确认 Owner'}</button>
+										<button class="btn small ${selected ? '' : 'primary'}" data-confirm-owner="${escapeHtml(candidate.id)}" ${selected ? 'disabled' : ''}>${selected ? '已确认' : '确认 Owner'}</button>
 									</div>
 								</div>
 							</div>`;
@@ -867,7 +943,9 @@ async function refresh(): Promise<void> {
 					: activePlan.status === 'rejected'
 						? '方案已放弃 · 可重新规划'
 						: `${activePlan.items.length} 个位置 · ${activePlan.status}`
-			: `${model.constraintCount} 条约束 · 待生成方案`;
+			: model.referencePlans.length
+				? `${model.constraintCount} 条约束 · ${model.referencePlans.length} 条参考历史`
+				: `${model.constraintCount} 条约束 · 待生成方案`;
 		el<HTMLDivElement>('metricPending').textContent = String(pending);
 		el<HTMLDivElement>('metricConstraints').textContent = String(model.constraintCount);
 		renderTasks(model.tasks, model);
@@ -887,28 +965,29 @@ async function refresh(): Promise<void> {
 						: '等待物理预检'
 					: '尚未进入';
 
-		if (pending > 0) {
-			setStage('stageOwner', 'active');
-			setStage('stageConstraint', 'idle');
+		setStage('stageOwner', pending > 0 ? 'active' : 'done');
+
+		if (command?.status === 'applied') {
+			setStage('stageConstraint', 'done');
+			setStage('stageExecute', 'done');
+		}
+		else if (activePlan?.status === 'accepted') {
+			setStage('stageConstraint', 'done');
+			setStage(
+				'stageExecute',
+				activePlanMode === 'reference-only' ? 'idle' : 'active',
+			);
+		}
+		else if (activePlan?.status === 'preview') {
+			setStage('stageConstraint', 'active');
 			setStage('stageExecute', 'idle');
 		}
 		else {
-			setStage('stageOwner', 'done');
-			if (command?.status === 'applied') {
-				setStage('stageConstraint', 'done');
-				setStage('stageExecute', 'done');
-			}
-			else if (activePlan?.status === 'accepted') {
-				setStage('stageConstraint', 'done');
-				setStage(
-					'stageExecute',
-					activePlanMode === 'reference-only' ? 'idle' : 'active',
-				);
-			}
-			else {
-				setStage('stageConstraint', 'active');
-				setStage('stageExecute', 'idle');
-			}
+			setStage(
+				'stageConstraint',
+				model.constraintCount > 0 ? 'active' : 'idle',
+			);
+			setStage('stageExecute', 'idle');
 		}
 
 		const plan = model.layoutPlan;

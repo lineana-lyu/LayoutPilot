@@ -41,8 +41,8 @@ export async function retireEvidenceReviewBar(): Promise<void> {
 export async function openEvidenceReviewBar(): Promise<void> {
 	const reviewBarId = currentReviewBarId();
 	const viewport = eda.sys_Window.getViewportSize();
-	const width = Math.max(560, Math.min(760, viewport.width - 80));
-	const height = 142;
+	const width = Math.max(520, Math.min(680, viewport.width - 80));
+	const height = 116;
 	const x = Math.max(16, Math.round((viewport.width - width) / 2));
 	const y = Math.max(48, viewport.height - height - 72);
 

@@ -73,6 +73,7 @@ function planToItem(
 		fromBounds: { ...subject.bounds },
 		toBounds: translateBounds(subject.bounds, dx, dy),
 		movementMil: Math.hypot(dx, dy),
+		currentLoopProxyMil: plan.currentLoopProxyMil,
 		estimatedLoopProxyMil: plan.estimatedLoopProxyMil,
 		clearanceMil: plan.clearanceMil,
 		executionBlockers: [...executionBlockers],

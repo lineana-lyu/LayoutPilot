@@ -2,7 +2,11 @@ import type { HumanOwnershipDecision } from '../domain/humanOwnershipDecision';
 import type { PlacementCommandRecord } from '../domain/placementCommand';
 import { isEvidenceReviewSession, type EvidenceReviewSession } from '../domain/evidenceReviewSession';
 import type { SemanticSnapshot } from '../domain/semanticSnapshot';
-import { isLayoutPlan, type LayoutPlan } from '../domain/layoutPlan';
+import {
+	isLayoutPlan,
+	layoutPlanAcceptanceMode,
+	type LayoutPlan,
+} from '../domain/layoutPlan';
 import { isLayoutPreviewSession, type LayoutPreviewSession } from '../domain/layoutPreviewSession';
 
 export interface LayoutPilotWorkflowState {
@@ -11,6 +15,7 @@ export interface LayoutPilotWorkflowState {
 	humanOwnershipDecisions: HumanOwnershipDecision[];
 	lastPlacementCommand?: PlacementCommandRecord;
 	layoutPlan?: LayoutPlan;
+	referencePlans: LayoutPlan[];
 	layoutPreviewSession?: LayoutPreviewSession;
 	evidenceReviewSession?: EvidenceReviewSession;
 	updatedAt: string;
@@ -79,6 +84,7 @@ export function createEmptyWorkflowState(
 	return freezeDeep({
 		schemaVersion: 1,
 		humanOwnershipDecisions: [],
+		referencePlans: [],
 		updatedAt,
 	});
 }
@@ -109,14 +115,27 @@ export function normalizeWorkflowState(
 		&& rawLayoutPlan.semanticFingerprint === semanticSnapshot.boardFingerprint
 			? rawLayoutPlan
 			: undefined;
+	const referencePlans = semanticSnapshot && Array.isArray(value.referencePlans)
+		? value.referencePlans
+			.filter(isLayoutPlan)
+			.filter(plan =>
+				plan.status === 'accepted'
+				&& layoutPlanAcceptanceMode(plan) === 'reference-only'
+				&& plan.semanticFingerprint === semanticSnapshot.boardFingerprint
+			)
+			.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+			.slice(0, 20)
+		: [];
 	const rawLayoutPreviewSession = isLayoutPreviewSession(value.layoutPreviewSession)
 		? value.layoutPreviewSession
 		: undefined;
-	const layoutPreviewSession =
-		layoutPlan
-		&& rawLayoutPreviewSession?.planId === layoutPlan.id
-			? rawLayoutPreviewSession
-			: undefined;
+	const previewPlanExists = Boolean(
+		layoutPlan?.id === rawLayoutPreviewSession?.planId
+		|| referencePlans.some(plan => plan.id === rawLayoutPreviewSession?.planId),
+	);
+	const layoutPreviewSession = previewPlanExists
+		? rawLayoutPreviewSession
+		: undefined;
 
 	const evidenceReviewSession = isEvidenceReviewSession(value.evidenceReviewSession)
 		? value.evidenceReviewSession
@@ -140,6 +159,7 @@ export function normalizeWorkflowState(
 		humanOwnershipDecisions: validDecisions,
 		lastPlacementCommand,
 		layoutPlan,
+		referencePlans,
 		layoutPreviewSession,
 		evidenceReviewSession: validEvidenceReviewSession,
 		updatedAt:
@@ -159,6 +179,9 @@ export function replaceWorkflowSemanticSnapshot(
 		semanticSnapshot: snapshot,
 		humanOwnershipDecisions: [],
 		layoutPlan: undefined,
+		referencePlans: state.referencePlans.filter(
+			plan => plan.semanticFingerprint === snapshot.boardFingerprint,
+		),
 		layoutPreviewSession: undefined,
 		evidenceReviewSession: undefined,
 		updatedAt,
@@ -173,6 +196,7 @@ export function clearWorkflowSemanticSnapshot(
 		semanticSnapshot: _semanticSnapshot,
 		humanOwnershipDecisions: _humanOwnershipDecisions,
 		layoutPlan: _layoutPlan,
+		referencePlans: _referencePlans,
 		layoutPreviewSession: _layoutPreviewSession,
 		evidenceReviewSession: _evidenceReviewSession,
 		...rest
@@ -181,6 +205,7 @@ export function clearWorkflowSemanticSnapshot(
 		...rest,
 		schemaVersion: 1 as const,
 		humanOwnershipDecisions: [],
+		referencePlans: [],
 		updatedAt,
 	});
 }
@@ -194,12 +219,17 @@ export function upsertWorkflowHumanDecision(
 		throw new Error('Human ownership decision does not belong to the active Semantic Snapshot.');
 	}
 
+	const existingDecision = state.humanOwnershipDecisions.find(item =>
+		item.snapshotId === decision.snapshotId
+		&& item.componentId === decision.componentId
+	);
+	const sameOwner = existingDecision?.ownerComponentId === decision.ownerComponentId;
 	const humanOwnershipDecisions = [
 		...state.humanOwnershipDecisions.filter(item =>
 			!(
 				item.snapshotId === decision.snapshotId
 				&& item.componentId === decision.componentId
-			),
+			)
 		),
 		decision,
 	];
@@ -207,8 +237,8 @@ export function upsertWorkflowHumanDecision(
 	return freezeDeep({
 		...state,
 		humanOwnershipDecisions,
-		layoutPlan: undefined,
-		layoutPreviewSession: undefined,
+		layoutPlan: sameOwner ? state.layoutPlan : undefined,
+		layoutPreviewSession: sameOwner ? state.layoutPreviewSession : undefined,
 		updatedAt,
 	});
 }
@@ -312,16 +342,58 @@ export function setWorkflowLayoutPlan(
 }
 
 
+export function archiveWorkflowReferencePlan(
+	state: LayoutPilotWorkflowState,
+	plan: LayoutPlan,
+	updatedAt = new Date().toISOString(),
+): LayoutPilotWorkflowState {
+	if (
+		!state.semanticSnapshot
+		|| plan.semanticFingerprint !== state.semanticSnapshot.boardFingerprint
+		|| plan.status !== 'accepted'
+		|| layoutPlanAcceptanceMode(plan) !== 'reference-only'
+	) {
+		throw new Error(
+			'Only accepted reference-only LayoutPlans for the active board can be archived.',
+		);
+	}
+
+	const referencePlans = [
+		plan,
+		...state.referencePlans.filter(item => item.id !== plan.id),
+	]
+		.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+		.slice(0, 20);
+
+	return freezeDeep({
+		...state,
+		referencePlans,
+		updatedAt,
+	});
+}
+
+export function setAndArchiveWorkflowReferencePlan(
+	state: LayoutPilotWorkflowState,
+	plan: LayoutPlan,
+	updatedAt = new Date().toISOString(),
+): LayoutPilotWorkflowState {
+	const withActivePlan = setWorkflowLayoutPlan(state, plan, updatedAt);
+	return archiveWorkflowReferencePlan(withActivePlan, plan, updatedAt);
+}
+
 export function setWorkflowLayoutPreviewSession(
 	state: LayoutPilotWorkflowState,
 	session: LayoutPreviewSession | undefined,
 	updatedAt = new Date().toISOString(),
 ): LayoutPilotWorkflowState {
-	if (
-		session
-		&& (!state.layoutPlan || session.planId !== state.layoutPlan.id)
-	) {
-		throw new Error('Layout preview session does not belong to the active LayoutPlan.');
+	if (session) {
+		const planExists = state.layoutPlan?.id === session.planId
+			|| state.referencePlans.some(plan => plan.id === session.planId);
+		if (!planExists) {
+			throw new Error(
+				'Layout preview session does not belong to the active or archived LayoutPlan.',
+			);
+		}
 	}
 
 	const next = {

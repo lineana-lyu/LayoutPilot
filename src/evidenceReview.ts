@@ -17,7 +17,11 @@ const confirmBtn = document.getElementById('confirmBtn') as HTMLButtonElement;
 
 function setBusy(value: boolean): void {
 	returnBtn.disabled = value;
-	confirmBtn.disabled = value;
+	if (value) {
+		confirmBtn.disabled = true;
+		return;
+	}
+	render();
 }
 
 function render(): void {
@@ -30,8 +34,26 @@ function render(): void {
 		return;
 	}
 
+	const workflow = inspectStoredWorkflowState();
+	const activeDecision = workflow.humanOwnershipDecisions.find(decision =>
+		decision.snapshotId === session.snapshotId
+		&& decision.componentId === session.subjectId
+	);
+	const sameOwnerConfirmed =
+		activeDecision?.ownerComponentId === session.ownerId;
+
 	title.textContent = `${session.subjectDesignator} ↔ ${session.ownerDesignator}`;
-	meta.textContent = `电源域：${session.railLabel} · 这里只读核对，不会自动确认 Owner`;
+	meta.textContent = sameOwnerConfirmed
+		? `电源域：${session.railLabel} · 当前 Owner 已确认，画布仅用于复核证据`
+		: activeDecision
+			? `电源域：${session.railLabel} · 当前 Owner 为 ${activeDecision.ownerDesignator}，确认后将改为 ${session.ownerDesignator}`
+			: `电源域：${session.railLabel} · 这里只读核对，不会自动确认 Owner`;
+	confirmBtn.textContent = sameOwnerConfirmed
+		? 'Owner 已确认'
+		: activeDecision
+			? '改为此 Owner'
+			: '确认 Owner';
+	confirmBtn.disabled = sameOwnerConfirmed;
 
 	if (session.powerEvidence) {
 		const item = session.powerEvidence;

@@ -6,6 +6,7 @@ import {
 	replaceWorkflowSemanticSnapshot,
 	setWorkflowPlacementCommand,
 	setWorkflowEvidenceReviewSession,
+	setAndArchiveWorkflowReferencePlan,
 	setWorkflowLayoutPlan,
 	setWorkflowLayoutPreviewSession,
 	upsertWorkflowHumanDecision,
@@ -117,6 +118,25 @@ export async function setStoredLayoutPlan(
 	plan: LayoutPlan | undefined,
 ): Promise<void> {
 	await saveState(setWorkflowLayoutPlan(loadState(), plan));
+}
+
+
+export function getStoredReferencePlans(): LayoutPlan[] {
+	return loadState().referencePlans;
+}
+
+export async function setAndArchiveStoredReferencePlan(
+	plan: LayoutPlan,
+): Promise<void> {
+	await saveState(setAndArchiveWorkflowReferencePlan(loadState(), plan));
+}
+
+export function getStoredLayoutPlanById(
+	planId: string,
+): LayoutPlan | undefined {
+	const state = loadState();
+	if (state.layoutPlan?.id === planId) return state.layoutPlan;
+	return state.referencePlans.find(plan => plan.id === planId);
 }
 
 

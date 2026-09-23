@@ -8,6 +8,7 @@ import {
 	replaceWorkflowSemanticSnapshot,
 	setWorkflowPlacementCommand,
 	setWorkflowEvidenceReviewSession,
+	setAndArchiveWorkflowReferencePlan,
 	setWorkflowLayoutPlan,
 	setWorkflowLayoutPreviewSession,
 	upsertWorkflowHumanDecision,
@@ -30,6 +31,7 @@ const snapshotB = createSemanticSnapshot(
 let state = createEmptyWorkflowState(t0);
 assert.equal(state.semanticSnapshot, undefined);
 assert.deepEqual(state.humanOwnershipDecisions, []);
+assert.deepEqual(state.referencePlans, []);
 
 state = replaceWorkflowSemanticSnapshot(state, snapshotA, t0);
 assert.equal(state.semanticSnapshot?.id, snapshotA.id);
@@ -141,6 +143,7 @@ const layoutPlan = createLayoutPlan({
 			fromBounds: { minX: 95, minY: 195, maxX: 105, maxY: 205 },
 			toBounds: { minX: 115, minY: 215, maxX: 125, maxY: 225 },
 			movementMil: 28.28,
+			currentLoopProxyMil: 120,
 			estimatedLoopProxyMil: 40,
 			clearanceMil: 20,
 			executionBlockers: [],
@@ -189,6 +192,71 @@ assert.equal(roundTrip.evidenceReviewSession?.subjectDesignator, 'C14');
 assert.equal(roundTrip.layoutPlan?.id, layoutPlan.id);
 assert.equal(roundTrip.layoutPreviewSession?.planId, layoutPlan.id);
 assert.deepEqual(roundTrip.evidenceReviewSession?.originalSelectionIds, ['r1', 'u2']);
+
+const referencePlan = markLayoutPlanAccepted(createLayoutPlan({
+	snapshotId: snapshotA.id,
+	semanticFingerprint: snapshotA.boardFingerprint,
+	physicalFingerprint: 'phys-v2-reference',
+	createdAt: '2026-09-22T01:04:50.000Z',
+	items: [
+		{
+			...layoutPlan.items[0],
+			executionBlockers: [
+				'C14 已有布线/铜连接，当前只允许预览，不执行器件移动',
+			],
+		},
+	],
+}));
+state = setAndArchiveWorkflowReferencePlan(
+	state,
+	referencePlan,
+	'2026-09-22T01:04:50.000Z',
+);
+assert.equal(state.layoutPlan?.id, referencePlan.id);
+assert.equal(state.referencePlans.length, 1);
+assert.equal(state.referencePlans[0].id, referencePlan.id);
+
+const referencePreview = createLayoutPreviewSession({
+	planId: referencePlan.id,
+	documentTabId: 'pcb-tab-reference',
+	createdAt: '2026-09-22T01:04:52.000Z',
+});
+state = setWorkflowLayoutPreviewSession(
+	state,
+	referencePreview,
+	'2026-09-22T01:04:52.000Z',
+);
+const repeatedSameOwnerDecision = createHumanOwnershipDecision(
+	{
+		snapshotId: snapshotA.id,
+		componentId: 'c14',
+		componentDesignator: 'C14',
+		ownerComponentId: 'u8',
+		ownerDesignator: 'U8',
+	},
+	'2026-09-22T01:04:53.000Z',
+);
+state = upsertWorkflowHumanDecision(
+	state,
+	repeatedSameOwnerDecision,
+	'2026-09-22T01:04:53.000Z',
+);
+assert.equal(
+	state.layoutPlan?.id,
+	referencePlan.id,
+	're-confirming the same Owner must not invalidate the active LayoutPlan',
+);
+assert.equal(
+	state.layoutPreviewSession?.planId,
+	referencePlan.id,
+	're-confirming the same Owner must preserve the active preview session',
+);
+assert.equal(
+	state.referencePlans.length,
+	1,
+	'idempotent Owner confirmation must not duplicate reference history',
+);
+
 assert.equal(Object.isFrozen(roundTrip), true);
 assert.equal(Object.isFrozen(roundTrip.semanticSnapshot), true);
 
@@ -201,6 +269,11 @@ state = removeWorkflowHumanDecision(
 assert.equal(state.humanOwnershipDecisions.length, 0);
 assert.equal(state.layoutPlan, undefined, 'owner changes must invalidate LayoutPlan');
 assert.equal(state.layoutPreviewSession, undefined, 'owner changes must retire preview session');
+assert.equal(
+	state.referencePlans.length,
+	1,
+	'owner changes must preserve accepted reference-plan history',
+);
 
 state = upsertWorkflowHumanDecision(
 	state,
@@ -222,6 +295,11 @@ assert.equal(
 	state.humanOwnershipDecisions.length,
 	0,
 	'new Semantic Snapshot must retire old human decisions',
+);
+assert.equal(
+	state.referencePlans.length,
+	0,
+	'a different semantic board fingerprint must retire old reference history',
 );
 assert.equal(
 	state.lastPlacementCommand?.id,
