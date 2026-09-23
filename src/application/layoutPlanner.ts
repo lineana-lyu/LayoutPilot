@@ -129,7 +129,7 @@ export function buildLocalLayoutPlan(input: {
 		)
 		.slice(0, maxItems);
 
-	let virtualComponents = input.physicalComponents.map(component => ({
+	let virtualComponents: PhysicalComponentSnapshot[] = input.physicalComponents.map(component => ({
 		...component,
 		bounds: component.bounds ? { ...component.bounds } : undefined,
 		pads: component.pads.map(pad => ({ ...pad })),
