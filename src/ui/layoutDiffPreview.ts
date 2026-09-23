@@ -117,8 +117,24 @@ export function renderLayoutDiffPreviewSvg(
 			labelFontSize * 4.8,
 			text.length * labelFontSize * 0.62,
 		);
+		const inset = labelFontSize * 0.8;
+		const localLeft = -labelFontSize * 0.3;
+		const clampedX = Math.max(
+			viewport.left + inset - localLeft,
+			Math.min(
+				x,
+				viewport.right - inset - width - localLeft,
+			),
+		);
+		const clampedY = Math.max(
+			viewport.top + inset,
+			Math.min(
+				y,
+				viewport.bottom - inset - labelHeight,
+			),
+		);
 		return `
-		<g transform="translate(${x} ${-y})">
+		<g transform="translate(${clampedX} ${-clampedY})">
 			<rect x="${-labelFontSize * 0.3}" y="${-labelHeight}" width="${width}" height="${labelHeight}" rx="${labelFontSize * 0.22}"
 				fill="${kind === 'target' ? targetColor : '#ffffff'}"
 				fill-opacity="${kind === 'target' ? '.94' : '.92'}"
