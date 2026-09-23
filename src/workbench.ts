@@ -43,7 +43,11 @@ import {
 	type LayoutPilotWorkbenchSizeMode,
 } from './ui/workbenchWindow';
 import { openEvidenceReviewBar, retireEvidenceReviewBar } from './ui/evidenceReviewWindow';
-import { clearActiveLayoutPreviewCanvas, openLayoutPreviewBar } from './ui/layoutPreviewWindow';
+import {
+	clearActiveLayoutPreviewCanvas,
+	closeLayoutPreviewBarAndReturn,
+	openLayoutPreviewBar,
+} from './ui/layoutPreviewWindow';
 import { renderFocusedLocalDetailCompare } from './ui/focusedPlacementDetail';
 import {
 	getStoredHumanOwnershipDecisions,
@@ -518,18 +522,52 @@ function renderInlineLayoutReview(): void {
 			);
 
 			await clearActiveLayoutPreviewCanvas();
-			const canvas = await navigateReviewToPcb(
-				inlineLayoutReview.scene,
-				focus,
-			);
-			await setStoredLayoutPreviewSession(
-				createLayoutPreviewSession({
-					planId: inlineLayoutReview.plan.id,
-					documentTabId: canvas.documentTabId,
-				}),
-			);
-			await openLayoutPreviewBar();
-			await hideLayoutPilotWorkbench();
+
+			const navigationLabel = kind === 'target'
+				? `TARGET · ${inlineLayoutReview.scene.item.subjectDesignator}`
+				: kind === 'current'
+					? `CURRENT · ${inlineLayoutReview.scene.item.subjectDesignator}`
+					: focus.component
+						? `器件 · ${focus.component.designator}`
+						: 'PCB 定位核对';
+
+			let navigationBarOpened = false;
+			try {
+				await openLayoutPreviewBar({
+					mode: 'navigation',
+					label: navigationLabel,
+				});
+				navigationBarOpened = true;
+				await hideLayoutPilotWorkbench();
+
+				// Run the final canvas zoom only after the compact return bar has
+				// changed the editor viewport, otherwise EasyEDA can fit the
+				// old viewport and leave the target visually too small.
+				const canvas = await navigateReviewToPcb(
+					inlineLayoutReview.scene,
+					focus,
+				);
+				await setStoredLayoutPreviewSession(
+					createLayoutPreviewSession({
+						planId: inlineLayoutReview.plan.id,
+						documentTabId: canvas.documentTabId,
+					}),
+				);
+			}
+			catch (error) {
+				if (navigationBarOpened) {
+					try {
+						await closeLayoutPreviewBarAndReturn();
+					}
+					catch (cleanupError) {
+						console.warn(
+							'[LayoutPilot Workbench] navigation bar cleanup failed',
+							cleanupError,
+						);
+					}
+				}
+				throw error;
+			}
 		}
 		catch (error) {
 			console.error('[LayoutPilot Workbench] preview navigation failed', error);
