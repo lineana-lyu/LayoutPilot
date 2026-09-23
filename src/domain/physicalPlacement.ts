@@ -671,13 +671,27 @@ export function enumerateDecouplingPlacementAlternatives(input: {
 		}
 	}
 
-	moveAlternatives.sort((a, b) =>
+	// Different pad-pair paths can converge on the same physical target.
+	// Collapse them before cluster assignment to avoid multiplying equivalent
+	// solver states and keep the lowest-cost explanation for each coordinate.
+	const uniqueMoveAlternatives = new Map<string, PhysicalPlacementAlternative>();
+	for (const alternative of moveAlternatives) {
+		const key = [
+			Math.round(alternative.target.x * 100),
+			Math.round(alternative.target.y * 100),
+		].join(':');
+		const existing = uniqueMoveAlternatives.get(key);
+		if (!existing || alternative.cost < existing.cost) {
+			uniqueMoveAlternatives.set(key, alternative);
+		}
+	}
+	const rankedMoveAlternatives = [...uniqueMoveAlternatives.values()].sort((a, b) =>
 		a.cost - b.cost
 		|| a.target.x - b.target.x
 		|| a.target.y - b.target.y
 	);
 
-	if (!moveAlternatives.length) {
+	if (!rankedMoveAlternatives.length) {
 		const rejectionSummary = [
 			['器件 BBox 碰撞', rejectionCounts.get('collision') ?? 0],
 			['板框 / 安全余量', rejectionCounts.get('board-boundary') ?? 0],
@@ -704,7 +718,7 @@ export function enumerateDecouplingPlacementAlternatives(input: {
 		executionBlockers,
 		alternatives: [
 			keepCurrent,
-			...moveAlternatives.slice(0, maxMoveAlternatives),
+			...rankedMoveAlternatives.slice(0, maxMoveAlternatives),
 		],
 	};
 }
