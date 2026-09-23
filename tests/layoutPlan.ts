@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 
+import { buildLocalLayoutPlan } from '../src/application/layoutPlanner';
 import {
 	canTransitionLayoutPlan,
 	createLayoutPlan,
@@ -165,6 +166,116 @@ assert.equal(
 		physicalFingerprint: fingerprintB,
 	}),
 	false,
+);
+
+const multiPhysical = [
+	{
+		id: 'c-a',
+		designator: 'C_A',
+		x: 700,
+		y: 700,
+		rotation: 0,
+		layer: 'TOP',
+		locked: false,
+		bounds: { minX: 680, minY: 685, maxX: 720, maxY: 715 },
+		pads: [
+			{ componentId: 'c-a', designator: 'C_A', padNumber: '1', net: '3V3', x: 690, y: 700, width: 12, height: 18, rotation: 0, connectedPrimitiveCount: 0 },
+			{ componentId: 'c-a', designator: 'C_A', padNumber: '2', net: 'GND', x: 710, y: 700, width: 12, height: 18, rotation: 0, connectedPrimitiveCount: 0 },
+		],
+	},
+	{
+		id: 'u-a',
+		designator: 'U_A',
+		x: 300,
+		y: 300,
+		rotation: 0,
+		layer: 'TOP',
+		locked: true,
+		bounds: { minX: 260, minY: 260, maxX: 340, maxY: 340 },
+		pads: [
+			{ componentId: 'u-a', designator: 'U_A', padNumber: '1', net: '3V3', x: 330, y: 300, width: 14, height: 14, rotation: 0 },
+			{ componentId: 'u-a', designator: 'U_A', padNumber: '2', net: 'GND', x: 270, y: 300, width: 14, height: 14, rotation: 0 },
+		],
+	},
+	{
+		id: 'c-b',
+		designator: 'C_B',
+		x: 1300,
+		y: 1300,
+		rotation: 0,
+		layer: 'TOP',
+		locked: false,
+		bounds: { minX: 1280, minY: 1285, maxX: 1320, maxY: 1315 },
+		pads: [
+			{ componentId: 'c-b', designator: 'C_B', padNumber: '1', net: '3V3', x: 1290, y: 1300, width: 12, height: 18, rotation: 0, connectedPrimitiveCount: 0 },
+			{ componentId: 'c-b', designator: 'C_B', padNumber: '2', net: 'GND', x: 1310, y: 1300, width: 12, height: 18, rotation: 0, connectedPrimitiveCount: 0 },
+		],
+	},
+	{
+		id: 'u-b',
+		designator: 'U_B',
+		x: 1700,
+		y: 1700,
+		rotation: 0,
+		layer: 'TOP',
+		locked: true,
+		bounds: { minX: 1660, minY: 1660, maxX: 1740, maxY: 1740 },
+		pads: [
+			{ componentId: 'u-b', designator: 'U_B', padNumber: '1', net: '3V3', x: 1730, y: 1700, width: 14, height: 14, rotation: 0 },
+			{ componentId: 'u-b', designator: 'U_B', padNumber: '2', net: 'GND', x: 1670, y: 1700, width: 14, height: 14, rotation: 0 },
+		],
+	},
+];
+
+const multiPlan = buildLocalLayoutPlan({
+	snapshotId: 'semantic-multi',
+	semanticFingerprint: 'sem-multi',
+	physicalFingerprint: 'phys-multi',
+	candidates: [
+		{
+			constraintId: 'C_A:near:U_A',
+			subjectId: 'c-a',
+			subjectDesignator: 'C_A',
+			ownerId: 'u-a',
+			ownerDesignator: 'U_A',
+			powerNet: '3V3',
+			groundNet: 'GND',
+		},
+		{
+			constraintId: 'C_B:near:U_B',
+			subjectId: 'c-b',
+			subjectDesignator: 'C_B',
+			ownerId: 'u-b',
+			ownerDesignator: 'U_B',
+			powerNet: '3V3',
+			groundNet: 'GND',
+		},
+	],
+	physicalComponents: multiPhysical,
+	board: {
+		outer: {
+			points: [
+				{ x: 0, y: 0 },
+				{ x: 2000, y: 0 },
+				{ x: 2000, y: 2000 },
+				{ x: 0, y: 2000 },
+			],
+		},
+		holes: [],
+		approximationToleranceMil: 0,
+	},
+	componentKeepouts: [],
+	maxItems: 8,
+});
+assert.ok(multiPlan.plan);
+assert.equal(
+	multiPlan.plan.items.length,
+	2,
+	'multi-owner review must retain every legal confirmed placement item',
+);
+assert.deepEqual(
+	new Set(multiPlan.plan.items.map(item => item.subjectDesignator)),
+	new Set(['C_A', 'C_B']),
 );
 
 console.log('LayoutPlan tests passed.');

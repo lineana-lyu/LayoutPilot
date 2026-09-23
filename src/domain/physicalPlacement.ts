@@ -404,8 +404,8 @@ export function planDecouplingPlacement(input: {
 		blockExecution(`${subject.designator} 已锁定，不允许自动移动`);
 	}
 	if (subject.layer !== owner.layer) {
-		reasons.push(
-			`${subject.designator} 与 ${owner.designator} 不在同一器件层`,
+		blockExecution(
+			`${subject.designator} 与 ${owner.designator} 不在同一器件层；可生成跨层参考预览，但自动执行仍按失败关闭策略拒绝`,
 		);
 	}
 	if (subject.pads.some(pad => pad.connectedPrimitiveCount === undefined)) {

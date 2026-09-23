@@ -27,9 +27,8 @@ import { collectAnalysisState, type AnalysisState } from './eda/analysisAdapter'
 import {
 	generateCurrentLayoutPlan,
 	validateLayoutPlanCurrent,
-	validateStoredLayoutPlanCurrent,
 } from './eda/layoutPlanRuntime';
-import { collectLayoutReviewScene } from './eda/layoutDiffPreviewAdapter';
+import { collectLayoutReviewScenes } from './eda/layoutDiffPreviewAdapter';
 import {
 	showLayoutPlanGhost,
 	type LayoutPreviewFocusOptions,
@@ -136,7 +135,12 @@ let busy = false;
 
 interface InlineLayoutReviewState {
 	plan: LayoutPlan;
-	scene: LayoutReviewScene;
+	scenes: LayoutReviewScene[];
+	activeItemIndex: number;
+	skipped: Array<{
+		subjectDesignator: string;
+		reasons: string[];
+	}>;
 }
 
 let inlineLayoutReview: InlineLayoutReviewState | undefined;
@@ -421,7 +425,9 @@ function renderInlineLayoutReview(): void {
 	const review = inlineLayoutReview;
 	if (!review) return;
 
-	const { plan, scene } = review;
+	const { plan, scenes, activeItemIndex } = review;
+	const scene = scenes[activeItemIndex] ?? scenes[0];
+	if (!scene) return;
 	const reviewVisual = renderFocusedLocalDetailCompare({ scene });
 	const visualSourceLabel = '结构化局部高对比 · 可点击导航';
 	const item = scene.item;
@@ -447,7 +453,33 @@ function renderInlineLayoutReview(): void {
 			<div class="layout-review-head">
 				<div>
 					<div class="layout-review-title">布局差异预览 · ${escapeHtml(item.subjectDesignator)} → near(${escapeHtml(item.ownerDesignator)})</div>
-					<div class="layout-review-sub">${escapeHtml(planLabel)} · ${escapeHtml(visualSourceLabel)} · 红色为当前位置，绿色为建议位置。</div>
+					<div class="layout-review-sub">${escapeHtml(planLabel)} · 共 ${scenes.length} 项修改 · 当前 ${activeItemIndex + 1}/${scenes.length} · ${escapeHtml(visualSourceLabel)}</div>
+					${review.skipped.length
+						? `<details class="layout-review-skipped">
+							<summary>${review.skipped.length} 项已确认约束未形成合法位置</summary>
+							<div>
+								${review.skipped.slice(0, 6).map(skipped =>
+									`<span><strong>${escapeHtml(skipped.subjectDesignator)}</strong>：${escapeHtml(skipped.reasons.join('；'))}</span>`
+								).join('')}
+							</div>
+						</details>`
+						: ''}
+					${scenes.length > 1
+						? `<div class="layout-review-item-tabs">
+							${scenes.map((candidateScene, index) => `
+								<button
+									class="review-item-tab ${index === activeItemIndex ? 'active' : ''}"
+									data-review-item-index="${index}"
+									type="button"
+									title="${escapeHtml(candidateScene.item.subjectDesignator)} → near(${escapeHtml(candidateScene.item.ownerDesignator)})"
+								>
+									<span>${index + 1}</span>
+									<strong>${escapeHtml(candidateScene.item.subjectDesignator)}</strong>
+									<small>→ ${escapeHtml(candidateScene.item.ownerDesignator)}</small>
+								</button>
+							`).join('')}
+						</div>`
+						: ''}
 				</div>
 				<div class="layout-review-actions">
 					<button class="btn" id="reviewBackBtn">返回决策</button>
@@ -489,7 +521,8 @@ function renderInlineLayoutReview(): void {
 
 			<div class="layout-review-note">
 				局部对比直接使用当前 PCB 的真实 Pad、Track、Via 与器件位号；大圆圈不再常驻，只有悬停 / 键盘聚焦时显示定位框。
-				点击任一器件或顶部红/绿方块，会跳到真实 PCB 对应区域。建议侧仍是<strong>位置预览</strong>：原走线尚未重布、铺铜尚未重算。
+				${scenes.length > 1 ? '上方编号可逐项切换本方案中的所有修改；' : ''}
+				点击任一器件或位置导航，会跳到真实 PCB 对应区域。建议侧仍是<strong>位置预览</strong>：原走线尚未重布、铺铜尚未重算。
 			</div>
 		</div>
 	`;
@@ -513,8 +546,15 @@ function renderInlineLayoutReview(): void {
 				return;
 			}
 
+			const activeScene = inlineLayoutReview.scenes[
+				inlineLayoutReview.activeItemIndex
+			] ?? inlineLayoutReview.scenes[0];
+			if (!activeScene) {
+				throw new Error('当前布局方案没有可导航的预览项。');
+			}
+
 			const focus = resolveReviewNavigationFocus(
-				inlineLayoutReview.scene,
+				activeScene,
 				{
 					kind,
 					componentId: node.dataset.reviewComponentId,
@@ -524,9 +564,9 @@ function renderInlineLayoutReview(): void {
 			await clearActiveLayoutPreviewCanvas();
 
 			const navigationLabel = kind === 'target'
-				? `TARGET · ${inlineLayoutReview.scene.item.subjectDesignator}`
+				? `TARGET · ${activeScene.item.subjectDesignator}`
 				: kind === 'current'
-					? `CURRENT · ${inlineLayoutReview.scene.item.subjectDesignator}`
+					? `CURRENT · ${activeScene.item.subjectDesignator}`
 					: focus.component
 						? `器件 · ${focus.component.designator}`
 						: 'PCB 定位核对';
@@ -544,7 +584,7 @@ function renderInlineLayoutReview(): void {
 				// changed the editor viewport, otherwise EasyEDA can fit the
 				// old viewport and leave the target visually too small.
 				const canvas = await navigateReviewToPcb(
-					inlineLayoutReview.scene,
+					activeScene,
 					focus,
 				);
 				await setStoredLayoutPreviewSession(
@@ -591,6 +631,20 @@ function renderInlineLayoutReview(): void {
 		}
 	}
 
+	for (const node of mainPanel.querySelectorAll<HTMLButtonElement>('[data-review-item-index]')) {
+		node.addEventListener('click', () => {
+			if (!inlineLayoutReview || busy) return;
+			const index = Number(node.dataset.reviewItemIndex);
+			if (
+				!Number.isInteger(index)
+				|| index < 0
+				|| index >= inlineLayoutReview.scenes.length
+			) return;
+			inlineLayoutReview.activeItemIndex = index;
+			renderInlineLayoutReview();
+		});
+	}
+
 	document.getElementById('reviewBackBtn')?.addEventListener('click', () => {
 		releaseInlineLayoutReview();
 		void refresh();
@@ -617,17 +671,28 @@ function renderInlineLayoutReview(): void {
 	});
 }
 
-async function openInlineLayoutReview(plan: LayoutPlan): Promise<void> {
+async function openInlineLayoutReview(
+	plan: LayoutPlan,
+	skipped: Array<{
+		subjectDesignator: string;
+		reasons: string[];
+	}> = [],
+): Promise<void> {
 	const validation = await validateLayoutPlanCurrent(plan);
 	if (!validation.ok) {
 		throw new Error(validation.message);
 	}
 
-	const scene = await collectLayoutReviewScene(plan, 0);
+	const scenes = await collectLayoutReviewScenes(plan);
 	releaseInlineLayoutReview();
 	inlineLayoutReview = {
 		plan,
-		scene,
+		scenes,
+		activeItemIndex: 0,
+		skipped: skipped.map(item => ({
+			subjectDesignator: item.subjectDesignator,
+			reasons: [...item.reasons],
+		})),
 	};
 	renderInlineLayoutReview();
 }
@@ -1278,6 +1343,7 @@ async function refresh(): Promise<void> {
 		const planHasPreflightCandidate = plan?.items.some(
 			item => item.executionBlockers.length === 0,
 		) ?? false;
+		const planIsSingleItem = plan?.items.length === 1;
 
 		previewPlanBtn.disabled = model.previewEligibleCount === 0;
 		previewPlanBtn.textContent = plan
@@ -1290,10 +1356,14 @@ async function refresh(): Promise<void> {
 					: '重新生成布局预览'
 			: '生成布局预览';
 
-		applyBtn.disabled = !acceptedPlan || !planHasPreflightCandidate;
+		applyBtn.disabled = !acceptedPlan
+			|| !planHasPreflightCandidate
+			|| !planIsSingleItem;
 		applyBtn.textContent = planMode === 'reference-only'
 			? '仅参考 · 不执行'
-			: '物理预检并应用';
+			: plan && plan.items.length > 1
+				? '多项方案 · 暂不自动执行'
+				: '物理预检并应用';
 		undoBtn.disabled = command?.status !== 'applied';
 
 		const firstProvider = workflow.semanticSnapshot.entries
@@ -1394,35 +1464,14 @@ previewPlanBtn.addEventListener('click', async () => {
 	if (busy || previewPlanBtn.disabled) return;
 	setBusy(true);
 	try {
-		const workflow = inspectStoredWorkflowState();
-		let plan = workflow.layoutPlan;
-
-		if (
-			!plan
-			|| plan.status === 'rejected'
-			|| plan.status === 'applied'
-			|| plan.status === 'superseded'
-		) {
-			const result = await generateCurrentLayoutPlan(1);
-			if (!result.ok) {
-				showToast(result.message);
-				return;
-			}
-			plan = result.plan;
+		// “生成布局预览” always rebuilds from the current Owner decisions.
+		// Existing plans remain accessible from the plan/history pane.
+		const generated = await generateCurrentLayoutPlan();
+		if (!generated.ok) {
+			showToast(generated.message);
+			return;
 		}
-		else {
-			const validation = await validateStoredLayoutPlanCurrent();
-			if (!validation.ok) {
-				const regenerated = await generateCurrentLayoutPlan(1);
-				if (!regenerated.ok) {
-					showToast(regenerated.message);
-					return;
-				}
-				plan = regenerated.plan;
-			}
-		}
-
-		await openInlineLayoutReview(plan);
+		await openInlineLayoutReview(generated.plan, generated.skipped);
 	}
 	catch (error) {
 		console.error('[LayoutPilot Workbench] layout preview failed', error);

@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.16 Review Navigation UX
+## Current stage — v0.9.17 Multi-Plan Layer Preview
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -131,6 +131,18 @@ v0.9.6 separates **accepting a recommendation** from **authorizing PCB mutation*
 Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with EasyEDA's explicit `zoomToRegion` API around current position, proposed position and available Owner bounds instead of preserving the user's previous zoom level. Evidence review uses the same explicit-region pattern rather than relying on `zoomToSelectedPrimitives`, whose internal selection BBox calculation can fail on real projects when a selected primitive has incomplete bounds.
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
+
+## v0.9.17 Multi-Plan Layer Preview
+
+v0.9.17 addresses three real-board review findings:
+
+1. **Cross-layer Owner relationships can be previewed.** A decoupling capacitor and its manually confirmed Owner no longer have to be on the same component layer to produce a placement proposal. The planner keeps the capacitor on its own layer and uses the Owner pad XY as placement evidence. Cross-layer plans remain **execution-blocked** and reference-only: automatic movement still fails closed until a dedicated cross-layer electrical-path model exists.
+
+2. **PCB navigation is moderately framed.** The over-aggressive explicit 700–800% zoom is removed. Review navigation now runs after the compact return bar opens and uses a larger contextual region. TARGET framing also includes the Owner when available, so the engineer sees the proposed placement relationship rather than an isolated pad at extreme magnification.
+
+3. **One LayoutPlan can contain multiple confirmed changes.** The workbench no longer calls `generateCurrentLayoutPlan(1)`. Generation can retain up to eight legal confirmed placement items, planned sequentially against a virtual board so later proposals see earlier proposed positions. The inline review collects PCB primitives once, builds all review scenes from that snapshot, and exposes numbered item tabs for per-change Before/After inspection. “生成布局预览” always rebuilds from the current Owner decisions; stored/reference plans remain separately reviewable.
+
+The execution MVP remains conservative: multi-item plans are reviewable as a set, while automatic Apply continues to accept only the existing single-item execution path.
 
 ## v0.9.16 Review Navigation UX
 
