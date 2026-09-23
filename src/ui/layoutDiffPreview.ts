@@ -43,6 +43,11 @@ export function renderLayoutDiffPreviewSvg(
 	const viewWidth = Math.max(1, viewport.right - viewport.left);
 	const viewHeight = Math.max(1, viewport.bottom - viewport.top);
 	const viewBox = `${viewport.left} ${-viewport.bottom} ${viewWidth} ${viewHeight}`;
+	const labelFontSize = Math.max(
+		18,
+		Math.min(42, Math.max(viewWidth, viewHeight) * 0.026),
+	);
+	const labelHeight = labelFontSize * 1.7;
 	const subjectIds = new Set([item.subjectId, item.ownerId]);
 
 	const board = `
@@ -107,16 +112,22 @@ export function renderLayoutDiffPreviewSvg(
 		x: number,
 		y: number,
 		kind: 'muted' | 'target' = 'muted',
-	) => `
+	) => {
+		const width = Math.max(
+			labelFontSize * 4.8,
+			text.length * labelFontSize * 0.62,
+		);
+		return `
 		<g transform="translate(${x} ${-y})">
-			<rect x="-4" y="-17" width="${Math.max(64, text.length * 8.2)}" height="20" rx="3"
+			<rect x="${-labelFontSize * 0.3}" y="${-labelHeight}" width="${width}" height="${labelHeight}" rx="${labelFontSize * 0.22}"
 				fill="${kind === 'target' ? targetColor : '#ffffff'}"
-				fill-opacity="${kind === 'target' ? '.94' : '.9'}"
+				fill-opacity="${kind === 'target' ? '.94' : '.92'}"
 				stroke="${kind === 'target' ? targetColor : '#aab1b8'}"
 				vector-effect="non-scaling-stroke"/>
-			<text x="3" y="-3" font-size="12" font-family="Microsoft YaHei UI,Segoe UI,sans-serif"
+			<text x="${labelFontSize * 0.2}" y="${-labelFontSize * 0.38}" font-size="${labelFontSize}" font-family="Microsoft YaHei UI,Segoe UI,sans-serif"
 				fill="${kind === 'target' ? '#ffffff' : '#505962'}">${escapeHtml(text)}</text>
 		</g>`;
+	};
 
 	const labels = [
 		mode !== 'proposed'
