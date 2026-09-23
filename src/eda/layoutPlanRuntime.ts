@@ -3,6 +3,7 @@ import {
 	buildLocalLayoutPlan,
 	type LayoutPlanningCandidate,
 	type LayoutPlanningSkip,
+	type LayoutPlanningUnchanged,
 } from '../application/layoutPlanner';
 import {
 	createLayoutPlan,
@@ -25,6 +26,7 @@ export type GenerateLayoutPlanResult =
 		ok: true;
 		plan: LayoutPlan;
 		skipped: LayoutPlanningSkip[];
+		unchanged: LayoutPlanningUnchanged[];
 	}
 	| {
 		ok: false;
@@ -73,7 +75,7 @@ function buildPlanningCandidates(
 }
 
 export async function generateCurrentLayoutPlan(
-	maxItems = 8,
+	maxItems?: number,
 ): Promise<GenerateLayoutPlanResult> {
 	const session = await collectCurrentConstraintSession();
 	if (!session.ok) {
@@ -127,10 +129,16 @@ export async function generateCurrentLayoutPlan(
 	});
 
 	if (!result.plan) {
+		const unchangedLines = result.unchanged.slice(0, 6).map(item =>
+			`${item.subjectDesignator} → ${item.ownerDesignator}：保持当前位置（回路代理 ${item.currentLoopProxyMil.toFixed(1)} mil）`
+		);
 		return {
 			ok: false,
 			message: [
-				'当前没有生成可显示的合法布局预览。',
+				result.unchanged.length && !result.skipped.length
+					? '所有已确认约束均评估为保持当前位置，无需生成移动方案。'
+					: '当前没有生成可显示的合法布局移动方案。',
+				...unchangedLines,
 				...result.skipped.slice(0, 6).map(item =>
 					`${item.subjectDesignator}：${item.reasons.join('；')}`
 				),
@@ -160,6 +168,7 @@ export async function generateCurrentLayoutPlan(
 		ok: true,
 		plan,
 		skipped: result.skipped,
+		unchanged: result.unchanged,
 	};
 }
 
