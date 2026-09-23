@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.10 Review Geometry Alignment
+## Current stage — v0.9.11 Native Snapshot Diff
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -132,7 +132,25 @@ Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
 
-## Next architecture — Native PCB Review Overlay
+## Native PCB Review Overlay
+
+v0.9.11 promotes EasyEDA's native PCB rendering to the visual source of truth for established / partially laid out boards.
+
+The workbench review path is now:
+
+```
+Frozen LayoutPlan
+→ capture native EasyEDA review region
+→ restore user's original PCB viewport
+→ grayscale native snapshot
+→ red CURRENT / green TARGET overlay
+→ optional real-canvas verification
+```
+
+The native capture is non-destructive: LayoutPilot does not recolor PCB primitives and does not mutate the board. If the native rendered-area capture API is unavailable or fails, the workbench automatically falls back to the v0.9.10 geometry renderer.
+
+The geometry renderer therefore remains useful as a fallback and as the basis for future greenfield / unplaced-board proposal views.
+
 
 The next review architecture is frozen in `docs/NATIVE_PCB_REVIEW_OVERLAY.md`.
 
