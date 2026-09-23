@@ -73,7 +73,7 @@ function render(): void {
 		acceptanceMode === 'reference-only'
 			? '<strong class="reference-note">当前方案不会修改 PCB</strong>'
 			: '',
-		'<span class="legend"><span><i class="swatch current"></i>当前位置</span><span><i class="swatch owner"></i>Owner</span><span><i class="swatch blue"></i>可执行目标</span><span><i class="swatch amber"></i>参考目标</span></span>',
+		'<span class="legend"><span><i class="swatch current"></i>当前位置</span><span><i class="swatch target"></i>建议位置</span><span><i class="swatch owner"></i>Owner</span></span>',
 	].filter(Boolean).join(' · ');
 	items.textContent = [
 		...plan.items.map(item =>
