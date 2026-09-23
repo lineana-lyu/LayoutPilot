@@ -93,18 +93,6 @@ function footprintMarkers(
 		: boundsMarkers(component, dx, dy);
 }
 
-function reviewZoomRatio(region: CanvasRegion): number {
-	const span = Math.max(
-		region.right - region.left,
-		region.bottom - region.top,
-	);
-	if (span <= 220) return 800;
-	if (span <= 360) return 700;
-	if (span <= 560) return 600;
-	if (span <= 900) return 500;
-	return 420;
-}
-
 async function zoomToRegion(
 	documentTabId: string,
 	region: CanvasRegion,
@@ -118,18 +106,6 @@ async function zoomToRegion(
 	);
 	if (!zoomed) {
 		throw new Error('EasyEDA 拒绝定位当前审查区域。');
-	}
-
-	const centerX = (region.left + region.right) / 2;
-	const centerY = (region.top + region.bottom) / 2;
-	const focused = await eda.dmt_EditorControl.zoomTo(
-		centerX,
-		centerY,
-		reviewZoomRatio(region),
-		documentTabId,
-	);
-	if (!focused) {
-		console.warn('[LayoutPilot] explicit review zoom ratio was rejected; region fit remains active');
 	}
 }
 
