@@ -128,6 +128,7 @@ function option(
 			maxY: 10,
 		},
 		clearanceMil: 0,
+		keepsCurrent: false,
 		payload: { label: id },
 	};
 }
