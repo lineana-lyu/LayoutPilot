@@ -24,9 +24,9 @@ export interface ReviewNavigationFocus {
 
 function focusRegion(bounds: CanvasBounds): CanvasRegion {
 	return paddedCanvasRegion(bounds, {
-		marginRatio: 0.55,
-		minMarginMil: 70,
-		minSpanMil: 260,
+		marginRatio: 0.32,
+		minMarginMil: 36,
+		minSpanMil: 180,
 	});
 }
 
