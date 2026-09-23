@@ -223,6 +223,7 @@ export function buildLocalLayoutPlan(input: {
 					cost: alternative.cost,
 					bounds: { ...alternative.targetBounds },
 					clearanceMil: alternative.clearanceMil,
+					keepsCurrent: alternative.kind === 'keep-current',
 					payload: {
 						candidate,
 						subject,
