@@ -113,16 +113,16 @@ export async function navigateReviewToPcb(
 	scene: LayoutReviewScene,
 	focus: ReviewNavigationFocus,
 ): Promise<{ documentTabId: string }> {
-	const document = await eda.dmt_SelectControl.getCurrentDocumentInfo();
-	if (!document) {
-		throw new Error('无法获取当前 PCB 文档信息。');
-	}
-	if (document.documentType !== EDMT_EditorDocumentType.PCB) {
-		throw new Error('当前活动文档不是 PCB。');
+	const documentTabId = scene.documentTabId;
+	if (!documentTabId) {
+		throw new Error('布局审查场景缺少冻结的 PCB Tab ID。');
 	}
 
-	await eda.dmt_EditorControl.activateDocument(document.tabId);
-	await eda.dmt_EditorControl.removeIndicatorMarkers(document.tabId);
+	const activated = await eda.dmt_EditorControl.activateDocument(documentTabId);
+	if (!activated) {
+		throw new Error('原始 PCB 文档已关闭或无法重新激活，请重新生成布局预览。');
+	}
+	await eda.dmt_EditorControl.removeIndicatorMarkers(documentTabId);
 
 	try {
 		await eda.pcb_SelectControl.clearSelected();
@@ -160,7 +160,7 @@ export async function navigateReviewToPcb(
 				{ r: 36, g: 166, b: 106, alpha: 0.98 },
 				3,
 				false,
-				document.tabId,
+				documentTabId,
 			);
 			if (!generated) {
 				throw new Error('EasyEDA 未能生成 TARGET Footprint Ghost。');
@@ -172,22 +172,22 @@ export async function navigateReviewToPcb(
 				{ r: 215, g: 68, b: 68, alpha: 0.96 },
 				2,
 				false,
-				document.tabId,
+				documentTabId,
 			);
 			if (!generated) {
 				console.warn('[LayoutPilot] unable to generate CURRENT review marker');
 			}
 		}
 
-		await zoomToRegion(document.tabId, focus.region);
+		await zoomToRegion(documentTabId, focus.region);
 
 		return {
-			documentTabId: document.tabId,
+			documentTabId: documentTabId,
 		};
 	}
 	catch (error) {
 		try {
-			await eda.dmt_EditorControl.removeIndicatorMarkers(document.tabId);
+			await eda.dmt_EditorControl.removeIndicatorMarkers(documentTabId);
 		}
 		catch (cleanupError) {
 			console.warn('[LayoutPilot] unable to clear failed review navigation markers', cleanupError);
