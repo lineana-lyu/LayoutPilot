@@ -14,13 +14,21 @@ import {
 	layoutPlanAcceptanceMode,
 	type LayoutPlan,
 } from './domain/layoutPlan';
-import { formatLayoutPlanItemReview } from './domain/layoutPlanReview';
+import {
+	formatLayoutPlanItemReview,
+	layoutPlanItemReviewMetrics,
+} from './domain/layoutPlanReview';
+import {
+	type LayoutDiffPreviewMode,
+	type LayoutReviewScene,
+} from './domain/layoutDiffPreview';
 import { collectAnalysisState, type AnalysisState } from './eda/analysisAdapter';
 import {
 	generateCurrentLayoutPlan,
 	validateLayoutPlanCurrent,
 	validateStoredLayoutPlanCurrent,
 } from './eda/layoutPlanRuntime';
+import { collectLayoutReviewScene } from './eda/layoutDiffPreviewAdapter';
 import { showLayoutPlanGhost } from './eda/layoutPreviewAdapter';
 import { beginPcbEvidenceReview, collectPadEvidenceComponents, endPcbEvidenceReview } from './eda/pcbPhysicalAdapter';
 import {
@@ -31,6 +39,7 @@ import {
 } from './ui/workbenchWindow';
 import { openEvidenceReviewBar, retireEvidenceReviewBar } from './ui/evidenceReviewWindow';
 import { clearActiveLayoutPreviewCanvas, openLayoutPreviewBar } from './ui/layoutPreviewWindow';
+import { renderLayoutDiffPreviewSvg } from './ui/layoutDiffPreview';
 import {
 	getStoredHumanOwnershipDecisions,
 	inspectStoredWorkflowState,
@@ -115,6 +124,14 @@ const footerNote = el<HTMLDivElement>('footerNote');
 let selectedComponentId: string | undefined;
 let lastWorkflowUpdatedAt = '';
 let busy = false;
+
+interface InlineLayoutReviewState {
+	plan: LayoutPlan;
+	scene: LayoutReviewScene;
+	mode: LayoutDiffPreviewMode;
+}
+
+let inlineLayoutReview: InlineLayoutReviewState | undefined;
 
 function escapeHtml(value: unknown): string {
 	return String(value ?? '')
