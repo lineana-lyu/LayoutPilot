@@ -108,6 +108,28 @@ Apply accepted LayoutPlan = explicit mutation boundary
 No external editor framework is bundled into the extension.
 
 
+## v0.9.8 workbench diff scene
+
+The primary review surface is now an inline workbench scene rather than the full EasyEDA canvas. This intentionally remains a **review renderer**, not a second PCB editor.
+
+Scene inputs are intentionally bounded:
+
+```
+LayoutPlan item
++ BoardRegion
++ nearby measured component BBoxes
++ net-bearing line tracks
++ vias
+→ local review scene
+→ native SVG
+```
+
+Only primitives intersecting the local viewport are rendered. Unchanged PCB context is grayscale, while the proposed component location is highlighted. Original / Proposed / Diff modes are projections of the same immutable LayoutPlan coordinates, so the preview cannot drift away from the plan that would later enter physical preflight.
+
+Copper pours, silkscreen and rerouted traces are deliberately not reconstructed. The UI states this explicitly so a placement preview is not misrepresented as a complete post-route board simulation. The existing real-canvas Ghost Preview remains available as a second-stage verification action.
+
+This follows the mature separation used by PcbDraw and tracespace between board geometry and visualization, while adapting EasyEDA's open-source interactive HTML BOM pattern of collecting board primitives in parallel. No third-party renderer is bundled.
+
 ## v0.9.7 review lifecycle freeze
 
 The real-board workflow is no longer modeled as one global Step 1 → Step 4 wizard. Each component can independently progress through semantic understanding, Owner evidence, layout review and optional execution. The workbench header therefore exposes capability status rather than implying that all Owner tasks must finish before any layout suggestion can exist.

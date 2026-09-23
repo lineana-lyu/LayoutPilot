@@ -14,13 +14,21 @@ import {
 	layoutPlanAcceptanceMode,
 	type LayoutPlan,
 } from './domain/layoutPlan';
-import { formatLayoutPlanItemReview } from './domain/layoutPlanReview';
+import {
+	formatLayoutPlanItemReview,
+	layoutPlanItemReviewMetrics,
+} from './domain/layoutPlanReview';
+import {
+	type LayoutDiffPreviewMode,
+	type LayoutReviewScene,
+} from './domain/layoutDiffPreview';
 import { collectAnalysisState, type AnalysisState } from './eda/analysisAdapter';
 import {
 	generateCurrentLayoutPlan,
 	validateLayoutPlanCurrent,
 	validateStoredLayoutPlanCurrent,
 } from './eda/layoutPlanRuntime';
+import { collectLayoutReviewScene } from './eda/layoutDiffPreviewAdapter';
 import { showLayoutPlanGhost } from './eda/layoutPreviewAdapter';
 import { beginPcbEvidenceReview, collectPadEvidenceComponents, endPcbEvidenceReview } from './eda/pcbPhysicalAdapter';
 import {
@@ -31,6 +39,7 @@ import {
 } from './ui/workbenchWindow';
 import { openEvidenceReviewBar, retireEvidenceReviewBar } from './ui/evidenceReviewWindow';
 import { clearActiveLayoutPreviewCanvas, openLayoutPreviewBar } from './ui/layoutPreviewWindow';
+import { renderLayoutDiffPreviewSvg } from './ui/layoutDiffPreview';
 import {
 	getStoredHumanOwnershipDecisions,
 	inspectStoredWorkflowState,
@@ -115,6 +124,14 @@ const footerNote = el<HTMLDivElement>('footerNote');
 let selectedComponentId: string | undefined;
 let lastWorkflowUpdatedAt = '';
 let busy = false;
+
+interface InlineLayoutReviewState {
+	plan: LayoutPlan;
+	scene: LayoutReviewScene;
+	mode: LayoutDiffPreviewMode;
+}
+
+let inlineLayoutReview: InlineLayoutReviewState | undefined;
 
 function escapeHtml(value: unknown): string {
 	return String(value ?? '')
@@ -388,6 +405,142 @@ function renderEmpty(
 		</div>`;
 }
 
+function renderInlineLayoutReview(): void {
+	const review = inlineLayoutReview;
+	if (!review) return;
+
+	const { plan, scene, mode } = review;
+	const item = scene.item;
+	const metrics = layoutPlanItemReviewMetrics(item);
+	const reduction = metrics.reductionPercent;
+	const reductionText = reduction === undefined
+		? '—'
+		: `${Math.abs(reduction).toFixed(1)}%`;
+	const reductionLabel = metrics.outcome === 'improved'
+		? '降低'
+		: metrics.outcome === 'worse'
+			? '增加'
+			: '基本不变';
+	const planMode = layoutPlanAcceptanceMode(plan);
+	const planLabel = planMode === 'reference-only'
+		? '参考方案'
+		: planMode === 'mixed'
+			? '混合方案'
+			: '可执行方案';
+
+	mainPanel.innerHTML = `
+		<div class="layout-review">
+			<div class="layout-review-head">
+				<div>
+					<div class="layout-review-title">布局差异预览 · ${escapeHtml(item.subjectDesignator)} → near(${escapeHtml(item.ownerDesignator)})</div>
+					<div class="layout-review-sub">${escapeHtml(planLabel)} · 其他未修改内容降权为灰色，彩色区域表示当前布局建议。</div>
+				</div>
+				<div class="layout-review-actions">
+					<button class="btn" id="reviewBackBtn">返回决策</button>
+					<button class="btn" id="reviewRealPcbBtn">在真实 PCB 中核对</button>
+				</div>
+			</div>
+
+			<div class="layout-review-toolbar">
+				<div class="review-segment" role="group" aria-label="布局预览模式">
+					<button class="btn small ${mode === 'original' ? 'active' : ''}" data-review-mode="original">原始</button>
+					<button class="btn small ${mode === 'proposed' ? 'active' : ''}" data-review-mode="proposed">建议</button>
+					<button class="btn small ${mode === 'diff' ? 'active' : ''}" data-review-mode="diff">差异</button>
+				</div>
+				<div class="layout-review-legend">
+					<span><i class="legend-chip muted"></i>未改动 PCB 上下文</span>
+					<span><i class="legend-chip accent"></i>建议位置</span>
+				</div>
+			</div>
+
+			<div class="layout-review-canvas">
+				${renderLayoutDiffPreviewSvg(scene, mode)}
+			</div>
+
+			<div class="layout-review-metrics">
+				<div class="review-metric">
+					<span>移动距离</span>
+					<strong>${item.movementMil.toFixed(1)} mil</strong>
+				</div>
+				<div class="review-metric">
+					<span>当前几何代理</span>
+					<strong>${metrics.beforeLoopProxyMil.toFixed(1)} mil</strong>
+				</div>
+				<div class="review-metric">
+					<span>建议后几何代理</span>
+					<strong>${metrics.afterLoopProxyMil.toFixed(1)} mil</strong>
+				</div>
+				<div class="review-metric">
+					<span>${escapeHtml(reductionLabel)}</span>
+					<strong>${escapeHtml(reductionText)}</strong>
+				</div>
+			</div>
+
+			<div class="layout-review-note">
+				这是<strong>器件位置几何审查图</strong>：灰色走线、Via 和周边器件来自当前 PCB，仅提供空间上下文；
+				不会模拟重新布线、铺铜重算或 SI/PI 结果。真正执行仍必须经过物理预检。
+			</div>
+		</div>
+	`;
+
+	for (const node of mainPanel.querySelectorAll<HTMLButtonElement>('[data-review-mode]')) {
+		node.addEventListener('click', () => {
+			if (!inlineLayoutReview) return;
+			const nextMode = node.dataset.reviewMode as LayoutDiffPreviewMode;
+			if (
+				nextMode !== 'original'
+				&& nextMode !== 'proposed'
+				&& nextMode !== 'diff'
+			) return;
+			inlineLayoutReview = {
+				...inlineLayoutReview,
+				mode: nextMode,
+			};
+			renderInlineLayoutReview();
+		});
+	}
+
+	document.getElementById('reviewBackBtn')?.addEventListener('click', () => {
+		inlineLayoutReview = undefined;
+		void refresh();
+	});
+
+	document.getElementById('reviewRealPcbBtn')?.addEventListener('click', async () => {
+		if (busy || !inlineLayoutReview) return;
+		setBusy(true);
+		try {
+			const validation = await validateLayoutPlanCurrent(inlineLayoutReview.plan);
+			if (!validation.ok) {
+				showToast(validation.message);
+				return;
+			}
+			await presentLayoutPlanPreview(inlineLayoutReview.plan);
+		}
+		catch (error) {
+			console.error('[LayoutPilot Workbench] real PCB review failed', error);
+			showToast(`真实 PCB 核对失败：${String(error)}`);
+		}
+		finally {
+			setBusy(false);
+		}
+	});
+}
+
+async function openInlineLayoutReview(plan: LayoutPlan): Promise<void> {
+	const validation = await validateLayoutPlanCurrent(plan);
+	if (!validation.ok) {
+		throw new Error(validation.message);
+	}
+
+	const scene = await collectLayoutReviewScene(plan, 0);
+	inlineLayoutReview = {
+		plan,
+		scene,
+		mode: 'diff',
+	};
+	renderInlineLayoutReview();
+}
+
 function renderTasks(
 	tasks: OwnerTask[],
 	model?: RuntimeModel,
@@ -558,6 +711,9 @@ function renderPlanPanel(model?: RuntimeModel): void {
 						</div>
 					`).join('')}
 				</div>
+				${plan.status === 'preview' || plan.status === 'accepted'
+					? '<div style="margin-top:7px"><button class="btn small" data-view-current-plan>工作台预览</button></div>'
+					: ''}
 			</div>`
 		: '';
 
@@ -583,7 +739,7 @@ function renderPlanPanel(model?: RuntimeModel): void {
 								</div>
 								<div style="margin-top:6px">
 									<button class="btn small" data-view-reference-plan="${escapeHtml(reference.id)}">
-										查看参考方案
+										工作台预览
 									</button>
 								</div>
 							</div>`;
@@ -612,6 +768,24 @@ function renderPlanPanel(model?: RuntimeModel): void {
 		${renderConstraintArea(model)}
 	`;
 
+	const currentPlanPreview = planPanel.querySelector<HTMLButtonElement>(
+		'[data-view-current-plan]',
+	);
+	currentPlanPreview?.addEventListener('click', async () => {
+		if (busy || !plan) return;
+		setBusy(true);
+		try {
+			await openInlineLayoutReview(plan);
+		}
+		catch (error) {
+			console.error('[LayoutPilot Workbench] inline current-plan preview failed', error);
+			showToast(`工作台预览失败：${String(error)}`);
+		}
+		finally {
+			setBusy(false);
+		}
+	});
+
 	for (const node of planPanel.querySelectorAll<HTMLButtonElement>(
 		'[data-view-reference-plan]',
 	)) {
@@ -623,12 +797,7 @@ function renderPlanPanel(model?: RuntimeModel): void {
 
 			setBusy(true);
 			try {
-				const validation = await validateLayoutPlanCurrent(reference);
-				if (!validation.ok) {
-					showToast('参考方案已保留，但当前 PCB / Snapshot 已变化，不能叠加旧 Ghost。');
-					return;
-				}
-				await presentLayoutPlanPreview(reference);
+				await openInlineLayoutReview(reference);
 			}
 			catch (error) {
 				console.error('[LayoutPilot Workbench] reference preview failed', error);
@@ -949,7 +1118,26 @@ async function refresh(): Promise<void> {
 		el<HTMLDivElement>('metricPending').textContent = String(pending);
 		el<HTMLDivElement>('metricConstraints').textContent = String(model.constraintCount);
 		renderTasks(model.tasks, model);
-		renderCurrentTask(model.tasks, model);
+		if (inlineLayoutReview) {
+			const reviewPlan = [
+				model.layoutPlan,
+				...model.referencePlans,
+			].find(plan => plan?.id === inlineLayoutReview?.plan.id);
+			if (reviewPlan) {
+				inlineLayoutReview = {
+					...inlineLayoutReview,
+					plan: reviewPlan,
+				};
+				renderInlineLayoutReview();
+			}
+			else {
+				inlineLayoutReview = undefined;
+				renderCurrentTask(model.tasks, model);
+			}
+		}
+		else {
+			renderCurrentTask(model.tasks, model);
+		}
 		renderPlanPanel(model);
 
 		setStage('stageAnalyze', 'done');
@@ -1000,11 +1188,11 @@ async function refresh(): Promise<void> {
 		previewPlanBtn.disabled = model.previewEligibleCount === 0;
 		previewPlanBtn.textContent = plan
 			? plan.status === 'preview'
-				? '查看布局预览'
+				? '工作台预览'
 				: plan.status === 'accepted'
 					? planMode === 'reference-only'
 						? '查看参考方案'
-						: '查看已接受方案'
+						: '工作台预览'
 					: '重新生成布局预览'
 			: '生成布局预览';
 
@@ -1137,7 +1325,7 @@ previewPlanBtn.addEventListener('click', async () => {
 			}
 		}
 
-		await presentLayoutPlanPreview(plan);
+		await openInlineLayoutReview(plan);
 	}
 	catch (error) {
 		console.error('[LayoutPilot Workbench] layout preview failed', error);
