@@ -156,58 +156,58 @@ export async function navigateReviewToPcb(
 	}
 
 	try {
-	if (focus.selectPrimitiveId) {
-		try {
-			await eda.pcb_SelectControl.doSelectPrimitives(
-				focus.selectPrimitiveId,
+		if (focus.selectPrimitiveId) {
+			try {
+				await eda.pcb_SelectControl.doSelectPrimitives(
+					focus.selectPrimitiveId,
+				);
+			}
+			catch (error) {
+				console.warn('[LayoutPilot] review navigation selection failed', {
+					primitiveId: focus.selectPrimitiveId,
+					error,
+				});
+			}
+		}
+
+		if (focus.kind === 'target') {
+			const dx = scene.item.to.x - scene.subject.anchor.x;
+			const dy = scene.item.to.y - scene.subject.anchor.y;
+			const markers = footprintMarkers(
+				scene.subject,
+				dx,
+				dy,
 			);
-		}
-		catch (error) {
-			console.warn('[LayoutPilot] review navigation selection failed', {
-				primitiveId: focus.selectPrimitiveId,
-				error,
-			});
-		}
-	}
 
-	if (focus.kind === 'target') {
-		const dx = scene.item.to.x - scene.subject.anchor.x;
-		const dy = scene.item.to.y - scene.subject.anchor.y;
-		const markers = footprintMarkers(
-			scene.subject,
-			dx,
-			dy,
-		);
-
-		const generated = await eda.dmt_EditorControl.generateIndicatorMarkers(
-			markers,
-			{ r: 36, g: 166, b: 106, alpha: 0.98 },
-			3,
-			false,
-			document.tabId,
-		);
-		if (!generated) {
-			throw new Error('EasyEDA 未能生成 TARGET Footprint Ghost。');
+			const generated = await eda.dmt_EditorControl.generateIndicatorMarkers(
+				markers,
+				{ r: 36, g: 166, b: 106, alpha: 0.98 },
+				3,
+				false,
+				document.tabId,
+			);
+			if (!generated) {
+				throw new Error('EasyEDA 未能生成 TARGET Footprint Ghost。');
+			}
 		}
-	}
-	else if (focus.kind === 'current') {
-		const generated = await eda.dmt_EditorControl.generateIndicatorMarkers(
-			footprintMarkers(scene.subject),
-			{ r: 215, g: 68, b: 68, alpha: 0.96 },
-			2,
-			false,
-			document.tabId,
-		);
-		if (!generated) {
-			console.warn('[LayoutPilot] unable to generate CURRENT review marker');
+		else if (focus.kind === 'current') {
+			const generated = await eda.dmt_EditorControl.generateIndicatorMarkers(
+				footprintMarkers(scene.subject),
+				{ r: 215, g: 68, b: 68, alpha: 0.96 },
+				2,
+				false,
+				document.tabId,
+			);
+			if (!generated) {
+				console.warn('[LayoutPilot] unable to generate CURRENT review marker');
+			}
 		}
-	}
 
-	await zoomToRegion(document.tabId, focus.region);
+		await zoomToRegion(document.tabId, focus.region);
 
-	return {
-		documentTabId: document.tabId,
-	};
+		return {
+			documentTabId: document.tabId,
+		};
 	}
 	catch (error) {
 		try {
