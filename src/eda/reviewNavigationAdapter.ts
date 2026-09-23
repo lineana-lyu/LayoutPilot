@@ -155,9 +155,9 @@ export async function navigateReviewToPcb(
 		console.warn('[LayoutPilot] unable to clear PCB selection before review navigation', error);
 	}
 
+	try {
 	if (focus.selectPrimitiveId) {
 		try {
-			await eda.pcb_SelectControl.clearSelected();
 			await eda.pcb_SelectControl.doSelectPrimitives(
 				focus.selectPrimitiveId,
 			);
@@ -208,4 +208,14 @@ export async function navigateReviewToPcb(
 	return {
 		documentTabId: document.tabId,
 	};
+	}
+	catch (error) {
+		try {
+			await eda.dmt_EditorControl.removeIndicatorMarkers(document.tabId);
+		}
+		catch (cleanupError) {
+			console.warn('[LayoutPilot] unable to clear failed review navigation markers', cleanupError);
+		}
+		throw error;
+	}
 }
