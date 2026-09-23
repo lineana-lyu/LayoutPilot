@@ -5,6 +5,7 @@ import {
 	type LayoutPlanningSkip,
 } from '../application/layoutPlanner';
 import {
+	createLayoutPlan,
 	layoutPlanStateMismatches,
 	type LayoutPlan,
 } from '../domain/layoutPlan';
@@ -108,7 +109,7 @@ export async function generateCurrentLayoutPlan(
 		};
 	}
 
-	const physicalFingerprint = buildPhysicalBoardFingerprint({
+	const provisionalPhysicalFingerprint = buildPhysicalBoardFingerprint({
 		components: physical,
 		board: board.region,
 		componentKeepouts: keepouts.polygons,
@@ -117,7 +118,7 @@ export async function generateCurrentLayoutPlan(
 	const result = buildLocalLayoutPlan({
 		snapshotId: session.value.snapshot.id,
 		semanticFingerprint: session.value.boardFingerprint,
-		physicalFingerprint,
+		physicalFingerprint: provisionalPhysicalFingerprint,
 		candidates,
 		physicalComponents: physical,
 		board: board.region,
@@ -137,10 +138,27 @@ export async function generateCurrentLayoutPlan(
 		};
 	}
 
-	await setStoredLayoutPlan(result.plan);
+	const routingEvidenceComponentIds = result.plan.items.map(
+		item => item.subjectId,
+	);
+	const physicalFingerprint = buildPhysicalBoardFingerprint({
+		components: physical,
+		board: board.region,
+		componentKeepouts: keepouts.polygons,
+		routingEvidenceComponentIds,
+	});
+	const plan = createLayoutPlan({
+		snapshotId: result.plan.snapshotId,
+		semanticFingerprint: result.plan.semanticFingerprint,
+		physicalFingerprint,
+		items: result.plan.items,
+		createdAt: result.plan.createdAt,
+	});
+
+	await setStoredLayoutPlan(plan);
 	return {
 		ok: true,
-		plan: result.plan,
+		plan,
 		skipped: result.skipped,
 	};
 }
@@ -189,6 +207,7 @@ export async function validateLayoutPlanCurrent(
 		components: physical,
 		board: board.region,
 		componentKeepouts: keepouts.polygons,
+		routingEvidenceComponentIds: plan.items.map(item => item.subjectId),
 	});
 
 	const mismatches = layoutPlanStateMismatches(plan, {
