@@ -752,7 +752,7 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 								<div class="host-cell host-actions-cell">
 									<div class="host-actions">
 										<button class="btn small" data-locate-owner="${escapeHtml(candidate.id)}">定位核对</button>
-										<button class="btn small ${selected ? '' : 'primary'}" data-confirm-owner="${escapeHtml(candidate.id)}">${selected ? '已确认' : '确认 Owner'}</button>
+										<button class="btn small ${selected ? '' : 'primary'}" data-confirm-owner="${escapeHtml(candidate.id)}" ${selected ? 'disabled' : ''}>${selected ? '已确认' : '确认 Owner'}</button>
 									</div>
 								</div>
 							</div>`;
