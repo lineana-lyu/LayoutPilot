@@ -1,4 +1,5 @@
 import { extractStructuralFeatures, type ComponentMetadata } from './domain/componentFeatures';
+import { buildCircuitGraph, type CircuitComponentSnapshot } from './domain/circuitGraph';
 import { coreLevelZh, groupEvidenceZh, layoutConstraintTypeZh, lockedZh, netGroupingClassZh, ownershipRelationZh, semanticConfidenceZh, semanticMissingEvidenceZh, semanticRoleZh, structuralEvidenceZh } from './i18n/zhCN';
 import { buildCandidateGroups } from './domain/candidateGrouping';
 import { buildSemanticContexts, resolveComponentDisplayName, type SemanticComponentContext, type SemanticComponentMetadata } from './domain/semanticContext';
@@ -19,7 +20,7 @@ import { formatLayoutPlanItemReview } from './domain/layoutPlanReview';
 import { filterOwnershipPropertyNames, findOwnershipFields, findOwnershipMemberNames } from './domain/ownershipCapabilityProbe';
 import { collectPhysicalComponents, collectSimpleBoardBoundary, collectSimpleComponentKeepouts, moveComponentAndVerify, readComponentPhysicalState } from './eda/pcbPhysicalAdapter';
 import { collectAnalysisState } from './eda/analysisAdapter';
-import { reopenLayoutPilotWorkbench } from './ui/workbenchWindow';
+import { openLayoutPilotWorkbench, reopenLayoutPilotWorkbench } from './ui/workbenchWindow';
 import { clearStoredSemanticSnapshot, getStoredHumanOwnershipDecisions, getStoredLastPlacementCommand, getStoredSemanticSnapshot, removeStoredHumanOwnershipDecision, replaceStoredSemanticSnapshot, setStoredLastPlacementCommand, setStoredLayoutPlan, upsertStoredHumanOwnershipDecision } from './eda/workflowStore';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
@@ -1840,7 +1841,7 @@ export async function undoLastDemoPlacement(): Promise<void> {
     const targetValidation = validatePlacementTarget({
       subject,
       obstacles: physical,
-      board: boardBoundary.polygon,
+      board: boardBoundary.region,
       componentKeepouts: componentKeepouts.polygons,
       target: command.from,
     });
