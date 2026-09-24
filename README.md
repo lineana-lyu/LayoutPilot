@@ -132,6 +132,15 @@ Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
 
+## v0.9.19 Review Navigation Contract
+
+v0.9.19 addresses a failure mode exposed by real-board testing: a review click could be blocked by a false physical-fingerprint mismatch before the editor ever reached the zoom command, and a successful `zoomToRegion()` boolean did not prove that the user actually received a local viewport.
+
+1. **Stable physical identity.** Physical fingerprint v3 excludes EasyEDA's measured primitive BBox from plan identity. BBox remains a safety/review geometry input, but no longer participates in staleness hashing because it is derived presentation geometry. Component anchors, pad geometry, rotation, layer, lock state, routing evidence scope, board outline and component keepouts remain authoritative.
+2. **Viewport postcondition.** Review navigation now reads the actual editor viewport after a requested focus and verifies that the requested target center is visible and that the viewport did not silently fall back to a whole-board view.
+3. **Primitive/marker focus seed.** CURRENT/component navigation first uses EasyEDA's selected-primitive focus; TARGET navigation uses the indicator-marker zoom path. The bounded review region is then applied and verified. These are two independent native focus mechanisms rather than repeated magic zoom percentages.
+4. **Fail visibly.** If EasyEDA reports a zoom success but the viewport readback is still not local, LayoutPilot reports the navigation contract failure instead of treating the operation as successful.
+
 ## v0.9.18 Planning Correctness & Owner-Cluster Planning
 
 v0.9.18 moves the product focus from richer preview presentation to placement correctness.
