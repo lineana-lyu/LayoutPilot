@@ -1,7 +1,3 @@
-import {
-	buildReviewCameraCommand,
-	verifyReviewViewport,
-} from '../domain/reviewCameraPolicy';
 import type {
 	LayoutReviewComponent,
 	LayoutReviewPad,
@@ -120,26 +116,33 @@ async function focusReviewCamera(
 	documentTabId: string,
 	focus: ReviewNavigationFocus,
 ): Promise<void> {
-	const command = buildReviewCameraCommand(focus.region);
-	const viewport = await eda.dmt_EditorControl.zoomTo(
-		command.centerX,
-		command.centerY,
-		command.scaleRatio,
-		documentTabId,
-	);
-	if (!viewport) {
-		throw new Error('EasyEDA 拒绝执行 PCB 局部定位与放大。');
+	const { left, right, top, bottom } = focus.region;
+	if (
+		!Number.isFinite(left)
+		|| !Number.isFinite(right)
+		|| !Number.isFinite(top)
+		|| !Number.isFinite(bottom)
+		|| right <= left
+		|| bottom <= top
+	) {
+		throw new Error('布局审查区域无效，无法定位 PCB。');
 	}
 
-	const verification = verifyReviewViewport(command, viewport);
-	if (!verification.ok) {
-		throw new Error([
-			'EasyEDA 返回的 PCB 视口不满足定位契约。',
-			...verification.reasons,
-			'focus ' + verification.focusSpanMil.toFixed(1) + ' mil',
-			'viewport ' + verification.viewportSpanMil.toFixed(1) + ' mil',
-			'ratio ' + verification.viewportToFocusRatio.toFixed(2),
-		].join('；'));
+	// Review navigation is a region-framing task, not a percentage-zoom task.
+	// EasyEDA's zoomTo scaleRatio is an absolute percentage (500 = 500%).
+	// Real-board testing showed that forcing a percentage after resolving a
+	// valid region can massively over-zoom small passives. Use exactly one
+	// region-fit command so the requested PCB neighborhood is the camera source
+	// of truth and the host can adapt it to the actual editor viewport.
+	const fitted = await eda.dmt_EditorControl.zoomToRegion(
+		left,
+		right,
+		top,
+		bottom,
+		documentTabId,
+	);
+	if (!fitted) {
+		throw new Error('EasyEDA 拒绝按布局审查区域定位 PCB。');
 	}
 }
 
@@ -203,7 +206,7 @@ export async function navigateReviewToPcb(
 			}
 		}
 
-		// One explicit camera command is the final source of truth. Selection and
+		// One region-fit command is the final camera writer. Selection and
 		// markers are presentation only and never drive the camera.
 		await focusReviewCamera(documentTabId, focus);
 		return { documentTabId };
