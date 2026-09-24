@@ -33,7 +33,7 @@ import {
 	showLayoutPlanGhost,
 	type LayoutPreviewFocusOptions,
 } from './eda/layoutPreviewAdapter';
-import { navigateReviewToPcb } from './eda/reviewNavigationAdapter';
+import { activateReviewPcbDocument, navigateReviewToPcb } from './eda/reviewNavigationAdapter';
 import { beginPcbEvidenceReview, collectPadEvidenceComponents, endPcbEvidenceReview } from './eda/pcbPhysicalAdapter';
 import {
 	getLayoutPilotWorkbenchSizeMode,
@@ -554,19 +554,23 @@ function renderInlineLayoutReview(): void {
 
 		setBusy(true);
 		try {
+			const activeScene = inlineLayoutReview.scenes[
+				inlineLayoutReview.activeItemIndex
+			] ?? inlineLayoutReview.scenes[0];
+			if (!activeScene) {
+				throw new Error('当前布局方案没有可导航的预览项。');
+			}
+
+			// Validation reads the active PCB. Activate the scene's frozen source
+			// tab first so a previous preview cleanup or a manually focused PCB tab
+			// cannot make validation/navigation operate on a different board.
+			await activateReviewPcbDocument(activeScene.documentTabId);
 			const validation = await validateLayoutPlanCurrent(
 				inlineLayoutReview.plan,
 			);
 			if (!validation.ok) {
 				showToast(validation.message);
 				return;
-			}
-
-			const activeScene = inlineLayoutReview.scenes[
-				inlineLayoutReview.activeItemIndex
-			] ?? inlineLayoutReview.scenes[0];
-			if (!activeScene) {
-				throw new Error('当前布局方案没有可导航的预览项。');
 			}
 
 			const focus = resolveReviewNavigationFocus(
