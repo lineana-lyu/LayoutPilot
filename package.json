@@ -1,6 +1,6 @@
 {
   "name": "layoutpilot",
-  "version": "0.9.28",
+  "version": "0.9.29",
   "description": "AI-assisted PCB layout planning for JLCEDA / EasyEDA Pro",
   "author": "lineana-lyu",
   "license": "Apache-2.0",
@@ -10,6 +10,7 @@
   },
   "scripts": {
     "compile": "rimraf ./dist/ && ts-node ./config/esbuild.prod.ts",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint",
     "fix": "eslint --fix",
     "build": "npm run compile && ts-node ./build/packaged.ts",
