@@ -49,6 +49,22 @@ async function main(): Promise<void> {
 		throw new Error('Packaged extension is missing iframe/layout-preview.html');
 	}
 
+	const forbiddenInspectionPopups = [
+		'dist/evidenceReview.js',
+		'dist/workbenchDock.js',
+		'iframe/evidence-review.html',
+		'iframe/workbench-dock.html',
+	];
+	const leakedInspectionPopups = forbiddenInspectionPopups.filter(file =>
+		files.includes(file),
+	);
+	if (leakedInspectionPopups.length) {
+		throw new Error(
+			'Popup-free inspection contract violated by packaged files: '
+				+ leakedInspectionPopups.join(', '),
+		);
+	}
+
 	console.log('[LayoutPilot] package boundary verified', files);
 }
 
