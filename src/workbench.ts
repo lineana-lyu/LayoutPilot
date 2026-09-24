@@ -36,10 +36,8 @@ import {
 import { activateReviewPcbDocument, navigateReviewToPcb } from './eda/reviewNavigationAdapter';
 import { beginPcbEvidenceReview, collectPadEvidenceComponents, endPcbEvidenceReview } from './eda/pcbPhysicalAdapter';
 import {
-	getLayoutPilotWorkbenchSizeMode,
+	collapseLayoutPilotWorkbench,
 	hideLayoutPilotWorkbench,
-	resizeLayoutPilotWorkbench,
-	type LayoutPilotWorkbenchSizeMode,
 } from './ui/workbenchWindow';
 import { openEvidenceReviewBar, retireEvidenceReviewBar } from './ui/evidenceReviewWindow';
 import {
@@ -124,9 +122,7 @@ const applyBtn = el<HTMLButtonElement>('applyBtn');
 const undoBtn = el<HTMLButtonElement>('undoBtn');
 const refreshBtn = el<HTMLButtonElement>('refreshBtn');
 const gatewayBtn = el<HTMLButtonElement>('gatewayBtn');
-const sizeCompactBtn = el<HTMLButtonElement>('sizeCompactBtn');
-const sizeStandardBtn = el<HTMLButtonElement>('sizeStandardBtn');
-const sizeWideBtn = el<HTMLButtonElement>('sizeWideBtn');
+const collapseWorkbenchBtn = el<HTMLButtonElement>('collapseWorkbenchBtn');
 const footerNote = el<HTMLDivElement>('footerNote');
 
 let selectedComponentId: string | undefined;
@@ -169,22 +165,7 @@ function setBusy(value: boolean): void {
 	loading.classList.toggle('show', value);
 	analyzeBtn.disabled = value;
 	refreshBtn.disabled = value;
-	sizeCompactBtn.disabled = value;
-	sizeStandardBtn.disabled = value;
-	sizeWideBtn.disabled = value;
-}
-
-function syncWindowSizeButtons(): void {
-	const mode = getLayoutPilotWorkbenchSizeMode();
-	const entries: Array<[HTMLButtonElement, LayoutPilotWorkbenchSizeMode]> = [
-		[sizeCompactBtn, 'compact'],
-		[sizeStandardBtn, 'standard'],
-		[sizeWideBtn, 'wide'],
-	];
-	for (const [button, candidate] of entries) {
-		button.classList.toggle('active', mode === candidate);
-		button.setAttribute('aria-pressed', String(mode === candidate));
-	}
+	collapseWorkbenchBtn.disabled = value;
 }
 
 function showToast(message: string): void {
@@ -1443,30 +1424,17 @@ gatewayBtn.addEventListener('click', () => {
 	configureAiGateway();
 });
 
-async function changeWorkbenchSize(
-	mode: LayoutPilotWorkbenchSizeMode,
-): Promise<void> {
-	if (busy || getLayoutPilotWorkbenchSizeMode() === mode) return;
+collapseWorkbenchBtn.addEventListener('click', async () => {
+	if (busy) return;
 	setBusy(true);
 	try {
-		await resizeLayoutPilotWorkbench(mode);
+		await collapseLayoutPilotWorkbench();
 	}
 	catch (error) {
-		console.error('[LayoutPilot Workbench] resize failed', error);
-		showToast(`窗口切换失败：${String(error)}`);
-		syncWindowSizeButtons();
+		console.error('[LayoutPilot Workbench] collapse failed', error);
+		showToast(`收起工作台失败：${String(error)}`);
 		setBusy(false);
 	}
-}
-
-sizeCompactBtn.addEventListener('click', () => {
-	void changeWorkbenchSize('compact');
-});
-sizeStandardBtn.addEventListener('click', () => {
-	void changeWorkbenchSize('standard');
-});
-sizeWideBtn.addEventListener('click', () => {
-	void changeWorkbenchSize('wide');
 });
 
 async function presentLayoutPlanPreview(
@@ -1546,7 +1514,6 @@ window.setInterval(() => {
 	}
 }, 1500);
 
-syncWindowSizeButtons();
 void refresh();
 
 
