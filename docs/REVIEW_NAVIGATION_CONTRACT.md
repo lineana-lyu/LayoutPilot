@@ -25,13 +25,11 @@ tabs and multiple extension iframes.
      directly.
    - Cleanup must never activate another PCB as a side effect.
 
-4. **Canvas inspection has no navigation popup**
-   - Direct CURRENT / TARGET / component and Owner evidence checks hide the
-     workbench and use the PCB canvas as the only review surface.
-   - Return is handled by the registered Alt+Shift+L shortcut or the permanent
-     extension-menu return command.
-   - A transient EasyEDA toast may show the target and evidence summary; it must
-     not become a persistent return surface.
+4. **Canvas inspection keeps one narrow sidecar**
+   - Direct CURRENT / TARGET / component and Owner evidence checks keep the
+     narrow workbench visible at the right edge.
+   - No hide/show roundtrip is required for routine navigation.
+   - Decision controls remain available while the PCB camera moves.
 
 5. **Selection and indicators are presentation only**
    - Primitive selection and CURRENT/TARGET markers help the user see what is
@@ -75,7 +73,8 @@ visibly rendered.
 
 - A review click cannot change which PCB it refers to after the scene is built.
 - Cleanup cannot change editor focus.
-- Direct navigation does not require an auxiliary iframe to stay alive.
+- Direct navigation does not require an auxiliary return iframe or host-window
+  hide/show transition.
 - Camera state has one writer in the navigation transaction.
 - Navigation never depends on an implicit selection/marker bounding box.
 - Navigation uses one explicit `zoomTo()` command whose scale is bounded to the
@@ -98,6 +97,7 @@ path:
   shows it can return success without moving the visible PCB;
 - opening a return-bar / navigation iframe solely to keep a way back to the
   workbench;
+- hiding the workbench as a prerequisite for camera navigation;
 - chaining multiple camera APIs for one review click;
 - trusting beta `zoomTo()` return geometry as proof that the visible editor
   viewport is semantically correct;
