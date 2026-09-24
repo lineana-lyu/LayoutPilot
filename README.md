@@ -132,6 +132,20 @@ Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
 
+## v0.9.22 Navigation Reset
+
+Real-board testing showed that the navigation regressions were introduced by changes after the last known working implementation, not by missing editor-context checks.
+
+The working v0.9.16 path used:
+- live `getCurrentDocumentInfo()` after the workbench was hidden;
+- direct `activateDocument(tabId)`;
+- `zoomToRegion(...)`;
+- `zoomTo(centerX, centerY, explicitScaleRatio, tabId)` with no omitted zoom arguments.
+
+v0.9.19-v0.9.21 added viewport readback, implicit selection zoom, undefined optional zoom arguments, frozen-tab enforcement and split-screen metadata validation. These layers have now been removed from the navigation path.
+
+v0.9.22 restores the proven live-document flow and keeps only a small geometry-derived zoom policy. Selection and markers remain visual aids; they do not control the camera. The planning-correctness and physical-fingerprint fixes from later versions are retained.
+
 ## v0.9.21 Editor Context Transaction
 
 Real-board testing of v0.9.20 showed that explicit camera coordinates alone were not sufficient: EasyEDA could still throw an internal `minX undefined` error before rendering the requested local view. The remaining hidden dependency was the host editor context itself.
