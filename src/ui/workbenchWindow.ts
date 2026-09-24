@@ -61,8 +61,12 @@ async function closeFrame(id: string | undefined): Promise<void> {
 }
 
 async function closeWorkbenchDock(): Promise<void> {
-	await closeFrame(WORKBENCH_DOCK_ID);
-}
+	try {
+		await eda.sys_IFrame.closeIFrame(WORKBENCH_DOCK_ID);
+	}
+	catch {
+		// The dock normally does not exist while the workbench is expanded.
+	}
 
 async function openFreshWorkbenchFrame(): Promise<string> {
 	const id = createWorkbenchInstanceId();
