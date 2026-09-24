@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.27 Popup-Free Canvas Inspection
+## Current stage — v0.9.28 Narrow Sidecar Workbench
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -131,6 +131,43 @@ v0.9.6 separates **accepting a recommendation** from **authorizing PCB mutation*
 Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with EasyEDA's explicit `zoomToRegion` API around current position, proposed position and available Owner bounds instead of preserving the user's previous zoom level. Evidence review uses the same explicit-region pattern rather than relying on `zoomToSelectedPrimitives`, whose internal selection BBox calculation can fail on real projects when a selected primitive has incomplete bounds.
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
+
+## v0.9.28 Narrow Sidecar Workbench
+
+Real-board testing of v0.9.27 showed two host-runtime assumptions were still too
+optimistic:
+
+- `hideIFrame()` could report success while the visible LayoutPilot workbench
+  remained on screen;
+- the BETA runtime shortcut registered for return-to-workbench did not fire
+  reliably.
+
+v0.9.28 removes both dependencies from routine PCB review.
+
+The workbench is now an intentionally narrow right-side **sidecar** rather than a
+large floating workspace that must be hidden and restored:
+
+- width is derived from the EasyEDA viewport at about 30%, clamped to roughly
+  500–620 px;
+- most of the PCB remains visible while LayoutPilot stays open;
+- the internal layout switches to a vertical master/detail composition at sidecar
+  widths;
+- CURRENT / TARGET / component and Owner evidence navigation move the PCB camera
+  while the sidecar stays visible;
+- Owner confirmation can happen immediately after visual inspection without a
+  window roundtrip;
+- confirming an Owner retires the active evidence markers/session;
+- the old hide button and hide/show inspection dependency are removed;
+- runtime shortcut registration is removed;
+- a one-click top-level **LayoutPilot 工作台** menu command recreates/recover the
+  workbench when needed.
+
+EasyEDA users who want a keyboard shortcut can bind one to that menu command
+through EasyEDA's own native shortcut/menu-shortcut settings instead of relying
+on LayoutPilot's BETA runtime registration.
+
+No semantic inference, Owner policy, planner, placement execution, rollback,
+Gateway, or camera-calibration logic changes in this revision.
 
 ## v0.9.27 Popup-Free Canvas Inspection
 
