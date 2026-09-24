@@ -3,7 +3,7 @@
   "uuid": "1a2b3c4d5e6f77889900aabbccddeeff",
   "displayName": "LayoutPilot",
   "description": "面向 PCB 布局阶段的 AI 协作插件：理解电路结构、提取布局约束并辅助生成可确认的布局方案。",
-  "version": "0.9.27",
+  "version": "0.9.28",
   "publisher": "lineana-lyu",
   "engines": {
     "eda": "^3.2.0"
@@ -28,19 +28,14 @@
   "headerMenus": {
     "pcb": [
       {
+        "id": "layoutpilot-workbench",
+        "title": "LayoutPilot 工作台",
+        "registerFn": "openWorkbench"
+      },
+      {
         "id": "layoutpilot",
-        "title": "LayoutPilot 智能布局助手",
+        "title": "LayoutPilot 设置",
         "menuItems": [
-          {
-            "id": "return-workbench",
-            "title": "返回 LayoutPilot 工作台（退出核对）",
-            "registerFn": "returnWorkbench"
-          },
-          {
-            "id": "open-workbench",
-            "title": "重新打开 LayoutPilot 工作台",
-            "registerFn": "openWorkbench"
-          },
           {
             "id": "configure-ai-gateway",
             "title": "配置 AI Gateway",
