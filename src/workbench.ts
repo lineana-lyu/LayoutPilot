@@ -122,7 +122,7 @@ const applyBtn = el<HTMLButtonElement>('applyBtn');
 const undoBtn = el<HTMLButtonElement>('undoBtn');
 const refreshBtn = el<HTMLButtonElement>('refreshBtn');
 const gatewayBtn = el<HTMLButtonElement>('gatewayBtn');
-const collapseWorkbenchBtn = el<HTMLButtonElement>('collapseWorkbenchBtn');
+const hideWorkbenchBtn = el<HTMLButtonElement>('hideWorkbenchBtn');
 const footerNote = el<HTMLDivElement>('footerNote');
 
 let selectedComponentId: string | undefined;
@@ -165,7 +165,7 @@ function setBusy(value: boolean): void {
 	loading.classList.toggle('show', value);
 	analyzeBtn.disabled = value;
 	refreshBtn.disabled = value;
-	collapseWorkbenchBtn.disabled = value;
+	hideWorkbenchBtn.disabled = value;
 }
 
 function showToast(message: string): void {
@@ -1427,7 +1427,7 @@ gatewayBtn.addEventListener('click', () => {
 	configureAiGateway();
 });
 
-collapseWorkbenchBtn.addEventListener('click', async () => {
+hideWorkbenchBtn.addEventListener('click', async () => {
 	if (busy) return;
 	setBusy(true);
 	try {
