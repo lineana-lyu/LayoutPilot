@@ -25,11 +25,13 @@ tabs and multiple extension iframes.
      directly.
    - Cleanup must never activate another PCB as a side effect.
 
-4. **Preview iframe uses active-window ownership**
-   - Every preview/navigation iframe gets a unique id.
-   - Only the iframe whose id still matches the stored active id may clear
-     preview state or reopen the workbench.
-   - A stale close callback from a replaced iframe is therefore inert.
+4. **Canvas inspection has no navigation popup**
+   - Direct CURRENT / TARGET / component and Owner evidence checks hide the
+     workbench and use the PCB canvas as the only review surface.
+   - Return is handled by the registered Alt+Shift+L shortcut or the permanent
+     extension-menu return command.
+   - A transient EasyEDA toast may show the target and evidence summary; it must
+     not become a persistent return surface.
 
 5. **Selection and indicators are presentation only**
    - Primitive selection and CURRENT/TARGET markers help the user see what is
@@ -73,7 +75,7 @@ visibly rendered.
 
 - A review click cannot change which PCB it refers to after the scene is built.
 - Cleanup cannot change editor focus.
-- A replaced iframe cannot clean up the current iframe's state.
+- Direct navigation does not require an auxiliary iframe to stay alive.
 - Camera state has one writer in the navigation transaction.
 - Navigation never depends on an implicit selection/marker bounding box.
 - Navigation uses one explicit `zoomTo()` command whose scale is bounded to the
@@ -94,6 +96,8 @@ path:
 - treating split-screen metadata as the authority for PCB identity;
 - using `zoomToRegion()` as the final camera writer when real-board validation
   shows it can return success without moving the visible PCB;
+- opening a return-bar / navigation iframe solely to keep a way back to the
+  workbench;
 - chaining multiple camera APIs for one review click;
 - trusting beta `zoomTo()` return geometry as proof that the visible editor
   viewport is semantically correct;
