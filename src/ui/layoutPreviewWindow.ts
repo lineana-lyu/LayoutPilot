@@ -41,6 +41,10 @@ function getStoredPreviewWindowId(): string | undefined {
 	return typeof value === 'string' && value.length ? value : undefined;
 }
 
+function ownsActivePreviewWindow(id: string): boolean {
+	return getStoredPreviewWindowId() === id;
+}
+
 export function getLayoutPreviewBarContext(): LayoutPreviewBarContext {
 	const value = eda.sys_Storage.getExtensionUserConfig(
 		ACTIVE_PREVIEW_CONTEXT_KEY,
@@ -124,9 +128,9 @@ export async function openLayoutPreviewBar(
 	const viewport = eda.sys_Window.getViewportSize();
 	const navigation = context.mode === 'navigation';
 	const width = navigation
-		? Math.max(280, Math.min(360, viewport.width - 40))
+		? Math.max(260, Math.min(320, viewport.width - 40))
 		: Math.max(540, Math.min(720, viewport.width - 80));
-	const height = navigation ? 54 : 116;
+	const height = navigation ? 44 : 116;
 	const x = navigation
 		? Math.max(16, viewport.width - width - 18)
 		: Math.max(16, Math.round((viewport.width - width) / 2));
@@ -152,6 +156,13 @@ export async function openLayoutPreviewBar(
 			x,
 			y,
 			onBeforeCloseCallFn: async () => {
+				// A replaced iframe may finish closing after its successor is already
+				// active. Only the current window owns cleanup and return-to-workbench.
+				// This lease check prevents a stale close callback from erasing the new
+				// window id/context or reopening the workbench during camera navigation.
+				if (!ownsActivePreviewWindow(id)) {
+					return true;
+				}
 				try {
 					await clearActiveLayoutPreviewCanvas();
 				}
