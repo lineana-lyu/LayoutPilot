@@ -170,5 +170,6 @@ budget. The sidecar targets roughly 26% of the host width, keeps a readable
 Direct inspection does not hide the sidecar, register a runtime shortcut, create
 a return iframe, or rely on an unsupported PCB canvas right-click menu.
 
-The artifact build now includes a TypeScript `--noEmit` gate so stale window
-symbols cannot survive bundling unnoticed.
+The artifact build now includes a focused `verify:interaction` gate that rejects
+reintroduction of the failed hide/show, runtime-shortcut, helper-popup and fixed
+size-preset patterns before bundling.
