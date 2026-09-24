@@ -151,9 +151,9 @@ The LayoutPlan decision surface also no longer contains a stale workbench-hide
 call. The narrow sidecar and the decision bar coexist instead of depending on
 EasyEDA's unreliable `hideIFrame()` behavior.
 
-CI now runs `tsc --noEmit` before bundling. This closes a reviewability gap in
-which esbuild could successfully emit a bundle containing an unresolved runtime
-symbol.
+Artifact creation now runs a focused `verify:interaction` architecture gate before
+bundling. It rejects the failed hide/show, runtime-shortcut, mini-dock, evidence
+popup and fixed-size-preset patterns if they reappear in the production path.
 
 No semantic inference, Owner policy, planner, placement execution, rollback,
 Gateway, or calibrated camera logic changes in this revision.
