@@ -17,10 +17,6 @@ async function main(): Promise<void> {
 	{
 		const calls: string[] = [];
 		const port: EditorCameraPort = {
-			activateDocument: async tabId => {
-				calls.push(`activate:${tabId}`);
-				return true;
-			},
 			fitRegion: async (tabId, region) => {
 				calls.push(`fit:${tabId}:${region.left},${region.right},${region.top},${region.bottom}`);
 				return true;
@@ -44,7 +40,6 @@ async function main(): Promise<void> {
 
 		assert.deepEqual(result.center, { x: 400, y: 450 });
 		assert.deepEqual(calls, [
-			'activate:pcb-tab',
 			'fit:pcb-tab:100,700,200,700',
 			'center:pcb-tab:400,450',
 		]);
@@ -52,7 +47,6 @@ async function main(): Promise<void> {
 
 	{
 		const port: EditorCameraPort = {
-			activateDocument: async () => true,
 			fitRegion: async () => true,
 			centerAt: async () => ({
 				left: -2000,
@@ -76,7 +70,6 @@ async function main(): Promise<void> {
 	{
 		let centerCalled = false;
 		const port: EditorCameraPort = {
-			activateDocument: async () => true,
 			fitRegion: async () => false,
 			centerAt: async () => {
 				centerCalled = true;

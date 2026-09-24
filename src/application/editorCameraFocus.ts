@@ -2,7 +2,6 @@ import type { CanvasRegion } from '../domain/canvasRegion';
 import { verifyFocusedViewport } from '../domain/reviewViewportContract';
 
 export interface EditorCameraPort {
-	activateDocument(documentTabId: string): Promise<boolean>;
 	fitRegion(documentTabId: string, region: CanvasRegion): Promise<boolean>;
 	centerAt(
 		documentTabId: string,
@@ -28,27 +27,34 @@ export async function focusExplicitRegion(input: {
 	documentTabId: string;
 	region: CanvasRegion;
 }): Promise<ExplicitCameraFocusResult> {
-	const activated = await input.port.activateDocument(input.documentTabId);
-	if (!activated) {
-		throw new Error('原始 PCB 文档已关闭或无法重新激活。');
+	let fitted: boolean;
+	try {
+		fitted = await input.port.fitRegion(
+			input.documentTabId,
+			input.region,
+		);
 	}
-
-	const fitted = await input.port.fitRegion(
-		input.documentTabId,
-		input.region,
-	);
+	catch (error) {
+		throw new Error(`Camera.fitRegion failed: ${String(error)}`);
+	}
 	if (!fitted) {
-		throw new Error('EasyEDA 拒绝按显式区域执行 PCB 聚焦。');
+		throw new Error('Camera.fitRegion failed: EasyEDA 拒绝按显式区域执行 PCB 聚焦。');
 	}
 
 	const center = regionCenter(input.region);
-	const viewport = await input.port.centerAt(
-		input.documentTabId,
-		center.x,
-		center.y,
-	);
+	let viewport: CanvasRegion | false;
+	try {
+		viewport = await input.port.centerAt(
+			input.documentTabId,
+			center.x,
+			center.y,
+		);
+	}
+	catch (error) {
+		throw new Error(`Camera.centerAt failed: ${String(error)}`);
+	}
 	if (!viewport) {
-		throw new Error('EasyEDA 无法返回显式中心定位后的视口。');
+		throw new Error('Camera.centerAt failed: EasyEDA 无法返回显式中心定位后的视口。');
 	}
 
 	const verification = verifyFocusedViewport({

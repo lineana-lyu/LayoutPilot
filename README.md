@@ -132,6 +132,21 @@ Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
 
+## v0.9.21 Editor Context Transaction
+
+Real-board testing of v0.9.20 showed that explicit camera coordinates alone were not sufficient: EasyEDA could still throw an internal `minX undefined` error before rendering the requested local view. The remaining hidden dependency was the host editor context itself.
+
+v0.9.21 introduces a separate editor-context transaction before any camera operation:
+
+1. resolve the split screen that owns the frozen PCB tab;
+2. verify that the tab still belongs to that split screen and is still a PCB document;
+3. activate that split screen so it owns editor input focus;
+4. activate the frozen PCB tab;
+5. read the current document back and require exact tab/type equality;
+6. only then hand the already-known CanvasRegion to the camera policy.
+
+Camera, editor context, selection, and marker presentation are now four separate responsibilities. A stale or incomplete host context fails before any zoom API is called.
+
 ## v0.9.20 Explicit Camera Navigation
 
 Real-board v0.9.19 testing exposed an EasyEDA host failure: implicit focus APIs could throw `Cannot destructure property 'minX' ... as it is undefined` while deriving their own internal BBox.
