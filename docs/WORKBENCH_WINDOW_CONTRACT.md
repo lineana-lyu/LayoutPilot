@@ -25,19 +25,22 @@ Two host behaviors are now treated as unreliable for the primary workflow:
 - runtime shortcut registration through `SYS_ShortcutKey` is BETA and the
   tested Alt+Shift+L return shortcut did not fire reliably.
 
-Neither API is used as a required navigation dependency in v0.9.28.
+Neither API is used as a required navigation dependency from v0.9.28 onward.
 
 ## Sidecar workbench
 
-The workbench is intentionally designed as a narrow right-side **sidecar**:
+The workbench is intentionally designed as a narrow right-side **sidecar** with an explicit PCB-visibility budget:
 
-- desktop target width: about 30% of the EasyEDA viewport;
-- hard width range: roughly 500–620 px where the viewport permits;
+- target width: about 26% of the EasyEDA viewport;
+- readable width band: roughly 430–520 px where the viewport permits;
+- ordinary desktop/laptop hosts cap the sidecar near 34% of viewport width;
 - right aligned at creation time;
 - tall enough for continuous decision work;
 - no compact/standard/wide recreation presets;
 - no native minimize requirement;
 - no plugin-managed mini dock or return bar.
+
+The width policy is derived from viewport ratios plus a minimum readable inspector width. It is not tuned to one board or screenshot resolution.
 
 The workbench's internal layout collapses to a vertical master/detail view at
 sidecar widths: the task queue occupies a bounded top section and the active
@@ -76,6 +79,10 @@ register a runtime shortcut itself.
 
 The LayoutPlan accept/reject iframe is retained only for the actual plan decision
 flow. It is separate from direct PCB navigation.
+
+## Build-time audit gate
+
+The production bundle step is preceded by `tsc --noEmit` in CI. This is required because esbuild transpilation alone can bundle an unresolved runtime symbol without reporting a TypeScript name error. Window-lifecycle code must therefore pass both type checking and runtime/package regression tests before an `.eext` artifact is accepted.
 
 ## Prohibited patterns
 
