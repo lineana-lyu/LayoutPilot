@@ -137,12 +137,12 @@ async function openWorkbenchDock(): Promise<void> {
  * the host no longer recognizes that iframe, a fresh frame is created.
  */
 export async function openLayoutPilotWorkbench(): Promise<void> {
-	await closeWorkbenchDock();
 	const activeId = getStoredActiveWorkbenchId();
 	if (activeId) {
 		try {
 			const shown = await eda.sys_IFrame.showIFrame(activeId);
 			if (shown) {
+				await closeWorkbenchDock();
 				return;
 			}
 		}
@@ -156,6 +156,7 @@ export async function openLayoutPilotWorkbench(): Promise<void> {
 
 	const freshId = await openFreshWorkbenchFrame();
 	await rememberActiveWorkbenchId(freshId);
+	await closeWorkbenchDock();
 	if (activeId && activeId !== freshId) {
 		await closeFrame(activeId);
 	}
@@ -171,7 +172,6 @@ export async function openLayoutPilotWorkbench(): Promise<void> {
  * transactionally from persisted workflow state.
  */
 export async function reopenLayoutPilotWorkbench(): Promise<void> {
-	await closeWorkbenchDock();
 	const previousId = getStoredActiveWorkbenchId();
 	const freshId = await openFreshWorkbenchFrame();
 
@@ -183,6 +183,8 @@ export async function reopenLayoutPilotWorkbench(): Promise<void> {
 		throw error;
 	}
 
+	// The replacement is proven alive before retiring any existing recovery UI.
+	await closeWorkbenchDock();
 	if (previousId && previousId !== freshId) {
 		await closeFrame(previousId);
 	}
