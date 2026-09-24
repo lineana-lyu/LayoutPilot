@@ -9,6 +9,8 @@ import type { OwnershipRelationType } from './domain/ownershipRelation';
 import type { SemanticConfidence, SemanticRole } from './domain/semanticInference';
 import { buildClosestSharedRailPadEvidence, type SharedRailPadEvidence } from './domain/physicalEvidence';
 import { createEvidenceReviewSession } from './domain/evidenceReviewSession';
+import { retireEvidenceInspection } from './application/evidenceInspection';
+import { showCanvasInspectionHint } from './application/canvasInspection';
 import { createLayoutPreviewSession } from './domain/layoutPreviewSession';
 import {
 	layoutPlanAcceptanceMode,
@@ -34,16 +36,13 @@ import {
 	type LayoutPreviewFocusOptions,
 } from './eda/layoutPreviewAdapter';
 import { activateReviewPcbDocument, navigateReviewToPcb } from './eda/reviewNavigationAdapter';
-import { beginPcbEvidenceReview, collectPadEvidenceComponents, endPcbEvidenceReview, focusPcbEvidence } from './eda/pcbPhysicalAdapter';
+import { beginPcbEvidenceReview, collectPadEvidenceComponents, focusPcbEvidence } from './eda/pcbPhysicalAdapter';
 import {
-	collapseLayoutPilotWorkbench,
 	hideLayoutPilotWorkbench,
 	openLayoutPilotWorkbench,
 } from './ui/workbenchWindow';
-import { openEvidenceReviewBar, retireEvidenceReviewBar } from './ui/evidenceReviewWindow';
 import {
 	clearActiveLayoutPreviewCanvas,
-	closeLayoutPreviewBarAndReturn,
 	openLayoutPreviewBar,
 } from './ui/layoutPreviewWindow';
 import { renderFocusedLocalDetailCompare } from './ui/focusedPlacementDetail';
@@ -573,18 +572,11 @@ function renderInlineLayoutReview(): void {
 						? `器件 · ${focus.component.designator}`
 						: 'PCB 定位核对';
 
-			let navigationBarOpened = false;
 			try {
-				await openLayoutPreviewBar({
-					mode: 'navigation',
-					label: navigationLabel,
-				});
-				navigationBarOpened = true;
 				await hideLayoutPilotWorkbench();
 
-				// Run the final canvas zoom only after the compact return bar has
-				// changed the editor viewport, otherwise EasyEDA can fit the
-				// old viewport and leave the target visually too small.
+				// Popup-free inspection mode: the PCB canvas is the only review
+				// surface. Return is handled by the registered shortcut or menu.
 				const canvas = await navigateReviewToPcb(
 					activeScene,
 					focus,
@@ -595,18 +587,18 @@ function renderInlineLayoutReview(): void {
 						documentTabId: canvas.documentTabId,
 					}),
 				);
+				showCanvasInspectionHint(navigationLabel);
 			}
 			catch (error) {
-				if (navigationBarOpened) {
-					try {
-						await closeLayoutPreviewBarAndReturn();
-					}
-					catch (cleanupError) {
-						console.warn(
-							'[LayoutPilot Workbench] navigation bar cleanup failed',
-							cleanupError,
-						);
-					}
+				try {
+					await clearActiveLayoutPreviewCanvas();
+					await openLayoutPilotWorkbench();
+				}
+				catch (cleanupError) {
+					console.warn(
+						'[LayoutPilot Workbench] navigation cleanup failed',
+						cleanupError,
+					);
 				}
 				throw error;
 			}
@@ -1144,7 +1136,7 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 				| { documentTabId: string; originalSelectionIds: string[] }
 				| undefined;
 			try {
-				await retireEvidenceReviewBar();
+				await retireEvidenceInspection();
 				const evidenceFocus = {
 					subjectId: task.componentId,
 					subjectDesignator: task.designator,
@@ -1169,38 +1161,31 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 					}),
 				);
 
-				await openEvidenceReviewBar();
 				await hideLayoutPilotWorkbench();
 
-				// Match layout-preview navigation: perform the final camera move
-				// only after the workbench no longer occupies the PCB viewport.
+				// Evidence inspection reuses the calibrated camera path after the
+				// workbench is hidden. Confirmation remains in the workbench so
+				// the PCB canvas stays unobstructed during visual checking.
 				await focusPcbEvidence(
 					evidenceFocus,
 					reviewContext.documentTabId,
 				);
+				const evidenceSummary = candidate.powerPadEvidence
+					? `${task.designator} ↔ ${candidate.designator} · ${candidate.powerPadEvidence.netName} · ${candidate.powerPadEvidence.distanceMil.toFixed(1)} mil`
+					: `${task.designator} ↔ ${candidate.designator} · Owner 证据核对`;
+				showCanvasInspectionHint(evidenceSummary);
 			}
 			catch (error) {
 				try {
-					await retireEvidenceReviewBar();
+					await retireEvidenceInspection();
+					await openLayoutPilotWorkbench();
 				}
 				catch (cleanupError) {
 					console.warn(
-						'[LayoutPilot Workbench] unable to retire failed evidence review',
+						'[LayoutPilot Workbench] evidence inspection cleanup failed',
 						cleanupError,
 					);
-					if (reviewContext) {
-						await endPcbEvidenceReview(reviewContext);
-					}
 					await setStoredEvidenceReviewSession(undefined);
-				}
-				try {
-					await openLayoutPilotWorkbench();
-				}
-				catch (restoreError) {
-					console.warn(
-						'[LayoutPilot Workbench] unable to restore workbench after evidence failure',
-						restoreError,
-					);
 				}
 				console.error('[LayoutPilot Workbench] PCB evidence review failed', error);
 				showToast(`PCB 定位失败：${String(error)}`);
@@ -1446,12 +1431,13 @@ collapseWorkbenchBtn.addEventListener('click', async () => {
 	if (busy) return;
 	setBusy(true);
 	try {
-		await collapseLayoutPilotWorkbench();
+		showCanvasInspectionHint('LayoutPilot 工作台已隐藏');
+		await hideLayoutPilotWorkbench();
 		setBusy(false);
 	}
 	catch (error) {
-		console.error('[LayoutPilot Workbench] collapse failed', error);
-		showToast(`收起工作台失败：${String(error)}`);
+		console.error('[LayoutPilot Workbench] hide failed', error);
+		showToast(`隐藏工作台失败：${String(error)}`);
 		setBusy(false);
 	}
 });
