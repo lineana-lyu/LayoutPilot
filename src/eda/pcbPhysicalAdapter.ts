@@ -448,8 +448,6 @@ export async function beginPcbEvidenceReview(input: {
 	const documentTabId = document.tabId;
 	const originalSelectionIds = await getSelectedPrimitiveIdsCompat();
 
-	await focusPcbEvidence(input, documentTabId);
-
 	return {
 		documentTabId: documentTabId,
 		originalSelectionIds: [...originalSelectionIds],
