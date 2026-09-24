@@ -1447,6 +1447,7 @@ collapseWorkbenchBtn.addEventListener('click', async () => {
 	setBusy(true);
 	try {
 		await collapseLayoutPilotWorkbench();
+		setBusy(false);
 	}
 	catch (error) {
 		console.error('[LayoutPilot Workbench] collapse failed', error);
