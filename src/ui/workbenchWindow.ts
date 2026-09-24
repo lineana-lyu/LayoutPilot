@@ -67,6 +67,7 @@ async function closeWorkbenchDock(): Promise<void> {
 	catch {
 		// The dock normally does not exist while the workbench is expanded.
 	}
+}
 
 async function openFreshWorkbenchFrame(): Promise<string> {
 	const id = createWorkbenchInstanceId();
