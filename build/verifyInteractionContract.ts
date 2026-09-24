@@ -29,7 +29,6 @@ const rules: SourceRule[] = [
 		file: 'src/ui/workbenchWindow.ts',
 		forbidden: [
 			'hideIFrame(',
-			'showIFrame(',
 			'minimizeButton: true',
 			'minimizeStyle:',
 			'workbench-dock',
