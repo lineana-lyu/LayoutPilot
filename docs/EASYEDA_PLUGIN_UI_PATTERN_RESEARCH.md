@@ -113,3 +113,33 @@ Rejected for this workflow:
 - navigation-only preview iframe;
 - fake native docking through an iframe;
 - more fixed workbench size presets.
+
+
+## v0.9.28 real-board correction: sidecar, not hide/return
+
+v0.9.27 attempted popup-free inspection by hiding the main workbench and using a
+runtime-registered return shortcut. Real-board testing rejected both assumptions:
+
+- the tested EasyEDA runtime kept the workbench visibly on screen even after
+  `hideIFrame()` was called;
+- the BETA `SYS_ShortcutKey.registerShortcutKey()` return shortcut did not
+  trigger reliably.
+
+The official API surface explains why this should not be a required production
+path: iframe hide/show and shortcut registration are BETA, and there is still no
+public move/resize/dock API for extension-owned HTML.
+
+The revised transferable pattern is therefore:
+
+1. keep exactly one extension iframe;
+2. make it intentionally narrow (about 500–620 px) and right aligned;
+3. adapt the internal UI to sidecar width instead of recreating window sizes;
+4. let PCB navigation update the editor behind/beside the sidecar while decision
+   controls remain visible;
+5. expose one stable top-level `headerMenus` command to reopen/recover the
+   workbench;
+6. let users assign a native EasyEDA menu shortcut themselves if they want one,
+   rather than registering a BETA runtime shortcut.
+
+This keeps the interaction continuous and removes the entire hide → return
+lifecycle from routine PCB inspection.
