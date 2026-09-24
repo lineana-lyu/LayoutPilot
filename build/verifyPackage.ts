@@ -45,6 +45,9 @@ async function main(): Promise<void> {
 	if (!files.includes('dist/layoutPreview.js')) {
 		throw new Error('Packaged extension is missing dist/layoutPreview.js');
 	}
+	if (!files.includes('dist/workbenchDock.js')) {
+		throw new Error('Packaged extension is missing dist/workbenchDock.js');
+	}
 	if (!files.includes('iframe/workbench.html')) {
 		throw new Error('Packaged extension is missing iframe/workbench.html');
 	}
@@ -53,6 +56,9 @@ async function main(): Promise<void> {
 	}
 	if (!files.includes('iframe/layout-preview.html')) {
 		throw new Error('Packaged extension is missing iframe/layout-preview.html');
+	}
+	if (!files.includes('iframe/workbench-dock.html')) {
+		throw new Error('Packaged extension is missing iframe/workbench-dock.html');
 	}
 
 	console.log('[LayoutPilot] package boundary verified', files);
