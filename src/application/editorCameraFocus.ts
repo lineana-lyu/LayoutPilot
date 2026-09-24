@@ -2,7 +2,6 @@ import type { CanvasRegion } from '../domain/canvasRegion';
 import { verifyFocusedViewport } from '../domain/reviewViewportContract';
 
 export interface EditorCameraPort {
-	activateDocument(documentTabId: string): Promise<boolean>;
 	fitRegion(documentTabId: string, region: CanvasRegion): Promise<boolean>;
 	centerAt(
 		documentTabId: string,
@@ -28,11 +27,6 @@ export async function focusExplicitRegion(input: {
 	documentTabId: string;
 	region: CanvasRegion;
 }): Promise<ExplicitCameraFocusResult> {
-	const activated = await input.port.activateDocument(input.documentTabId);
-	if (!activated) {
-		throw new Error('原始 PCB 文档已关闭或无法重新激活。');
-	}
-
 	const fitted = await input.port.fitRegion(
 		input.documentTabId,
 		input.region,
