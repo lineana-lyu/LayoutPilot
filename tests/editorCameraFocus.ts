@@ -13,85 +13,92 @@ const requested: CanvasRegion = {
 	bottom: 700,
 };
 
-{
-	const calls: string[] = [];
-	const port: EditorCameraPort = {
-		activateDocument: async tabId => {
-			calls.push(`activate:${tabId}`);
-			return true;
-		},
-		fitRegion: async (tabId, region) => {
-			calls.push(`fit:${tabId}:${region.left},${region.right},${region.top},${region.bottom}`);
-			return true;
-		},
-		centerAt: async (tabId, x, y) => {
-			calls.push(`center:${tabId}:${x},${y}`);
-			return {
-				left: 50,
-				right: 750,
-				top: 150,
-				bottom: 750,
-			};
-		},
-	};
+async function main(): Promise<void> {
+	{
+		const calls: string[] = [];
+		const port: EditorCameraPort = {
+			activateDocument: async tabId => {
+				calls.push(`activate:${tabId}`);
+				return true;
+			},
+			fitRegion: async (tabId, region) => {
+				calls.push(`fit:${tabId}:${region.left},${region.right},${region.top},${region.bottom}`);
+				return true;
+			},
+			centerAt: async (tabId, x, y) => {
+				calls.push(`center:${tabId}:${x},${y}`);
+				return {
+					left: 50,
+					right: 750,
+					top: 150,
+					bottom: 750,
+				};
+			},
+		};
 
-	const result = await focusExplicitRegion({
-		port,
-		documentTabId: 'pcb-tab',
-		region: requested,
-	});
-
-	assert.deepEqual(result.center, { x: 400, y: 450 });
-	assert.deepEqual(calls, [
-		'activate:pcb-tab',
-		'fit:pcb-tab:100,700,200,700',
-		'center:pcb-tab:400,450',
-	]);
-}
-
-{
-	const port: EditorCameraPort = {
-		activateDocument: async () => true,
-		fitRegion: async () => true,
-		centerAt: async () => ({
-			left: -2000,
-			right: 2500,
-			top: -1800,
-			bottom: 2800,
-		}),
-	};
-
-	await assert.rejects(
-		() => focusExplicitRegion({
+		const result = await focusExplicitRegion({
 			port,
 			documentTabId: 'pcb-tab',
 			region: requested,
-		}),
-		/实际视口未满足聚焦契约/,
-		'a whole-board fallback must not be reported as a successful local focus',
-	);
+		});
+
+		assert.deepEqual(result.center, { x: 400, y: 450 });
+		assert.deepEqual(calls, [
+			'activate:pcb-tab',
+			'fit:pcb-tab:100,700,200,700',
+			'center:pcb-tab:400,450',
+		]);
+	}
+
+	{
+		const port: EditorCameraPort = {
+			activateDocument: async () => true,
+			fitRegion: async () => true,
+			centerAt: async () => ({
+				left: -2000,
+				right: 2500,
+				top: -1800,
+				bottom: 2800,
+			}),
+		};
+
+		await assert.rejects(
+			() => focusExplicitRegion({
+				port,
+				documentTabId: 'pcb-tab',
+				region: requested,
+			}),
+			/实际视口未满足聚焦契约/,
+			'a whole-board fallback must not be reported as a successful local focus',
+		);
+	}
+
+	{
+		let centerCalled = false;
+		const port: EditorCameraPort = {
+			activateDocument: async () => true,
+			fitRegion: async () => false,
+			centerAt: async () => {
+				centerCalled = true;
+				return requested;
+			},
+		};
+
+		await assert.rejects(
+			() => focusExplicitRegion({
+				port,
+				documentTabId: 'pcb-tab',
+				region: requested,
+			}),
+			/拒绝按显式区域/,
+		);
+		assert.equal(centerCalled, false);
+	}
+
+	console.log('Explicit editor camera focus tests passed.');
 }
 
-{
-	let centerCalled = false;
-	const port: EditorCameraPort = {
-		activateDocument: async () => true,
-		fitRegion: async () => false,
-		centerAt: async () => {
-			centerCalled = true;
-			return requested;
-		},
-	};
-
-	await assert.rejects(
-		() => focusExplicitRegion({
-			port,
-			documentTabId: 'pcb-tab',
-			region: requested,
-		}),
-		/拒绝按显式区域/,
-	);
-	assert.equal(centerCalled, false);
-}
-
-console.log('Explicit editor camera focus tests passed.');
+void main().catch(error => {
+	console.error(error);
+	process.exitCode = 1;
+});
