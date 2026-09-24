@@ -148,15 +148,3 @@ export async function closeLayoutPilotWorkbench(): Promise<void> {
 	await closeFrame(activeId);
 	await clearActiveWorkbenchId();
 }
-
-export async function hideLayoutPilotWorkbench(): Promise<void> {
-	const activeId = getStoredActiveWorkbenchId();
-	if (!activeId) {
-		throw new Error('当前没有可隐藏的 LayoutPilot 工作台实例。');
-	}
-
-	const hidden = await eda.sys_IFrame.hideIFrame(activeId);
-	if (hidden === false) {
-		throw new Error('嘉立创EDA未能隐藏当前 LayoutPilot 工作台。');
-	}
-}
