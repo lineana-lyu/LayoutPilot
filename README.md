@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.26 Recoverable Workbench & Unified Navigation
+## Current stage — v0.9.27 Popup-Free Canvas Inspection
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -132,6 +132,50 @@ Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
 
+## v0.9.27 Popup-Free Canvas Inspection
+
+Real-board testing showed that the remaining friction was not camera accuracy but the
+interaction model: keeping a dedicated return iframe or Owner-evidence iframe over
+the PCB traded one obstruction for another.
+
+Research against EasyEDA's current extension API and public plugins led to a
+stricter separation between **decision UI** and **canvas inspection**:
+
+- `SYS_IFrame.openIFrame()` is a dialog-window primitive with creation-time
+  geometry, not a native extension docking API;
+- `SYS_PanelControl` controls EasyEDA's built-in panels rather than providing a
+  plugin-owned dock surface;
+- public EasyEDA plugins commonly keep their main tool in an iframe and jump
+  directly to editor objects for inspection;
+- EasyEDA exposes extension shortcut registration and non-blocking toast
+  messages, which are a better fit for temporary full-canvas inspection than
+  another persistent helper window.
+
+v0.9.27 therefore removes the helper-window architecture instead of shrinking it:
+
+- **CURRENT / TARGET / component navigation:** hide workbench → navigate/zoom on
+  the PCB → show a short toast → return with `Alt+Shift+L` or the permanent
+  LayoutPilot menu command;
+- **Owner “定位核对”:** same popup-free canvas path, including the calibrated
+  `zoomTo(x, y, scale, tabId)` camera and evidence markers; Owner confirmation
+  remains in the main workbench;
+- **manual “隐藏工作台”:** hides the workbench with no mini dock or return strip;
+- **return path:** `Alt+Shift+L` or
+  **返回 LayoutPilot 工作台（退出核对）** cleans review state/markers and restores
+  the exact hidden workbench when possible;
+- **recovery path:** **重新打开 LayoutPilot 工作台** still recreates a fresh host
+  iframe when EasyEDA's host window state becomes stale;
+- the LayoutPlan accept/reject iframe is retained only for actual plan decisions,
+  not as a navigation return bar.
+
+Obsolete popup-only runtime code was deleted: the evidence-review iframe, evidence
+review controller, workbench dock iframe/controller, navigation-mode layout-preview
+code, dock geometry policy and their package/build entries.
+
+The window/inspection invariants are frozen in
+`docs/WORKBENCH_WINDOW_CONTRACT.md` and
+`docs/REVIEW_NAVIGATION_CONTRACT.md`.
+
 ## v0.9.26 Recoverable Workbench & Unified Navigation
 
 Real-board testing after v0.9.25 exposed three UX/runtime problems outside the now-working layout-preview camera:
@@ -145,9 +189,9 @@ v0.9.26 changes the window model instead of adding more presets:
 - native workbench minimize is disabled;
 - the default workbench is a responsive right-side window that intentionally leaves PCB area visible;
 - the old compact/standard/wide controls are removed;
-- a dedicated **收起工作台** action hides the workbench and opens a small branded LayoutPilot return strip;
+- v0.9.26 introduced a dedicated **收起工作台** helper strip; v0.9.27 subsequently removes that strip after real-board UX validation;
 - extension-menu **打开 LayoutPilot 工作台** is now a forced recovery path: it recreates a fresh host iframe from persisted workflow state instead of trusting a possibly stale `showIFrame()` result;
-- internal preview/evidence return still prefers the existing hidden iframe so transient in-memory review state can survive normal PCB inspection;
+- internal return prefers the existing hidden workbench so transient in-memory review state can survive normal PCB inspection;
 - Owner evidence navigation now reuses the same bounded-context + calibrated `zoomTo(x, y, scale, tabId)` model as layout-preview navigation.
 
 The lifecycle and host-API boundaries are documented in `docs/WORKBENCH_WINDOW_CONTRACT.md`.
