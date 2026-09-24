@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.23 Deterministic Review Navigation
+## Current stage — v0.9.24 Region-Fit Review Navigation
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -131,6 +131,21 @@ v0.9.6 separates **accepting a recommendation** from **authorizing PCB mutation*
 Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with EasyEDA's explicit `zoomToRegion` API around current position, proposed position and available Owner bounds instead of preserving the user's previous zoom level. Evidence review uses the same explicit-region pattern rather than relying on `zoomToSelectedPrimitives`, whose internal selection BBox calculation can fail on real projects when a selected primitive has incomplete bounds.
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
+
+## v0.9.24 Region-Fit Review Navigation
+
+Real-board testing of v0.9.23 separated two previously conflated facts: the lifecycle fix successfully navigated to the correct PCB location, but the final camera policy then over-zoomed that location. The toast also proved that the beta `zoomTo()` return geometry was not a reliable semantic postcondition: EasyEDA reported a ~3.5 mil viewport outside the requested center even though the editor had visibly navigated to the correct neighborhood.
+
+v0.9.24 therefore removes the percentage-zoom subsystem instead of retuning its constants:
+
+- the clicked component / CURRENT / TARGET is converted to a bounded physical PCB review region;
+- tiny passives get a practical minimum context window, larger footprints expand context proportionally, and TARGET includes Owner context when available;
+- the final and only camera writer is `zoomToRegion(left, right, top, bottom, frozenTabId)`;
+- there is no follow-up 300–500% `zoomTo()` call and no viewport-return postcondition;
+- the v0.9.23 frozen-tab, focus-neutral cleanup, and active-window ownership fixes remain intact;
+- the obsolete percentage camera policy and its tests are deleted rather than left as hidden dead code.
+
+This matches the product intent more directly: LayoutPilot asks EasyEDA to show a review neighborhood, not to enforce a device-independent global zoom percentage.
 
 ## v0.9.23 Deterministic Review Navigation
 
