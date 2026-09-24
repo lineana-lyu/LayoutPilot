@@ -7,6 +7,7 @@ import type {
 import type {
 	ReviewNavigationFocus,
 } from '../domain/reviewNavigator';
+import { verifyFocusedViewport } from '../domain/reviewViewportContract';
 
 function rotatedPadMarkers(
 	pad: LayoutReviewPad,
@@ -93,20 +94,63 @@ function footprintMarkers(
 		: boundsMarkers(component, dx, dy);
 }
 
-async function zoomToRegion(
+async function readViewport(
 	documentTabId: string,
-	region: CanvasRegion,
-): Promise<void> {
-	const zoomed = await eda.dmt_EditorControl.zoomToRegion(
-		region.left,
-		region.right,
-		region.top,
-		region.bottom,
+): Promise<CanvasRegion> {
+	const viewport = await eda.dmt_EditorControl.zoomTo(
+		undefined,
+		undefined,
+		undefined,
 		documentTabId,
 	);
-	if (!zoomed) {
-		throw new Error('EasyEDA 拒绝定位当前审查区域。');
+	if (!viewport) {
+		throw new Error('EasyEDA 无法回读当前 PCB 视口，不能确认定位是否真实生效。');
 	}
+	return viewport;
+}
+
+async function zoomToRegionVerified(
+	documentTabId: string,
+	region: CanvasRegion,
+): Promise<CanvasRegion> {
+	let lastDiagnostic = 'unknown viewport state';
+
+	for (let attempt = 0; attempt < 2; attempt += 1) {
+		const activated = await eda.dmt_EditorControl.activateDocument(documentTabId);
+		if (!activated) {
+			throw new Error('定位过程中 PCB 文档失去激活状态。');
+		}
+
+		const zoomed = await eda.dmt_EditorControl.zoomToRegion(
+			region.left,
+			region.right,
+			region.top,
+			region.bottom,
+			documentTabId,
+		);
+		if (!zoomed) {
+			lastDiagnostic = 'zoomToRegion returned false';
+			continue;
+		}
+
+		const actual = await readViewport(documentTabId);
+		const verification = verifyFocusedViewport({
+			expected: region,
+			actual,
+		});
+		if (verification.ok) {
+			return actual;
+		}
+		lastDiagnostic = [
+			...verification.reasons,
+			`expected span ${verification.expectedSpan.width.toFixed(1)}×${verification.expectedSpan.height.toFixed(1)} mil`,
+			`actual span ${verification.actualSpan.width.toFixed(1)}×${verification.actualSpan.height.toFixed(1)} mil`,
+		].join('；');
+	}
+
+	throw new Error(
+		`EasyEDA 返回定位成功，但视口回读未满足聚焦条件：${lastDiagnostic}`,
+	);
 }
 
 export async function navigateReviewToPcb(
@@ -134,9 +178,16 @@ export async function navigateReviewToPcb(
 	try {
 		if (focus.selectPrimitiveId) {
 			try {
-				await eda.pcb_SelectControl.doSelectPrimitives(
+				const selected = await eda.pcb_SelectControl.doSelectPrimitives(
 					focus.selectPrimitiveId,
 				);
+				if (selected) {
+					// Seed the host editor with a primitive-based focus first. The
+					// bounded context region below is still authoritative, but this
+					// prevents a stale whole-board viewport from winning the first
+					// focus race after the workbench window is hidden.
+					await eda.dmt_EditorControl.zoomToSelectedPrimitives(documentTabId);
+				}
 			}
 			catch (error) {
 				console.warn('[LayoutPilot] review navigation selection failed', {
@@ -159,7 +210,7 @@ export async function navigateReviewToPcb(
 				markers,
 				{ r: 36, g: 166, b: 106, alpha: 0.98 },
 				3,
-				false,
+				true,
 				documentTabId,
 			);
 			if (!generated) {
@@ -179,10 +230,10 @@ export async function navigateReviewToPcb(
 			}
 		}
 
-		await zoomToRegion(documentTabId, focus.region);
+		await zoomToRegionVerified(documentTabId, focus.region);
 
 		return {
-			documentTabId: documentTabId,
+			documentTabId,
 		};
 	}
 	catch (error) {
