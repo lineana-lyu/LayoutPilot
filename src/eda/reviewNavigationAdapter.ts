@@ -1,3 +1,4 @@
+import { buildReviewCameraCommand } from '../domain/reviewCameraCommand';
 import type {
 	LayoutReviewComponent,
 	LayoutReviewPad,
@@ -116,33 +117,23 @@ async function focusReviewCamera(
 	documentTabId: string,
 	focus: ReviewNavigationFocus,
 ): Promise<void> {
-	const { left, right, top, bottom } = focus.region;
-	if (
-		!Number.isFinite(left)
-		|| !Number.isFinite(right)
-		|| !Number.isFinite(top)
-		|| !Number.isFinite(bottom)
-		|| right <= left
-		|| bottom <= top
-	) {
-		throw new Error('布局审查区域无效，无法定位 PCB。');
-	}
+	const command = buildReviewCameraCommand(focus.region);
 
-	// Review navigation is a region-framing task, not a percentage-zoom task.
-	// EasyEDA's zoomTo scaleRatio is an absolute percentage (500 = 500%).
-	// Real-board testing showed that forcing a percentage after resolving a
-	// valid region can massively over-zoom small passives. Use exactly one
-	// region-fit command so the requested PCB neighborhood is the camera source
-	// of truth and the host can adapt it to the actual editor viewport.
-	const fitted = await eda.dmt_EditorControl.zoomToRegion(
-		left,
-		right,
-		top,
-		bottom,
+	// Real-board validation shows EasyEDA's beta zoomToRegion may return true
+	// without moving the visible PCB canvas. zoomTo, in contrast, reliably
+	// moved to the requested center in v0.9.23. Use one explicit coordinate
+	// camera command with a moderate 18-36% scale derived from the already
+	// bounded physical review context. The return geometry is intentionally not
+	// interpreted because the beta runtime can report a viewport inconsistent
+	// with what is visibly rendered.
+	const zoomed = await eda.dmt_EditorControl.zoomTo(
+		command.x,
+		command.y,
+		command.scaleRatio,
 		documentTabId,
 	);
-	if (!fitted) {
-		throw new Error('EasyEDA 拒绝按布局审查区域定位 PCB。');
+	if (!zoomed) {
+		throw new Error('EasyEDA 拒绝定位并缩放到 PCB 审查目标。');
 	}
 }
 
@@ -206,8 +197,8 @@ export async function navigateReviewToPcb(
 			}
 		}
 
-		// One region-fit command is the final camera writer. Selection and
-		// markers are presentation only and never drive the camera.
+		// One explicit coordinate camera command is the final writer. Selection
+		// and markers are presentation only and never drive the camera.
 		await focusReviewCamera(documentTabId, focus);
 		return { documentTabId };
 	}
