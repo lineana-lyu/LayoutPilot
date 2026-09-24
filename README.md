@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.18 Planning Correctness & Owner-Cluster Planning
+## Current stage — v0.9.23 Deterministic Review Navigation
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -131,6 +131,22 @@ v0.9.6 separates **accepting a recommendation** from **authorizing PCB mutation*
 Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with EasyEDA's explicit `zoomToRegion` API around current position, proposed position and available Owner bounds instead of preserving the user's previous zoom level. Evidence review uses the same explicit-region pattern rather than relying on `zoomToSelectedPrimitives`, whose internal selection BBox calculation can fail on real projects when a selected primitive has incomplete bounds.
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
+
+## v0.9.23 Deterministic Review Navigation
+
+Real-board review exposed a lifecycle problem rather than another zoom-number problem. Marker cleanup could reactivate an older PCB tab, the next click then trusted the live current tab, and a replaced preview iframe could still run its stale close callback and reopen the workbench while navigation was in progress.
+
+v0.9.23 replaces that chain with explicit ownership boundaries:
+
+- every review scene freezes its source PCB `documentTabId`, and that exact tab is reactivated/read back before validation and again before final navigation;
+- preview cleanup is focus-neutral and removes markers by tab id without activating the tab;
+- preview/navigation iframes use active-window ownership, so a stale close callback cannot clear the successor window's state or reopen the workbench;
+- selection and indicator markers are presentation-only;
+- the final camera has one writer: `zoomTo(centerX, centerY, explicitScaleRatio, tabId)`;
+- the returned EasyEDA viewport is verified as a postcondition, so an off-target or effectively whole-board result fails visibly instead of being reported as successful;
+- the camera policy is isolated in `src/domain/reviewCameraPolicy.ts` and covered by a pure regression test.
+
+The architectural invariants and prohibited regression patterns are documented in `docs/REVIEW_NAVIGATION_CONTRACT.md`. No board-specific ids, timing sleeps, retry loops, test-mode production paths, or hidden split-screen assumptions are introduced.
 
 ## v0.9.22 Navigation Reset
 
