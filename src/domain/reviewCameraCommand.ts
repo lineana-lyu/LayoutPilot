@@ -42,8 +42,7 @@ export function buildReviewCameraCommand(
 		x: (left + right) / 2,
 		y: (top + bottom) / 2,
 		scaleRatio: Math.round(
-		clamp(requestedScale, MIN_SCALE_PERCENT, MAX_SCALE_PERCENT),
-		* 10,
-		) / 10,
+		clamp(requestedScale, MIN_SCALE_PERCENT, MAX_SCALE_PERCENT) * 10,
+	) / 10,
 	};
 }
