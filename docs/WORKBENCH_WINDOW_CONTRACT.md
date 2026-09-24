@@ -1,107 +1,92 @@
 # Workbench Window Contract
 
 This document freezes the product and lifecycle rules for LayoutPilot's EasyEDA
-host windows and PCB inspection mode.
+host window.
 
-## Product goal
+## Host limitation
 
-The workbench must be easy to recover without forcing a permanent helper popup
-onto the PCB. Window behavior is designed around **board visibility**,
-**recoverability**, and **one obvious way back**.
+EasyEDA exposes extension HTML through `SYS_IFrame.openIFrame()`. The public
+contract opens a **Dialog window** with creation-time width, height, X and Y.
+There is no public API for arbitrary runtime resize or movement of an already
+open extension iframe.
 
-## Host API boundary
+`SYS_PanelControl` only controls EasyEDA's built-in left/right/bottom panels;
+it cannot host LayoutPilot's arbitrary extension HTML.
 
-EasyEDA extension UI has two relevant boundaries:
+Therefore LayoutPilot must not pretend that it owns a native dock, free-resize
+panel, or movable IDE sidebar.
 
-- `SYS_IFrame.openIFrame()` always opens a dialog-style iframe window. Width,
-  height, X and Y are creation-time properties; there is no arbitrary runtime
-  resize API for an already-open extension iframe.
-- `SYS_PanelControl` controls EasyEDA's built-in left/right/bottom panels. It
-  does not provide an extension-owned dock surface.
+## Real-board findings
 
-LayoutPilot therefore must not simulate a native dock or free-resize system by
-creating extra helper dialogs.
+Two host behaviors are now treated as unreliable for the primary workflow:
 
-## Expanded workbench
+- `hideIFrame()` can report success while the visible workbench remains on
+  screen in the tested EasyEDA runtime;
+- runtime shortcut registration through `SYS_ShortcutKey` is BETA and the
+  tested Alt+Shift+L return shortcut did not fire reliably.
 
-- The default workbench opens as a responsive right-side window.
-- Width is derived from the current EasyEDA viewport and capped so a meaningful
-  PCB area remains visible on the left.
-- The EasyEDA maximize button remains available.
-- Native EasyEDA minimize is disabled.
-- Compact / standard / wide recreation presets remain removed.
+Neither API is used as a required navigation dependency in v0.9.28.
 
-## Hide behavior
+## Sidecar workbench
 
-The workbench provides **隐藏工作台**.
+The workbench is intentionally designed as a narrow right-side **sidecar**:
 
-- Hiding uses `SYS_IFrame.hideIFrame()`; it does not create another iframe.
-- No collapsed rectangle, return strip, mini dock, or evidence popup is kept on
-  top of the PCB.
-- The normal return shortcut is **Alt+Shift+L**.
-- The top extension menu also exposes **返回 LayoutPilot 工作台（退出核对）**.
-- A short EasyEDA toast may explain the current inspection target and return
-  shortcut, then disappears automatically.
+- desktop target width: about 30% of the EasyEDA viewport;
+- hard width range: roughly 500–620 px where the viewport permits;
+- right aligned at creation time;
+- tall enough for continuous decision work;
+- no compact/standard/wide recreation presets;
+- no native minimize requirement;
+- no plugin-managed mini dock or return bar.
 
-## Menu recovery
+The workbench's internal layout collapses to a vertical master/detail view at
+sidecar widths: the task queue occupies a bounded top section and the active
+decision area uses the remaining height.
 
-The extension menu action **重新打开 LayoutPilot 工作台** remains a recovery
-boundary for stale host-window state.
+## PCB inspection
 
-It creates a fresh workbench using the current host viewport, records the new
-instance first, and only then retires the previous instance.
-
-This is intentionally separate from **返回工作台**, which prefers the exact
-hidden workbench so transient in-memory review state can survive inspection.
-
-## Popup-free canvas inspection
-
-CURRENT / TARGET / component navigation and Owner evidence checking use the PCB
-canvas itself as the review surface.
+CURRENT / TARGET / component navigation and Owner evidence checking keep the
+sidecar workbench visible.
 
 The sequence is:
 
-1. capture/freeze the intended PCB tab and relevant review state;
-2. hide the workbench;
+1. validate/freeze the intended PCB tab;
+2. clear the previous LayoutPilot review markers/session;
 3. execute the calibrated PCB camera command;
 4. render selection / ghost / evidence markers;
-5. show a short non-blocking EasyEDA toast;
-6. return through Alt+Shift+L or the top menu;
-7. clean review markers/session and restore the hidden workbench.
+5. keep the decision controls visible in the sidecar.
 
-Owner confirmation stays in the workbench. The PCB inspection mode is read-only;
-it does not need a Confirm button floating over the board.
+This removes the hide → inspect → return window roundtrip entirely.
+
+Owner confirmation remains in the same workbench. Confirming an Owner retires
+the active evidence inspection markers/session.
+
+## Reopen / recovery
+
+The extension exposes a one-click top-level **LayoutPilot 工作台** command.
+
+That command is recovery-oriented: it creates a fresh workbench using the
+current viewport before retiring a previous stale instance.
+
+Users may optionally assign a native EasyEDA menu shortcut to that command from
+EasyEDA's own shortcut settings / menu shortcut editor. LayoutPilot does not
+register a runtime shortcut itself.
 
 ## Plan decision surface
 
-The existing LayoutPlan accept/reject iframe is intentionally retained only for
-the actual plan decision flow. It is not used as a return bar for direct PCB
-navigation.
-
-This keeps decision UI separate from navigation UI.
-
-## Navigation consistency
-
-Owner evidence review and layout review navigation use the same camera model:
-
-- freeze/activate the intended PCB tab;
-- build a bounded physical review context;
-- derive one center + calibrated 18–36% scale;
-- call one explicit `zoomTo(x, y, scale, tabId)`.
-
-Evidence review must not reintroduce `zoomToRegion()`, because real-board
-validation showed it can report success without moving the visible canvas.
+The LayoutPlan accept/reject iframe is retained only for the actual plan decision
+flow. It is separate from direct PCB navigation.
 
 ## Prohibited patterns
 
 Do not reintroduce:
 
-- native workbench minimize;
-- compact/standard/wide recreation presets;
+- reliance on `hideIFrame()` / `showIFrame()` for routine PCB inspection;
+- runtime-registered return shortcuts as a required control path;
+- compact/standard/wide window presets;
 - helper return-strip / dock iframes;
 - a dedicated Owner evidence iframe;
 - a navigation-only LayoutPreview iframe;
-- a stored iframe id as proof that the window is visible;
-- arbitrary sleeps or retry loops for host-window recovery;
-- production-only test switches;
-- separate camera implementations for layout review and Owner evidence review.
+- fake native docking through an iframe;
+- arbitrary sleeps or retry loops for window recovery;
+- production-only test switches.
