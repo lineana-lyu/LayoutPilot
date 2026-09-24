@@ -4,8 +4,8 @@ This document defines the production navigation path used when a reviewer clicks
 component, CURRENT position, or TARGET position in LayoutPilot's layout review.
 
 The goal is not to make camera movement "usually work". The goal is to make the
-navigation transaction deterministic, observable, and safe when EasyEDA has
-multiple PCB tabs and multiple extension iframes.
+navigation transaction deterministic and reviewable when EasyEDA has multiple PCB
+tabs and multiple extension iframes.
 
 ## Source-of-truth chain
 
@@ -36,20 +36,35 @@ multiple PCB tabs and multiple extension iframes.
      being reviewed.
    - They never determine camera geometry and never request automatic zoom.
 
-6. **One explicit camera command is authoritative**
-   - The final camera operation is
-     `zoomTo(centerX, centerY, scaleRatio, documentTabId)`.
-   - X, Y, scale and tab id are all explicit. No parameter is omitted.
-   - The focus region is converted to a bounded continuous scale policy before
-     the call.
+6. **Review intent is a physical PCB region, not a global zoom percentage**
+   - The domain layer derives a bounded contextual region from the clicked
+     component / CURRENT / TARGET geometry.
+   - Tiny passives receive a practical minimum neighborhood; larger components
+     scale their context with footprint size up to an explicit upper bound.
+   - TARGET framing includes Owner context when it is available.
 
-7. **Returned viewport is a postcondition**
-   - `zoomTo()` returns the viewport EasyEDA actually applied.
-   - LayoutPilot verifies that the requested center is visible and that the
-     returned viewport is not materially wider than the requested local review
-     region.
-   - A host call that returns an off-target or whole-board-like viewport is a
-     visible navigation failure, not a silent success.
+7. **One region-fit camera command is authoritative**
+   - The final camera operation is
+     `zoomToRegion(left, right, top, bottom, documentTabId)`.
+   - All four coordinates and the tab id are explicit.
+   - No second percentage-based `zoomTo()` call is allowed after the region
+     has been resolved.
+
+## Why percentage zoom is intentionally rejected
+
+EasyEDA documents `zoomTo(..., scaleRatio, ...)` as an absolute percentage:
+`500` means `500%`. Real-board validation on v0.9.23 confirmed that this is
+the wrong abstraction for LayoutPilot review navigation: the target PCB area was
+located correctly, but forcing a 300–500% scale massively over-zoomed small
+passives.
+
+The same validation also showed that the region returned by the beta `zoomTo()`
+runtime cannot be treated as a trustworthy semantic postcondition in this path:
+the API reported a roughly 3.5 mil viewport that excluded the requested center
+while the editor had visibly navigated to the correct PCB neighborhood.
+
+LayoutPilot therefore uses the region itself as the contract and lets
+`zoomToRegion()` fit that region to the real editor viewport.
 
 ## Invariants
 
@@ -58,8 +73,9 @@ multiple PCB tabs and multiple extension iframes.
 - A replaced iframe cannot clean up the current iframe's state.
 - Camera state has one writer in the navigation transaction.
 - Navigation never depends on an implicit selection/marker bounding box.
-- Camera parameters are finite and the focus region has positive area.
-- Failure messages identify the camera postcondition that failed.
+- Navigation never applies a second absolute percentage zoom after fitting a
+  physical PCB review region.
+- Review regions must contain finite coordinates and positive width/height.
 
 ## Patterns intentionally rejected
 
@@ -67,26 +83,27 @@ The following patterns must not be reintroduced into the production navigation
 path:
 
 - `zoomTo(undefined, undefined, undefined, tabId)` as a viewport getter;
-- omitted/undefined zoom parameters;
+- absolute percentage tuning such as 300/400/500/700/800% for component review;
 - selection-driven `zoomToSelectedPrimitives()`;
 - indicator markers with automatic zoom enabled;
 - using the live current PCB as the click's identity after cleanup;
 - activating a PCB inside marker cleanup;
 - treating split-screen metadata as the authority for PCB identity;
-- chaining multiple camera APIs when only the final camera state matters;
+- chaining `zoomToRegion()` and a second `zoomTo(...scaleRatio...)`;
+- trusting beta `zoomTo()` return geometry as proof that the visible editor
+  viewport is semantically correct;
 - arbitrary sleeps, retries, board-specific component ids, or test-mode
   branches to hide lifecycle races.
 
 ## Regression coverage
 
-`tests/reviewCameraPolicy.ts` covers:
+`tests/reviewNavigationFraming.ts` covers the domain framing policy:
 
-- bounded close-up / normal / large-region scale calculation;
-- invalid and zero-span regions;
-- a valid returned viewport;
-- an off-target viewport;
-- a viewport that is too wide for a component-level review.
+- tiny passive -> practical minimum review neighborhood;
+- medium component -> footprint-relative context;
+- large component -> bounded maximum context;
+- TARGET/Owner context -> a larger minimum review neighborhood.
 
-Real-board acceptance still matters because EasyEDA's editor camera API is host
-runtime behavior. The pure tests protect LayoutPilot's contract and prevent the
-previous architecture regressions from being reintroduced.
+Real-board acceptance is still required because EasyEDA's region fitting is host
+runtime behavior. The pure tests protect LayoutPilot's geometry policy and
+prevent percentage-zoom regressions from being reintroduced.
