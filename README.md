@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.28 Narrow Sidecar Workbench
+## Current stage — v0.9.29 PCB-Visibility-Budget Sidecar
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -131,6 +131,32 @@ v0.9.6 separates **accepting a recommendation** from **authorizing PCB mutation*
 Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with EasyEDA's explicit `zoomToRegion` API around current position, proposed position and available Owner bounds instead of preserving the user's previous zoom level. Evidence review uses the same explicit-region pattern rather than relying on `zoomToSelectedPrimitives`, whose internal selection BBox calculation can fail on real projects when a selected primitive has incomplete bounds.
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
+
+## v0.9.29 PCB-Visibility-Budget Sidecar
+
+The v0.9.28 sidecar architecture is retained, but its sizing rule is now expressed
+as a product invariant rather than a fixed 500–620 px band.
+
+- target sidecar width ≈ 26% of the current EasyEDA viewport;
+- readable width band ≈ 430–520 px when the host permits;
+- ordinary desktop/laptop layouts cap the sidecar near 34% of viewport width;
+- the existing <=620 px responsive workbench layout supplies the single-column
+  engineering inspector at these widths;
+- CURRENT / TARGET / component and Owner evidence navigation continue to move
+  the PCB camera while the sidecar stays visible;
+- no runtime shortcut, return strip, native minimize, or hide/show roundtrip is
+  required for direct inspection.
+
+The LayoutPlan decision surface also no longer contains a stale workbench-hide
+call. The narrow sidecar and the decision bar coexist instead of depending on
+EasyEDA's unreliable `hideIFrame()` behavior.
+
+CI now runs `tsc --noEmit` before bundling. This closes a reviewability gap in
+which esbuild could successfully emit a bundle containing an unresolved runtime
+symbol.
+
+No semantic inference, Owner policy, planner, placement execution, rollback,
+Gateway, or calibrated camera logic changes in this revision.
 
 ## v0.9.28 Narrow Sidecar Workbench
 
