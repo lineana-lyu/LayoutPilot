@@ -10,7 +10,6 @@ import type { SemanticConfidence, SemanticRole } from './domain/semanticInferenc
 import { buildClosestSharedRailPadEvidence, type SharedRailPadEvidence } from './domain/physicalEvidence';
 import { createEvidenceReviewSession } from './domain/evidenceReviewSession';
 import { retireEvidenceInspection } from './application/evidenceInspection';
-import { showCanvasInspectionHint } from './application/canvasInspection';
 import { createLayoutPreviewSession } from './domain/layoutPreviewSession';
 import {
 	layoutPlanAcceptanceMode,
@@ -37,10 +36,6 @@ import {
 } from './eda/layoutPreviewAdapter';
 import { activateReviewPcbDocument, navigateReviewToPcb } from './eda/reviewNavigationAdapter';
 import { beginPcbEvidenceReview, collectPadEvidenceComponents, focusPcbEvidence } from './eda/pcbPhysicalAdapter';
-import {
-	hideLayoutPilotWorkbench,
-	openLayoutPilotWorkbench,
-} from './ui/workbenchWindow';
 import {
 	clearActiveLayoutPreviewCanvas,
 	openLayoutPreviewBar,
@@ -122,7 +117,6 @@ const applyBtn = el<HTMLButtonElement>('applyBtn');
 const undoBtn = el<HTMLButtonElement>('undoBtn');
 const refreshBtn = el<HTMLButtonElement>('refreshBtn');
 const gatewayBtn = el<HTMLButtonElement>('gatewayBtn');
-const hideWorkbenchBtn = el<HTMLButtonElement>('hideWorkbenchBtn');
 const footerNote = el<HTMLDivElement>('footerNote');
 
 let selectedComponentId: string | undefined;
@@ -165,7 +159,6 @@ function setBusy(value: boolean): void {
 	loading.classList.toggle('show', value);
 	analyzeBtn.disabled = value;
 	refreshBtn.disabled = value;
-	hideWorkbenchBtn.disabled = value;
 }
 
 function showToast(message: string): void {
@@ -573,10 +566,10 @@ function renderInlineLayoutReview(): void {
 						: 'PCB 定位核对';
 
 			try {
-				await hideLayoutPilotWorkbench();
-
-				// Popup-free inspection mode: the PCB canvas is the only review
-				// surface. Return is handled by the registered shortcut or menu.
+				// Keep the narrow sidecar visible while the editor camera moves.
+				// EasyEDA's hide/show iframe APIs are beta and real-board testing
+				// showed that hideIFrame can report success without visibly hiding
+				// the host dialog. The sidecar layout avoids that dependency.
 				const canvas = await navigateReviewToPcb(
 					activeScene,
 					focus,
@@ -587,12 +580,11 @@ function renderInlineLayoutReview(): void {
 						documentTabId: canvas.documentTabId,
 					}),
 				);
-				showCanvasInspectionHint(navigationLabel);
+				showToast(`${navigationLabel} · 已定位到 PCB`);
 			}
 			catch (error) {
 				try {
 					await clearActiveLayoutPreviewCanvas();
-					await openLayoutPilotWorkbench();
 				}
 				catch (cleanupError) {
 					console.warn(
@@ -1118,6 +1110,7 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 					ownerDesignator: candidate.designator,
 				}),
 			);
+			await retireEvidenceInspection();
 			showToast(`${task.designator} → ${candidate.designator} 已记录为人工证据`);
 			await refresh();
 		});
@@ -1161,11 +1154,8 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 					}),
 				);
 
-				await hideLayoutPilotWorkbench();
-
-				// Evidence inspection reuses the calibrated camera path after the
-				// workbench is hidden. Confirmation remains in the workbench so
-				// the PCB canvas stays unobstructed during visual checking.
+				// Keep the narrow sidecar visible so the user can compare the
+				// physical evidence and confirm the Owner without a window roundtrip.
 				await focusPcbEvidence(
 					evidenceFocus,
 					reviewContext.documentTabId,
@@ -1173,12 +1163,11 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 				const evidenceSummary = candidate.powerPadEvidence
 					? `${task.designator} ↔ ${candidate.designator} · ${candidate.powerPadEvidence.netName} · ${candidate.powerPadEvidence.distanceMil.toFixed(1)} mil`
 					: `${task.designator} ↔ ${candidate.designator} · Owner 证据核对`;
-				showCanvasInspectionHint(evidenceSummary);
+				showToast(`${evidenceSummary} · 已定位到 PCB`);
 			}
 			catch (error) {
 				try {
 					await retireEvidenceInspection();
-					await openLayoutPilotWorkbench();
 				}
 				catch (cleanupError) {
 					console.warn(
@@ -1427,20 +1416,7 @@ gatewayBtn.addEventListener('click', () => {
 	configureAiGateway();
 });
 
-hideWorkbenchBtn.addEventListener('click', async () => {
-	if (busy) return;
-	setBusy(true);
-	try {
-		showCanvasInspectionHint('LayoutPilot 工作台已隐藏');
-		await hideLayoutPilotWorkbench();
-		setBusy(false);
-	}
-	catch (error) {
-		console.error('[LayoutPilot Workbench] hide failed', error);
-		showToast(`隐藏工作台失败：${String(error)}`);
-		setBusy(false);
-	}
-});
+
 
 async function presentLayoutPlanPreview(
 	plan: LayoutPlan,
