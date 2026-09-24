@@ -1,4 +1,4 @@
-import type { CanvasRegion } from '../domain/canvasRegion';
+import { buildReviewCameraCommand } from '../domain/reviewCameraCommand';
 import type {
 	LayoutReviewComponent,
 	LayoutReviewPad,
@@ -93,45 +93,47 @@ function footprintMarkers(
 		: boundsMarkers(component, dx, dy);
 }
 
-export function reviewZoomRatio(region: CanvasRegion): number {
-	const width = Math.abs(region.right - region.left);
-	const height = Math.abs(region.bottom - region.top);
-	const span = Math.max(width, height, 1);
-
-	// The last real-board implementation that reliably navigated EasyEDA used
-	// an explicit zoom ratio. Keep that call shape, but derive a moderate ratio
-	// continuously from the review region instead of threshold jumps.
-	const referenceSpanMil = 560;
-	const referenceScaleRatio = 350;
-	const requested = referenceScaleRatio * referenceSpanMil / span;
-	return Math.round(Math.min(450, Math.max(240, requested)));
-}
-
-async function focusReviewRegion(
+export async function activateReviewPcbDocument(
 	documentTabId: string,
-	region: CanvasRegion,
 ): Promise<void> {
-	const fitted = await eda.dmt_EditorControl.zoomToRegion(
-		region.left,
-		region.right,
-		region.top,
-		region.bottom,
-		documentTabId,
-	);
-	if (!fitted) {
-		throw new Error('EasyEDA 拒绝定位当前审查区域。');
+	const activated = await eda.dmt_EditorControl.activateDocument(documentTabId);
+	if (!activated) {
+		throw new Error('无法激活布局预览对应的 PCB 文档。');
 	}
 
-	const centerX = (region.left + region.right) / 2;
-	const centerY = (region.top + region.bottom) / 2;
+	const current = await eda.dmt_SelectControl.getCurrentDocumentInfo();
+	if (!current) {
+		throw new Error('激活 PCB 后无法读取当前文档信息。');
+	}
+	if (current.documentType !== EDMT_EditorDocumentType.PCB) {
+		throw new Error('布局预览对应的文档已不再是 PCB。');
+	}
+	if (current.tabId !== documentTabId) {
+		throw new Error('PCB 文档激活结果与布局预览冻结的 Tab 不一致。');
+	}
+}
+
+async function focusReviewCamera(
+	documentTabId: string,
+	focus: ReviewNavigationFocus,
+): Promise<void> {
+	const command = buildReviewCameraCommand(focus.region);
+
+	// Real-board validation shows EasyEDA's beta zoomToRegion may return true
+	// without moving the visible PCB canvas. zoomTo, in contrast, reliably
+	// moved to the requested center in v0.9.23. Use one explicit coordinate
+	// camera command with a moderate 18-36% scale derived from the already
+	// bounded physical review context. The return geometry is intentionally not
+	// interpreted because the beta runtime can report a viewport inconsistent
+	// with what is visibly rendered.
 	const zoomed = await eda.dmt_EditorControl.zoomTo(
-		centerX,
-		centerY,
-		reviewZoomRatio(region),
+		command.x,
+		command.y,
+		command.scaleRatio,
 		documentTabId,
 	);
 	if (!zoomed) {
-		throw new Error('EasyEDA 拒绝执行局部放大。');
+		throw new Error('EasyEDA 拒绝定位并缩放到 PCB 审查目标。');
 	}
 }
 
@@ -139,23 +141,11 @@ export async function navigateReviewToPcb(
 	scene: LayoutReviewScene,
 	focus: ReviewNavigationFocus,
 ): Promise<{ documentTabId: string }> {
-	// The workbench is already hidden before this function runs. Query the
-	// editor that actually owns focus at navigation time, exactly as the last
-	// real-board working implementation did. Do not infer split-screen state
-	// or reject a valid PCB using secondary tab metadata.
-	const document = await eda.dmt_SelectControl.getCurrentDocumentInfo();
-	if (!document) {
-		throw new Error('无法获取当前 PCB 文档信息。');
-	}
-	if (document.documentType !== EDMT_EditorDocumentType.PCB) {
-		throw new Error('当前活动文档不是 PCB。');
-	}
-
-	const documentTabId = document.tabId;
-	const activated = await eda.dmt_EditorControl.activateDocument(documentTabId);
-	if (!activated) {
-		throw new Error('无法激活当前 PCB 文档。');
-	}
+	// The review scene freezes the source PCB tab at scene-collection time.
+	// Cleanup or auxiliary iframe activity must never be allowed to retarget a
+	// later click to whichever PCB happens to own focus at that instant.
+	const documentTabId = scene.documentTabId;
+	await activateReviewPcbDocument(documentTabId);
 	await eda.dmt_EditorControl.removeIndicatorMarkers(documentTabId);
 
 	try {
@@ -207,7 +197,9 @@ export async function navigateReviewToPcb(
 			}
 		}
 
-		await focusReviewRegion(documentTabId, focus.region);
+		// One explicit coordinate camera command is the final writer. Selection
+		// and markers are presentation only and never drive the camera.
+		await focusReviewCamera(documentTabId, focus);
 		return { documentTabId };
 	}
 	catch (error) {

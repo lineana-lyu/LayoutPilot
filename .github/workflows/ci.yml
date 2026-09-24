@@ -25,6 +25,9 @@ jobs:
       - name: Run domain regression tests
         run: npm test
 
+      - name: Verify interaction architecture
+        run: npm run verify:interaction
+
       - name: Check AI Gateway syntax
         run: node --check gateway/server.mjs
 

@@ -7,20 +7,7 @@ import {
 } from '../eda/workflowStore';
 import { openLayoutPilotWorkbench } from './workbenchWindow';
 
-const ACTIVE_PREVIEW_ID_KEY = 'layoutpilot.layout-preview-active-id.v1';
-const ACTIVE_PREVIEW_CONTEXT_KEY = 'layoutpilot.layout-preview-context.v1';
-
-export type LayoutPreviewBarMode = 'plan' | 'navigation';
-
-export interface LayoutPreviewBarContext {
-	mode: LayoutPreviewBarMode;
-	label?: string;
-}
-
-export interface LayoutPreviewBarOptions {
-	mode?: LayoutPreviewBarMode;
-	label?: string;
-}
+const ACTIVE_PREVIEW_ID_KEY = 'layoutpilot.layout-preview-active-id.v2';
 
 let previewSequence = 0;
 
@@ -41,39 +28,8 @@ function getStoredPreviewWindowId(): string | undefined {
 	return typeof value === 'string' && value.length ? value : undefined;
 }
 
-export function getLayoutPreviewBarContext(): LayoutPreviewBarContext {
-	const value = eda.sys_Storage.getExtensionUserConfig(
-		ACTIVE_PREVIEW_CONTEXT_KEY,
-	);
-	if (typeof value !== 'string' || !value.length) {
-		return { mode: 'plan' };
-	}
-	try {
-		const parsed = JSON.parse(value) as Partial<LayoutPreviewBarContext>;
-		return {
-			mode: parsed.mode === 'navigation' ? 'navigation' : 'plan',
-			label: typeof parsed.label === 'string' ? parsed.label : undefined,
-		};
-	}
-	catch {
-		return { mode: 'plan' };
-	}
-}
-
-async function rememberPreviewContext(
-	context: LayoutPreviewBarContext,
-): Promise<void> {
-	await eda.sys_Storage.setExtensionUserConfig(
-		ACTIVE_PREVIEW_CONTEXT_KEY,
-		JSON.stringify(context),
-	);
-}
-
-async function clearPreviewContext(): Promise<void> {
-	await eda.sys_Storage.setExtensionUserConfig(
-		ACTIVE_PREVIEW_CONTEXT_KEY,
-		'',
-	);
+function ownsActivePreviewWindow(id: string): boolean {
+	return getStoredPreviewWindowId() === id;
 }
 
 async function rememberPreviewWindowId(id: string): Promise<void> {
@@ -112,29 +68,30 @@ async function closePreviewWindowInstance(id: string | undefined): Promise<void>
 	}
 }
 
-export async function openLayoutPreviewBar(
-	options: LayoutPreviewBarOptions = {},
-): Promise<void> {
-	const context: LayoutPreviewBarContext = {
-		mode: options.mode === 'navigation' ? 'navigation' : 'plan',
-		label: options.label,
-	};
+export async function retireLayoutPreviewSurface(): Promise<boolean> {
+	const id = getStoredPreviewWindowId();
+	const hadSession = Boolean(getStoredLayoutPreviewSession());
+
+	try {
+		await clearActiveLayoutPreviewCanvas();
+	}
+	catch (error) {
+		console.warn('[LayoutPilot] layout preview canvas cleanup failed', error);
+	}
+
+	await clearPreviewWindowId();
+	await closePreviewWindowInstance(id);
+	return Boolean(id) || hadSession;
+}
+
+export async function openLayoutPreviewBar(): Promise<void> {
 	const previousId = getStoredPreviewWindowId();
 	const id = createPreviewWindowId();
 	const viewport = eda.sys_Window.getViewportSize();
-	const navigation = context.mode === 'navigation';
-	const width = navigation
-		? Math.max(280, Math.min(360, viewport.width - 40))
-		: Math.max(540, Math.min(720, viewport.width - 80));
-	const height = navigation ? 54 : 116;
-	const x = navigation
-		? Math.max(16, viewport.width - width - 18)
-		: Math.max(16, Math.round((viewport.width - width) / 2));
-	const y = navigation
-		? 48
-		: Math.max(44, viewport.height - height - 72);
-
-	await rememberPreviewContext(context);
+	const width = Math.max(540, Math.min(720, viewport.width - 80));
+	const height = 116;
+	const x = Math.max(16, Math.round((viewport.width - width) / 2));
+	const y = Math.max(44, viewport.height - height - 72);
 
 	const opened = await eda.sys_IFrame.openIFrame(
 		'/iframe/layout-preview.html',
@@ -142,16 +99,16 @@ export async function openLayoutPreviewBar(
 		height,
 		id,
 		{
-			title: navigation
-				? 'LayoutPilot · 定位核对'
-				: 'LayoutPilot · 布局预览',
+			title: 'LayoutPilot · 布局预览',
 			maximizeButton: false,
-			minimizeButton: navigation,
-			minimizeStyle: navigation ? 'collapsed' : undefined,
+			minimizeButton: false,
 			grayscaleMask: false,
 			x,
 			y,
 			onBeforeCloseCallFn: async () => {
+				if (!ownsActivePreviewWindow(id)) {
+					return true;
+				}
 				try {
 					await clearActiveLayoutPreviewCanvas();
 				}
@@ -159,7 +116,6 @@ export async function openLayoutPreviewBar(
 					console.warn('[LayoutPilot] preview cleanup failed on close', error);
 				}
 				await clearPreviewWindowId();
-				await clearPreviewContext();
 				await openLayoutPilotWorkbench();
 				return true;
 			},
@@ -167,7 +123,6 @@ export async function openLayoutPreviewBar(
 	);
 
 	if (!opened) {
-		await clearPreviewContext();
 		throw new Error('嘉立创EDA未能打开 LayoutPilot 布局预览条。');
 	}
 
@@ -178,17 +133,6 @@ export async function openLayoutPreviewBar(
 }
 
 export async function closeLayoutPreviewBarAndReturn(): Promise<void> {
-	const id = getStoredPreviewWindowId();
-
-	try {
-		await clearActiveLayoutPreviewCanvas();
-	}
-	catch (error) {
-		console.warn('[LayoutPilot] layout preview canvas cleanup failed', error);
-	}
-
-	await clearPreviewWindowId();
-	await clearPreviewContext();
-	await closePreviewWindowInstance(id);
+	await retireLayoutPreviewSurface();
 	await openLayoutPilotWorkbench();
 }

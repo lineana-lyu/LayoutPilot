@@ -4,7 +4,6 @@ export default {
 	entryPoints: {
 		index: './src/index',
 		workbench: './src/workbench',
-		evidenceReview: './src/evidenceReview',
 		layoutPreview: './src/layoutPreview',
 	},
 	entryNames: '[name]',

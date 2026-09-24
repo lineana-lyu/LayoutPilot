@@ -9,6 +9,7 @@ import type { OwnershipRelationType } from './domain/ownershipRelation';
 import type { SemanticConfidence, SemanticRole } from './domain/semanticInference';
 import { buildClosestSharedRailPadEvidence, type SharedRailPadEvidence } from './domain/physicalEvidence';
 import { createEvidenceReviewSession } from './domain/evidenceReviewSession';
+import { retireEvidenceInspection } from './application/evidenceInspection';
 import { createLayoutPreviewSession } from './domain/layoutPreviewSession';
 import {
 	layoutPlanAcceptanceMode,
@@ -33,18 +34,10 @@ import {
 	showLayoutPlanGhost,
 	type LayoutPreviewFocusOptions,
 } from './eda/layoutPreviewAdapter';
-import { navigateReviewToPcb } from './eda/reviewNavigationAdapter';
-import { beginPcbEvidenceReview, collectPadEvidenceComponents, endPcbEvidenceReview } from './eda/pcbPhysicalAdapter';
-import {
-	getLayoutPilotWorkbenchSizeMode,
-	hideLayoutPilotWorkbench,
-	resizeLayoutPilotWorkbench,
-	type LayoutPilotWorkbenchSizeMode,
-} from './ui/workbenchWindow';
-import { openEvidenceReviewBar, retireEvidenceReviewBar } from './ui/evidenceReviewWindow';
+import { activateReviewPcbDocument, navigateReviewToPcb } from './eda/reviewNavigationAdapter';
+import { beginPcbEvidenceReview, collectPadEvidenceComponents, focusPcbEvidence } from './eda/pcbPhysicalAdapter';
 import {
 	clearActiveLayoutPreviewCanvas,
-	closeLayoutPreviewBarAndReturn,
 	openLayoutPreviewBar,
 } from './ui/layoutPreviewWindow';
 import { renderFocusedLocalDetailCompare } from './ui/focusedPlacementDetail';
@@ -124,9 +117,6 @@ const applyBtn = el<HTMLButtonElement>('applyBtn');
 const undoBtn = el<HTMLButtonElement>('undoBtn');
 const refreshBtn = el<HTMLButtonElement>('refreshBtn');
 const gatewayBtn = el<HTMLButtonElement>('gatewayBtn');
-const sizeCompactBtn = el<HTMLButtonElement>('sizeCompactBtn');
-const sizeStandardBtn = el<HTMLButtonElement>('sizeStandardBtn');
-const sizeWideBtn = el<HTMLButtonElement>('sizeWideBtn');
 const footerNote = el<HTMLDivElement>('footerNote');
 
 let selectedComponentId: string | undefined;
@@ -169,22 +159,6 @@ function setBusy(value: boolean): void {
 	loading.classList.toggle('show', value);
 	analyzeBtn.disabled = value;
 	refreshBtn.disabled = value;
-	sizeCompactBtn.disabled = value;
-	sizeStandardBtn.disabled = value;
-	sizeWideBtn.disabled = value;
-}
-
-function syncWindowSizeButtons(): void {
-	const mode = getLayoutPilotWorkbenchSizeMode();
-	const entries: Array<[HTMLButtonElement, LayoutPilotWorkbenchSizeMode]> = [
-		[sizeCompactBtn, 'compact'],
-		[sizeStandardBtn, 'standard'],
-		[sizeWideBtn, 'wide'],
-	];
-	for (const [button, candidate] of entries) {
-		button.classList.toggle('active', mode === candidate);
-		button.setAttribute('aria-pressed', String(mode === candidate));
-	}
 }
 
 function showToast(message: string): void {
@@ -554,19 +528,23 @@ function renderInlineLayoutReview(): void {
 
 		setBusy(true);
 		try {
+			const activeScene = inlineLayoutReview.scenes[
+				inlineLayoutReview.activeItemIndex
+			] ?? inlineLayoutReview.scenes[0];
+			if (!activeScene) {
+				throw new Error('当前布局方案没有可导航的预览项。');
+			}
+
+			// Validation reads the active PCB. Activate the scene's frozen source
+			// tab first so a previous preview cleanup or a manually focused PCB tab
+			// cannot make validation/navigation operate on a different board.
+			await activateReviewPcbDocument(activeScene.documentTabId);
 			const validation = await validateLayoutPlanCurrent(
 				inlineLayoutReview.plan,
 			);
 			if (!validation.ok) {
 				showToast(validation.message);
 				return;
-			}
-
-			const activeScene = inlineLayoutReview.scenes[
-				inlineLayoutReview.activeItemIndex
-			] ?? inlineLayoutReview.scenes[0];
-			if (!activeScene) {
-				throw new Error('当前布局方案没有可导航的预览项。');
 			}
 
 			const focus = resolveReviewNavigationFocus(
@@ -587,18 +565,11 @@ function renderInlineLayoutReview(): void {
 						? `器件 · ${focus.component.designator}`
 						: 'PCB 定位核对';
 
-			let navigationBarOpened = false;
 			try {
-				await openLayoutPreviewBar({
-					mode: 'navigation',
-					label: navigationLabel,
-				});
-				navigationBarOpened = true;
-				await hideLayoutPilotWorkbench();
-
-				// Run the final canvas zoom only after the compact return bar has
-				// changed the editor viewport, otherwise EasyEDA can fit the
-				// old viewport and leave the target visually too small.
+				// Keep the narrow sidecar visible while the editor camera moves.
+				// EasyEDA's hide/show iframe APIs are beta and real-board testing
+				// showed that hideIFrame can report success without visibly hiding
+				// the host dialog. The sidecar layout avoids that dependency.
 				const canvas = await navigateReviewToPcb(
 					activeScene,
 					focus,
@@ -609,18 +580,17 @@ function renderInlineLayoutReview(): void {
 						documentTabId: canvas.documentTabId,
 					}),
 				);
+				showToast(`${navigationLabel} · 已定位到 PCB`);
 			}
 			catch (error) {
-				if (navigationBarOpened) {
-					try {
-						await closeLayoutPreviewBarAndReturn();
-					}
-					catch (cleanupError) {
-						console.warn(
-							'[LayoutPilot Workbench] navigation bar cleanup failed',
-							cleanupError,
-						);
-					}
+				try {
+					await clearActiveLayoutPreviewCanvas();
+				}
+				catch (cleanupError) {
+					console.warn(
+						'[LayoutPilot Workbench] navigation cleanup failed',
+						cleanupError,
+					);
 				}
 				throw error;
 			}
@@ -1140,6 +1110,7 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 					ownerDesignator: candidate.designator,
 				}),
 			);
+			await retireEvidenceInspection();
 			showToast(`${task.designator} → ${candidate.designator} 已记录为人工证据`);
 			await refresh();
 		});
@@ -1158,14 +1129,15 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 				| { documentTabId: string; originalSelectionIds: string[] }
 				| undefined;
 			try {
-				await retireEvidenceReviewBar();
-				reviewContext = await beginPcbEvidenceReview({
+				await retireEvidenceInspection();
+				const evidenceFocus = {
 					subjectId: task.componentId,
 					subjectDesignator: task.designator,
 					ownerId: candidate.id,
 					ownerDesignator: candidate.designator,
 					powerEvidence: candidate.powerPadEvidence,
-				});
+				};
+				reviewContext = await beginPcbEvidenceReview(evidenceFocus);
 
 				await setStoredEvidenceReviewSession(
 					createEvidenceReviewSession({
@@ -1182,21 +1154,26 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 					}),
 				);
 
-				await openEvidenceReviewBar();
-				await hideLayoutPilotWorkbench();
+				// Keep the narrow sidecar visible so the user can compare the
+				// physical evidence and confirm the Owner without a window roundtrip.
+				await focusPcbEvidence(
+					evidenceFocus,
+					reviewContext.documentTabId,
+				);
+				const evidenceSummary = candidate.powerPadEvidence
+					? `${task.designator} ↔ ${candidate.designator} · ${candidate.powerPadEvidence.netName} · ${candidate.powerPadEvidence.distanceMil.toFixed(1)} mil`
+					: `${task.designator} ↔ ${candidate.designator} · Owner 证据核对`;
+				showToast(`${evidenceSummary} · 已定位到 PCB`);
 			}
 			catch (error) {
 				try {
-					await retireEvidenceReviewBar();
+					await retireEvidenceInspection();
 				}
 				catch (cleanupError) {
 					console.warn(
-						'[LayoutPilot Workbench] unable to retire failed evidence review',
+						'[LayoutPilot Workbench] evidence inspection cleanup failed',
 						cleanupError,
 					);
-					if (reviewContext) {
-						await endPcbEvidenceReview(reviewContext);
-					}
 					await setStoredEvidenceReviewSession(undefined);
 				}
 				console.error('[LayoutPilot Workbench] PCB evidence review failed', error);
@@ -1439,31 +1416,7 @@ gatewayBtn.addEventListener('click', () => {
 	configureAiGateway();
 });
 
-async function changeWorkbenchSize(
-	mode: LayoutPilotWorkbenchSizeMode,
-): Promise<void> {
-	if (busy || getLayoutPilotWorkbenchSizeMode() === mode) return;
-	setBusy(true);
-	try {
-		await resizeLayoutPilotWorkbench(mode);
-	}
-	catch (error) {
-		console.error('[LayoutPilot Workbench] resize failed', error);
-		showToast(`窗口切换失败：${String(error)}`);
-		syncWindowSizeButtons();
-		setBusy(false);
-	}
-}
 
-sizeCompactBtn.addEventListener('click', () => {
-	void changeWorkbenchSize('compact');
-});
-sizeStandardBtn.addEventListener('click', () => {
-	void changeWorkbenchSize('standard');
-});
-sizeWideBtn.addEventListener('click', () => {
-	void changeWorkbenchSize('wide');
-});
 
 async function presentLayoutPlanPreview(
 	plan: LayoutPlan,
@@ -1479,8 +1432,12 @@ async function presentLayoutPlanPreview(
 	);
 
 	try {
+		// The sidecar remains visible by contract. Routine workbench hide/show is
+		// intentionally not part of the navigation lifecycle because real-board
+		// testing showed EasyEDA may acknowledge hideIFrame() without removing the
+		// visible dialog. The LayoutPlan decision bar is therefore layered beside
+		// the narrow sidecar instead of depending on an unreliable hide step.
 		await openLayoutPreviewBar();
-		await hideLayoutPilotWorkbench();
 	}
 	catch (error) {
 		await clearActiveLayoutPreviewCanvas();
@@ -1542,7 +1499,6 @@ window.setInterval(() => {
 	}
 }, 1500);
 
-syncWindowSizeButtons();
 void refresh();
 
 

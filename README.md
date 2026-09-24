@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.18 Planning Correctness & Owner-Cluster Planning
+## Current stage — v0.9.29 PCB-Visibility-Budget Sidecar
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -131,6 +131,181 @@ v0.9.6 separates **accepting a recommendation** from **authorizing PCB mutation*
 Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with EasyEDA's explicit `zoomToRegion` API around current position, proposed position and available Owner bounds instead of preserving the user's previous zoom level. Evidence review uses the same explicit-region pattern rather than relying on `zoomToSelectedPrimitives`, whose internal selection BBox calculation can fail on real projects when a selected primitive has incomplete bounds.
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
+
+## v0.9.29 PCB-Visibility-Budget Sidecar
+
+The v0.9.28 sidecar architecture is retained, but its sizing rule is now expressed
+as a product invariant rather than a fixed 500–620 px band.
+
+- target sidecar width ≈ 26% of the current EasyEDA viewport;
+- readable width band ≈ 430–520 px when the host permits;
+- ordinary desktop/laptop layouts cap the sidecar near 34% of viewport width;
+- the existing <=620 px responsive workbench layout supplies the single-column
+  engineering inspector at these widths;
+- CURRENT / TARGET / component and Owner evidence navigation continue to move
+  the PCB camera while the sidecar stays visible;
+- no runtime shortcut, return strip, native minimize, or hide/show roundtrip is
+  required for direct inspection.
+
+The LayoutPlan decision surface also no longer contains a stale workbench-hide
+call. The narrow sidecar and the decision bar coexist instead of depending on
+EasyEDA's unreliable `hideIFrame()` behavior.
+
+Artifact creation now runs a focused `verify:interaction` architecture gate before
+bundling. It rejects the failed hide/show, runtime-shortcut, mini-dock, evidence
+popup and fixed-size-preset patterns if they reappear in the production path.
+
+No semantic inference, Owner policy, planner, placement execution, rollback,
+Gateway, or calibrated camera logic changes in this revision.
+
+## v0.9.28 Narrow Sidecar Workbench
+
+Real-board testing of v0.9.27 showed two host-runtime assumptions were still too
+optimistic:
+
+- `hideIFrame()` could report success while the visible LayoutPilot workbench
+  remained on screen;
+- the BETA runtime shortcut registered for return-to-workbench did not fire
+  reliably.
+
+v0.9.28 removes both dependencies from routine PCB review.
+
+The workbench is now an intentionally narrow right-side **sidecar** rather than a
+large floating workspace that must be hidden and restored:
+
+- width is derived from the EasyEDA viewport at about 30%, clamped to roughly
+  500–620 px;
+- most of the PCB remains visible while LayoutPilot stays open;
+- the internal layout switches to a vertical master/detail composition at sidecar
+  widths;
+- CURRENT / TARGET / component and Owner evidence navigation move the PCB camera
+  while the sidecar stays visible;
+- Owner confirmation can happen immediately after visual inspection without a
+  window roundtrip;
+- confirming an Owner retires the active evidence markers/session;
+- the old hide button and hide/show inspection dependency are removed;
+- runtime shortcut registration is removed;
+- a one-click top-level **LayoutPilot 工作台** menu command recreates/recover the
+  workbench when needed.
+
+EasyEDA users who want a keyboard shortcut can bind one to that menu command
+through EasyEDA's own native shortcut/menu-shortcut settings instead of relying
+on LayoutPilot's BETA runtime registration.
+
+No semantic inference, Owner policy, planner, placement execution, rollback,
+Gateway, or camera-calibration logic changes in this revision.
+
+## v0.9.27 Popup-Free Canvas Inspection
+
+Real-board testing showed that the remaining friction was not camera accuracy but the
+interaction model: keeping a dedicated return iframe or Owner-evidence iframe over
+the PCB traded one obstruction for another.
+
+Research against EasyEDA's current extension API and public plugins led to a
+stricter separation between **decision UI** and **canvas inspection**:
+
+- `SYS_IFrame.openIFrame()` is a dialog-window primitive with creation-time
+  geometry, not a native extension docking API;
+- `SYS_PanelControl` controls EasyEDA's built-in panels rather than providing a
+  plugin-owned dock surface;
+- public EasyEDA plugins commonly keep their main tool in an iframe and jump
+  directly to editor objects for inspection;
+- EasyEDA exposes extension shortcut registration and non-blocking toast
+  messages, which are a better fit for temporary full-canvas inspection than
+  another persistent helper window.
+
+v0.9.27 therefore removes the helper-window architecture instead of shrinking it:
+
+- **CURRENT / TARGET / component navigation:** hide workbench → navigate/zoom on
+  the PCB → show a short toast → return with `Alt+Shift+L` or the permanent
+  LayoutPilot menu command;
+- **Owner “定位核对”:** same popup-free canvas path, including the calibrated
+  `zoomTo(x, y, scale, tabId)` camera and evidence markers; Owner confirmation
+  remains in the main workbench;
+- **manual “隐藏工作台”:** hides the workbench with no mini dock or return strip;
+- **return path:** `Alt+Shift+L` or
+  **返回 LayoutPilot 工作台（退出核对）** cleans review state/markers and restores
+  the exact hidden workbench when possible;
+- **recovery path:** **重新打开 LayoutPilot 工作台** still recreates a fresh host
+  iframe when EasyEDA's host window state becomes stale;
+- the LayoutPlan accept/reject iframe is retained only for actual plan decisions,
+  not as a navigation return bar.
+
+Obsolete popup-only runtime code was deleted: the evidence-review iframe, evidence
+review controller, workbench dock iframe/controller, navigation-mode layout-preview
+code, dock geometry policy and their package/build entries.
+
+The researched host/plugin patterns are recorded in
+`docs/EASYEDA_PLUGIN_UI_PATTERN_RESEARCH.md`. The window/inspection invariants
+are frozen in `docs/WORKBENCH_WINDOW_CONTRACT.md` and
+`docs/REVIEW_NAVIGATION_CONTRACT.md`.
+
+## v0.9.26 Recoverable Workbench & Unified Navigation
+
+Real-board testing after v0.9.25 exposed three UX/runtime problems outside the now-working layout-preview camera:
+
+- EasyEDA's native minimized iframe becomes an ambiguous gray rectangle and can restore with missing/moved window state after the whole application is minimized;
+- the Owner-evidence “定位核对” path still used `zoomToRegion()`, so it selected/highlighted components without reliably moving the visible PCB;
+- compact/standard/wide workbench presets recreated only three fixed sizes and did not solve the actual need: keep the PCB visible while the workbench is open.
+
+v0.9.26 changes the window model instead of adding more presets:
+
+- native workbench minimize is disabled;
+- the default workbench is a responsive right-side window that intentionally leaves PCB area visible;
+- the old compact/standard/wide controls are removed;
+- v0.9.26 introduced a dedicated **收起工作台** helper strip; v0.9.27 subsequently removes that strip after real-board UX validation;
+- extension-menu **打开 LayoutPilot 工作台** is now a forced recovery path: it recreates a fresh host iframe from persisted workflow state instead of trusting a possibly stale `showIFrame()` result;
+- internal return prefers the existing hidden workbench so transient in-memory review state can survive normal PCB inspection;
+- Owner evidence navigation now reuses the same bounded-context + calibrated `zoomTo(x, y, scale, tabId)` model as layout-preview navigation.
+
+The lifecycle and host-API boundaries are documented in `docs/WORKBENCH_WINDOW_CONTRACT.md`.
+
+## v0.9.25 Calibrated Coordinate Review Navigation
+
+Real-board testing of v0.9.24 confirmed that the remaining failure is host-runtime behavior: `zoomToRegion(...)` returned success, the requested component was selected/highlighted, but the visible PCB canvas stayed at the previous whole-board viewport. The reviewer still had to pan and zoom manually.
+
+v0.9.25 keeps the lifecycle corrections from v0.9.23/v0.9.24 but replaces the no-op camera primitive:
+
+- the review scene still freezes the source PCB tab;
+- cleanup remains focus-neutral and stale iframe callbacks remain fenced;
+- the clicked component / CURRENT / TARGET is still converted to a bounded physical context region;
+- the final camera writer is now one `zoomTo(centerX, centerY, scaleRatio, frozenTabId)` call;
+- center coordinates come from the context region, and scale is derived from its physical span;
+- the calibrated scale range is 18–36%, matching working EasyEDA tooling that uses roughly 15–40% for one chip plus nearby context;
+- the beta return viewport is not treated as proof of visible editor state.
+
+This deliberately avoids both previously observed failure modes: hundreds-of-percent over-zoom and `zoomToRegion()` reporting success without moving the canvas.
+
+## v0.9.24 Region-Fit Review Navigation
+
+Real-board testing of v0.9.23 separated two previously conflated facts: the lifecycle fix successfully navigated to the correct PCB location, but the final camera policy then over-zoomed that location. The toast also proved that the beta `zoomTo()` return geometry was not a reliable semantic postcondition: EasyEDA reported a ~3.5 mil viewport outside the requested center even though the editor had visibly navigated to the correct neighborhood.
+
+v0.9.24 therefore removes the percentage-zoom subsystem instead of retuning its constants:
+
+- the clicked component / CURRENT / TARGET is converted to a bounded physical PCB review region;
+- tiny passives get a practical minimum context window, larger footprints expand context proportionally, and TARGET includes Owner context when available;
+- the final and only camera writer is `zoomToRegion(left, right, top, bottom, frozenTabId)`;
+- there is no follow-up 300–500% `zoomTo()` call and no viewport-return postcondition;
+- the v0.9.23 frozen-tab, focus-neutral cleanup, and active-window ownership fixes remain intact;
+- the obsolete percentage camera policy and its tests are deleted rather than left as hidden dead code.
+
+This matches the product intent more directly: LayoutPilot asks EasyEDA to show a review neighborhood, not to enforce a device-independent global zoom percentage.
+
+## v0.9.23 Deterministic Review Navigation
+
+Real-board review exposed a lifecycle problem rather than another zoom-number problem. Marker cleanup could reactivate an older PCB tab, the next click then trusted the live current tab, and a replaced preview iframe could still run its stale close callback and reopen the workbench while navigation was in progress.
+
+v0.9.23 replaces that chain with explicit ownership boundaries:
+
+- every review scene freezes its source PCB `documentTabId`, and that exact tab is reactivated/read back before validation and again before final navigation;
+- preview cleanup is focus-neutral and removes markers by tab id without activating the tab;
+- preview/navigation iframes use active-window ownership, so a stale close callback cannot clear the successor window's state or reopen the workbench;
+- selection and indicator markers are presentation-only;
+- the final camera has one writer: `zoomTo(centerX, centerY, explicitScaleRatio, tabId)`;
+- the returned EasyEDA viewport is verified as a postcondition, so an off-target or effectively whole-board result fails visibly instead of being reported as successful;
+- the camera policy is isolated in `src/domain/reviewCameraPolicy.ts` and covered by a pure regression test.
+
+The architectural invariants and prohibited regression patterns are documented in `docs/REVIEW_NAVIGATION_CONTRACT.md`. No board-specific ids, timing sleeps, retry loops, test-mode production paths, or hidden split-screen assumptions are introduced.
 
 ## v0.9.22 Navigation Reset
 

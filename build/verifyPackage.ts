@@ -39,20 +39,30 @@ async function main(): Promise<void> {
 	if (!files.includes('dist/workbench.js')) {
 		throw new Error('Packaged extension is missing dist/workbench.js');
 	}
-	if (!files.includes('dist/evidenceReview.js')) {
-		throw new Error('Packaged extension is missing dist/evidenceReview.js');
-	}
 	if (!files.includes('dist/layoutPreview.js')) {
 		throw new Error('Packaged extension is missing dist/layoutPreview.js');
 	}
 	if (!files.includes('iframe/workbench.html')) {
 		throw new Error('Packaged extension is missing iframe/workbench.html');
 	}
-	if (!files.includes('iframe/evidence-review.html')) {
-		throw new Error('Packaged extension is missing iframe/evidence-review.html');
-	}
 	if (!files.includes('iframe/layout-preview.html')) {
 		throw new Error('Packaged extension is missing iframe/layout-preview.html');
+	}
+
+	const forbiddenInspectionPopups = [
+		'dist/evidenceReview.js',
+		'dist/workbenchDock.js',
+		'iframe/evidence-review.html',
+		'iframe/workbench-dock.html',
+	];
+	const leakedInspectionPopups = forbiddenInspectionPopups.filter(file =>
+		files.includes(file),
+	);
+	if (leakedInspectionPopups.length) {
+		throw new Error(
+			'Popup-free inspection contract violated by packaged files: '
+				+ leakedInspectionPopups.join(', '),
+		);
 	}
 
 	console.log('[LayoutPilot] package boundary verified', files);

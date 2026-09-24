@@ -1,8 +1,9 @@
 import {
-	paddedCanvasRegion,
 	unionCanvasBounds,
 	type CanvasBounds,
 } from '../domain/canvasRegion';
+import { buildReviewCameraCommand } from '../domain/reviewCameraCommand';
+import { buildReviewFocusRegion } from '../domain/reviewNavigator';
 import {
 	buildBoardPolygonsFromSegments,
 	buildBoardRegionFromPolygons,
@@ -444,12 +445,11 @@ export async function beginPcbEvidenceReview(input: {
 		throw new Error('当前活动文档不是 PCB，无法执行画布定位。');
 	}
 
+	const documentTabId = document.tabId;
 	const originalSelectionIds = await getSelectedPrimitiveIdsCompat();
 
-	await focusPcbEvidence(input);
-
 	return {
-		documentTabId: document.tabId,
+		documentTabId: documentTabId,
 		originalSelectionIds: [...originalSelectionIds],
 	};
 }
@@ -543,16 +543,26 @@ export async function focusPcbEvidence(input: {
 		ownerX: number;
 		ownerY: number;
 	};
-}): Promise<void> {
-	const document = await eda.dmt_SelectControl.getCurrentDocumentInfo();
-	if (!document) {
-		throw new Error('无法获取当前 PCB 文档信息。');
-	}
-	if (document.documentType !== EDMT_EditorDocumentType.PCB) {
-		throw new Error('当前活动文档不是 PCB，无法执行画布定位。');
+}, frozenDocumentTabId?: string): Promise<void> {
+	const current = await eda.dmt_SelectControl.getCurrentDocumentInfo();
+	const documentTabId = frozenDocumentTabId ?? current?.tabId;
+	if (!documentTabId) {
+		throw new Error('无法确定当前 PCB 文档。');
 	}
 
-	await eda.dmt_EditorControl.activateDocument(document.tabId);
+	const activated = await eda.dmt_EditorControl.activateDocument(documentTabId);
+	if (!activated) {
+		throw new Error('无法激活证据核对对应的 PCB 文档。');
+	}
+	const document = await eda.dmt_SelectControl.getCurrentDocumentInfo();
+	if (
+		!document
+		|| document.documentType !== EDMT_EditorDocumentType.PCB
+		|| document.tabId !== documentTabId
+	) {
+		throw new Error('证据核对对应的 PCB 文档已失效，请重新打开工作台。');
+	}
+
 	await eda.pcb_SelectControl.clearSelected();
 
 	try {
@@ -597,23 +607,19 @@ export async function focusPcbEvidence(input: {
 	if (!focusBounds) {
 		throw new Error('无法建立 subject / owner 的可靠定位区域。');
 	}
-	const region = paddedCanvasRegion(focusBounds, {
-		marginRatio: 0.22,
-		minMarginMil: 80,
-		minSpanMil: 240,
-	});
-	const zoomed = await eda.dmt_EditorControl.zoomToRegion(
-		region.left,
-		region.right,
-		region.top,
-		region.bottom,
-		document.tabId,
+	const region = buildReviewFocusRegion(focusBounds, 840);
+	const camera = buildReviewCameraCommand(region);
+	const zoomed = await eda.dmt_EditorControl.zoomTo(
+		camera.x,
+		camera.y,
+		camera.scaleRatio,
+		documentTabId,
 	);
 	if (!zoomed) {
-		throw new Error('嘉立创EDA未能定位到 subject / owner 区域。');
+		throw new Error('嘉立创EDA未能定位并放大到 subject / owner 区域。');
 	}
 
-	await eda.dmt_EditorControl.removeIndicatorMarkers(document.tabId);
+	await eda.dmt_EditorControl.removeIndicatorMarkers(documentTabId);
 
 	if (input.powerEvidence) {
 		const {
@@ -648,7 +654,7 @@ export async function focusPcbEvidence(input: {
 			{ r: 23, g: 111, b: 189, alpha: 0.92 },
 			2,
 			false,
-			document.tabId,
+			documentTabId,
 		);
 	}
 }

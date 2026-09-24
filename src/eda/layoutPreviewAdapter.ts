@@ -203,13 +203,9 @@ export async function showLayoutPlanGhost(
 export async function clearLayoutPlanGhost(
 	session: LayoutPreviewCanvasSession,
 ): Promise<void> {
-	try {
-		await eda.dmt_EditorControl.activateDocument(session.documentTabId);
-	}
-	catch (error) {
-		console.warn('[LayoutPilot] unable to reactivate preview document', error);
-	}
-
+	// Marker cleanup is tab-addressable and must not change editor focus. Older
+	// cleanup activated the previous preview tab first, which could silently
+	// retarget the next review click when multiple PCB tabs were open.
 	try {
 		await eda.dmt_EditorControl.removeIndicatorMarkers(session.documentTabId);
 	}
