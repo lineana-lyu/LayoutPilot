@@ -1,6 +1,6 @@
 {
   "name": "layoutpilot",
-  "version": "0.9.27",
+  "version": "0.9.28",
   "description": "AI-assisted PCB layout planning for JLCEDA / EasyEDA Pro",
   "author": "lineana-lyu",
   "license": "Apache-2.0",
