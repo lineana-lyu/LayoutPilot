@@ -445,6 +445,7 @@ export async function beginPcbEvidenceReview(input: {
 		throw new Error('当前活动文档不是 PCB，无法执行画布定位。');
 	}
 
+	const documentTabId = document.tabId;
 	const originalSelectionIds = await getSelectedPrimitiveIdsCompat();
 
 	await focusPcbEvidence(input, documentTabId);
@@ -559,7 +560,7 @@ export async function focusPcbEvidence(input: {
 	if (
 		!document
 		|| document.documentType !== EDMT_EditorDocumentType.PCB
-		|| documentTabId !== documentTabId
+		|| document.tabId !== documentTabId
 	) {
 		throw new Error('证据核对对应的 PCB 文档已失效，请重新打开工作台。');
 	}
