@@ -82,7 +82,7 @@ flow. It is separate from direct PCB navigation.
 
 ## Build-time interaction audit gate
 
-The production bundle step runs `npm run verify:interaction` before esbuild. The verifier encodes the window architecture itself: routine workbench code may not reintroduce `hideIFrame()` / `showIFrame()`, runtime shortcut return paths, compact/standard/wide controls, helper dock/evidence iframes, or navigation-only LayoutPreview state. It also asserts that the shared PCB navigation entry points remain present.
+The production bundle step runs `npm run verify:interaction` before esbuild. The verifier encodes the window architecture itself: routine inspection code may not reintroduce `hideIFrame()`, runtime shortcut return paths, compact/standard/wide controls, helper dock/evidence iframes, or navigation-only LayoutPreview state. `showIFrame()` remains allowed only for returning from the retained LayoutPlan decision surface. It also asserts that the shared PCB navigation entry points remain present.
 
 This focused gate is intentionally scoped to the interaction architecture. The repository still contains legacy diagnostic code that predates a whole-project strict TypeScript gate; fixing unrelated diagnostic typing is not required to change the workbench lifecycle.
 
