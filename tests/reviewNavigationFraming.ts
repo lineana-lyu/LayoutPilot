@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 
+import { buildReviewCameraCommand } from '../src/domain/reviewCameraCommand';
 import { buildReviewFocusRegion } from '../src/domain/reviewNavigator';
 
 function span(region: { left: number; right: number; top: number; bottom: number }) {
@@ -56,3 +57,37 @@ assert.deepEqual(span(targetContext), {
 });
 
 console.log('Review navigation framing tests passed.');
+
+
+const tinyCamera = buildReviewCameraCommand(tiny);
+assert.deepEqual(
+	{ x: tinyCamera.x, y: tinyCamera.y },
+	{ x: 120, y: 210 },
+);
+assert.equal(
+	tinyCamera.scaleRatio,
+	35,
+	'tiny passive context should use a moderate close-up rather than hundreds of percent',
+);
+
+const targetCamera = buildReviewCameraCommand(targetContext);
+assert.equal(targetCamera.scaleRatio, 30);
+
+const largeCamera = buildReviewCameraCommand(large);
+assert.equal(
+	largeCamera.scaleRatio,
+	18,
+	'large review context should use the lower zoom bound',
+);
+
+assert.throws(
+	() => buildReviewCameraCommand({
+		left: Number.NaN,
+		right: 100,
+		top: 0,
+		bottom: 100,
+	}),
+	/finite/,
+);
+
+console.log('Review camera command tests passed.');
