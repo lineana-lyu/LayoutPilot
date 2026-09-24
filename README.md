@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.24 Region-Fit Review Navigation
+## Current stage — v0.9.25 Calibrated Coordinate Review Navigation
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -131,6 +131,22 @@ v0.9.6 separates **accepting a recommendation** from **authorizing PCB mutation*
 Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with EasyEDA's explicit `zoomToRegion` API around current position, proposed position and available Owner bounds instead of preserving the user's previous zoom level. Evidence review uses the same explicit-region pattern rather than relying on `zoomToSelectedPrimitives`, whose internal selection BBox calculation can fail on real projects when a selected primitive has incomplete bounds.
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
+
+## v0.9.25 Calibrated Coordinate Review Navigation
+
+Real-board testing of v0.9.24 confirmed that the remaining failure is host-runtime behavior: `zoomToRegion(...)` returned success, the requested component was selected/highlighted, but the visible PCB canvas stayed at the previous whole-board viewport. The reviewer still had to pan and zoom manually.
+
+v0.9.25 keeps the lifecycle corrections from v0.9.23/v0.9.24 but replaces the no-op camera primitive:
+
+- the review scene still freezes the source PCB tab;
+- cleanup remains focus-neutral and stale iframe callbacks remain fenced;
+- the clicked component / CURRENT / TARGET is still converted to a bounded physical context region;
+- the final camera writer is now one `zoomTo(centerX, centerY, scaleRatio, frozenTabId)` call;
+- center coordinates come from the context region, and scale is derived from its physical span;
+- the calibrated scale range is 18–36%, matching working EasyEDA tooling that uses roughly 15–40% for one chip plus nearby context;
+- the beta return viewport is not treated as proof of visible editor state.
+
+This deliberately avoids both previously observed failure modes: hundreds-of-percent over-zoom and `zoomToRegion()` reporting success without moving the canvas.
 
 ## v0.9.24 Region-Fit Review Navigation
 
