@@ -8,7 +8,7 @@ The product thesis is simple:
 
 > Engineers should not place every component manually, but an opaque AI should not be allowed to invent electrical ownership or move PCB components without evidence, review, verification, and rollback.
 
-## Current stage — v0.9.25 Calibrated Coordinate Review Navigation
+## Current stage — v0.9.26 Recoverable Workbench & Unified Navigation
 
 The current implementation closes a conservative end-to-end loop:
 
@@ -131,6 +131,26 @@ v0.9.6 separates **accepting a recommendation** from **authorizing PCB mutation*
 Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with EasyEDA's explicit `zoomToRegion` API around current position, proposed position and available Owner bounds instead of preserving the user's previous zoom level. Evidence review uses the same explicit-region pattern rather than relying on `zoomToSelectedPrimitives`, whose internal selection BBox calculation can fail on real projects when a selected primitive has incomplete bounds.
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
+
+## v0.9.26 Recoverable Workbench & Unified Navigation
+
+Real-board testing after v0.9.25 exposed three UX/runtime problems outside the now-working layout-preview camera:
+
+- EasyEDA's native minimized iframe becomes an ambiguous gray rectangle and can restore with missing/moved window state after the whole application is minimized;
+- the Owner-evidence “定位核对” path still used `zoomToRegion()`, so it selected/highlighted components without reliably moving the visible PCB;
+- compact/standard/wide workbench presets recreated only three fixed sizes and did not solve the actual need: keep the PCB visible while the workbench is open.
+
+v0.9.26 changes the window model instead of adding more presets:
+
+- native workbench minimize is disabled;
+- the default workbench is a responsive right-side window that intentionally leaves PCB area visible;
+- the old compact/standard/wide controls are removed;
+- a dedicated **收起工作台** action hides the workbench and opens a small branded LayoutPilot return strip;
+- extension-menu **打开 LayoutPilot 工作台** is now a forced recovery path: it recreates a fresh host iframe from persisted workflow state instead of trusting a possibly stale `showIFrame()` result;
+- internal preview/evidence return still prefers the existing hidden iframe so transient in-memory review state can survive normal PCB inspection;
+- Owner evidence navigation now reuses the same bounded-context + calibrated `zoomTo(x, y, scale, tabId)` model as layout-preview navigation.
+
+The lifecycle and host-API boundaries are documented in `docs/WORKBENCH_WINDOW_CONTRACT.md`.
 
 ## v0.9.25 Calibrated Coordinate Review Navigation
 
