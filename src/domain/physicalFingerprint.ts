@@ -89,14 +89,11 @@ export function buildPhysicalBoardFingerprint(input: {
 			rotation: numeric(component.rotation),
 			layer: component.layer,
 			locked: component.locked,
-			bounds: component.bounds
-				? {
-					minX: numeric(component.bounds.minX),
-					minY: numeric(component.bounds.minY),
-					maxX: numeric(component.bounds.maxX),
-					maxY: numeric(component.bounds.maxY),
-				}
-				: null,
+			// EasyEDA's measured primitive BBox is deliberately excluded from
+			// staleness identity. It is derived render/safety geometry and can
+			// vary with text/graphics presentation without a component move.
+			// Anchor/pad coordinates, rotation, layer, board and keepout state
+			// remain authoritative for physical-plan identity.
 			pads: [...component.pads]
 				.sort((a, b) =>
 					a.padNumber.localeCompare(b.padNumber)
@@ -138,5 +135,5 @@ export function buildPhysicalBoardFingerprint(input: {
 		keepouts,
 	});
 
-	return `phys-v2-${hashText(canonical)}`;
+	return `phys-v3-${hashText(canonical)}`;
 }

@@ -70,7 +70,7 @@ const fingerprint = (
 });
 
 const base = fingerprint(ring);
-assert.match(base, /^phys-v2-/);
+assert.match(base, /^phys-v3-/);
 
 assert.equal(
 	fingerprint(rotate(ring, 2)),
@@ -99,6 +99,24 @@ assert.equal(
 	fingerprint(ring, [...keepout].reverse()),
 	base,
 	'keepout winding direction must not change the physical fingerprint',
+);
+
+const bboxPresentationChanged = buildPhysicalBoardFingerprint({
+	components: [{
+		...components[0],
+		bounds: { minX: -500, minY: -400, maxX: 800, maxY: 700 },
+	}],
+	board: {
+		outer: { points: ring },
+		holes: [],
+		approximationToleranceMil: 0,
+	},
+	componentKeepouts: [{ points: keepout }],
+});
+assert.equal(
+	bboxPresentationChanged,
+	base,
+	'derived EasyEDA primitive BBox changes must not stale an unchanged physical plan',
 );
 
 const moved = buildPhysicalBoardFingerprint({
