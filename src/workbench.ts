@@ -1432,8 +1432,12 @@ async function presentLayoutPlanPreview(
 	);
 
 	try {
+		// The sidecar remains visible by contract. Routine workbench hide/show is
+		// intentionally not part of the navigation lifecycle because real-board
+		// testing showed EasyEDA may acknowledge hideIFrame() without removing the
+		// visible dialog. The LayoutPlan decision bar is therefore layered beside
+		// the narrow sidecar instead of depending on an unreliable hide step.
 		await openLayoutPreviewBar();
-		await hideLayoutPilotWorkbench();
 	}
 	catch (error) {
 		await clearActiveLayoutPreviewCanvas();
