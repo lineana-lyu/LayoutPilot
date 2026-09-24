@@ -23,14 +23,32 @@ export interface ReviewNavigationFocus {
 	selectPrimitiveId?: string;
 }
 
-function focusRegion(
+const DEFAULT_MIN_CONTEXT_SPAN_MIL = 720;
+const TARGET_MIN_CONTEXT_SPAN_MIL = 840;
+const MAX_CONTEXT_SPAN_MIL = 1400;
+const COMPONENT_CONTEXT_MULTIPLIER = 5;
+
+function clamp(value: number, min: number, max: number): number {
+	return Math.min(max, Math.max(min, value));
+}
+
+export function buildReviewFocusRegion(
 	bounds: CanvasBounds,
-	minSpanMil = 460,
+	minContextSpanMil = DEFAULT_MIN_CONTEXT_SPAN_MIL,
 ): CanvasRegion {
+	const width = Math.max(0, bounds.maxX - bounds.minX);
+	const height = Math.max(0, bounds.maxY - bounds.minY);
+	const contentSpan = Math.max(width, height, 1);
+	const desiredSpan = clamp(
+		contentSpan * COMPONENT_CONTEXT_MULTIPLIER,
+		minContextSpanMil,
+		MAX_CONTEXT_SPAN_MIL,
+	);
+
 	return paddedCanvasRegion(bounds, {
-		marginRatio: 0.28,
-		minMarginMil: 72,
-		minSpanMil,
+		marginRatio: 0.6,
+		minMarginMil: 120,
+		minSpanMil: desiredSpan,
 	});
 }
 
@@ -45,14 +63,17 @@ export function resolveReviewNavigationFocus(
 		]) ?? scene.subjectTargetBounds;
 		return {
 			kind: 'target',
-			region: focusRegion(targetContext, 560),
+			region: buildReviewFocusRegion(
+				targetContext,
+				TARGET_MIN_CONTEXT_SPAN_MIL,
+			),
 		};
 	}
 
 	if (request.kind === 'current') {
 		return {
 			kind: 'current',
-			region: focusRegion(scene.subject.bounds),
+			region: buildReviewFocusRegion(scene.subject.bounds),
 			component: scene.subject,
 			selectPrimitiveId: scene.subject.id,
 		};
@@ -71,7 +92,7 @@ export function resolveReviewNavigationFocus(
 
 	return {
 		kind: 'component',
-		region: focusRegion(component.bounds),
+		region: buildReviewFocusRegion(component.bounds),
 		component,
 		selectPrimitiveId: component.id,
 	};
