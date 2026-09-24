@@ -20,76 +20,11 @@ import { filterOwnershipPropertyNames, findOwnershipFields, findOwnershipMemberN
 import { collectPhysicalComponents, collectSimpleBoardBoundary, collectSimpleComponentKeepouts, moveComponentAndVerify, readComponentPhysicalState } from './eda/pcbPhysicalAdapter';
 import { collectAnalysisState } from './eda/analysisAdapter';
 import { reopenLayoutPilotWorkbench } from './ui/workbenchWindow';
-import {
-  LAYOUTPILOT_RETURN_SHORTCUT,
-  returnToLayoutPilotWorkbench,
-} from './application/canvasInspection';
 import { clearStoredSemanticSnapshot, getStoredHumanOwnershipDecisions, getStoredLastPlacementCommand, getStoredSemanticSnapshot, removeStoredHumanOwnershipDecision, replaceStoredSemanticSnapshot, setStoredLastPlacementCommand, setStoredLayoutPlan, upsertStoredHumanOwnershipDecision } from './eda/workflowStore';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
-const RETURN_SHORTCUT_TITLE = 'LayoutPilot：返回工作台';
-
-function shortcutSignature(shortcut: readonly string[]): string {
-  return [...shortcut].sort().join('+');
-}
-
-async function registerReturnShortcut(): Promise<void> {
-  try {
-    const existing = await eda.sys_ShortcutKey.getShortcutKeys(true);
-    const wanted = shortcutSignature(LAYOUTPILOT_RETURN_SHORTCUT);
-    const conflict = existing.find(item =>
-      shortcutSignature(item.shortcutKey) === wanted
-    );
-
-    if (conflict) {
-      if (conflict.title !== RETURN_SHORTCUT_TITLE) {
-        console.warn('[LayoutPilot] return shortcut is already occupied', {
-          shortcut: LAYOUTPILOT_RETURN_SHORTCUT,
-          title: conflict.title,
-        });
-      }
-      return;
-    }
-
-    const registered = await eda.sys_ShortcutKey.registerShortcutKey(
-      LAYOUTPILOT_RETURN_SHORTCUT,
-      RETURN_SHORTCUT_TITLE,
-      async () => {
-        await returnWorkbench();
-      },
-      [ESYS_ShortcutKeyEffectiveEditorDocumentType.PCB],
-    );
-    if (!registered) {
-      console.warn('[LayoutPilot] return shortcut registration was rejected');
-    }
-  }
-  catch (error) {
-    console.warn('[LayoutPilot] unable to register return shortcut', error);
-  }
-}
-
 export function activate(status?: 'onStartupFinished', arg?: string): void {
   console.log('[LayoutPilot] activated', { status, arg });
-  void registerReturnShortcut();
-}
-
-export async function deactivate(): Promise<void> {
-  try {
-    const existing = await eda.sys_ShortcutKey.getShortcutKeys(true);
-    const wanted = shortcutSignature(LAYOUTPILOT_RETURN_SHORTCUT);
-    const owned = existing.some(item =>
-      item.title === RETURN_SHORTCUT_TITLE
-      && shortcutSignature(item.shortcutKey) === wanted
-    );
-    if (owned) {
-      await eda.sys_ShortcutKey.unregisterShortcutKey(
-        LAYOUTPILOT_RETURN_SHORTCUT,
-      );
-    }
-  }
-  catch (error) {
-    console.warn('[LayoutPilot] unable to unregister return shortcut', error);
-  }
 }
 
 export async function openWorkbench(): Promise<void> {
@@ -107,25 +42,6 @@ export async function openWorkbench(): Promise<void> {
         '该错误只影响工作台窗口；PCB 不会发生任何修改。',
       ].join('\n'),
       'LayoutPilot · 工作台启动失败',
-    );
-  }
-}
-
-export async function returnWorkbench(): Promise<void> {
-  try {
-    await returnToLayoutPilotWorkbench();
-  }
-  catch (error) {
-    console.error('[LayoutPilot] Workbench return failed', error);
-    await eda.sys_Dialog.showInformationMessage(
-      [
-        'LayoutPilot 返回工作台失败。',
-        '',
-        String(error),
-        '',
-        'PCB 不会发生任何修改；可使用“打开 LayoutPilot 工作台”重建窗口。',
-      ].join('\n'),
-      'LayoutPilot · 返回工作台失败',
     );
   }
 }
