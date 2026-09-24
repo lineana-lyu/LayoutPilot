@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LayoutPilot · 工作台已收起</title>
+  <style>
+    :root{
+      --accent:#4f7fdc;--accent-dark:#315fba;--accent-soft:#edf3fd;
+      --text:#1f2a36;--muted:#65717e;--line:#a9bfe8;
+      --font:"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;height:100%;font-family:var(--font);background:transparent;color:var(--text)}
+    body{padding:4px}
+    .dock{
+      height:100%;display:grid;grid-template-columns:8px minmax(0,1fr) auto;
+      align-items:center;gap:9px;background:#fff;border:1px solid var(--line);
+      box-shadow:0 2px 8px rgba(38,73,132,.20);padding:4px 6px 4px 0;
+    }
+    .accent{align-self:stretch;background:var(--accent)}
+    .copy{min-width:0}
+    .title{font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .status{font-size:8px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    button{
+      height:26px;padding:0 10px;border:1px solid var(--accent);background:var(--accent-soft);
+      color:var(--accent-dark);font:10px var(--font);cursor:pointer;font-weight:600;
+    }
+    button:hover{background:#e2ecfb}
+    button:disabled{opacity:.5;cursor:not-allowed}
+  </style>
+</head>
+<body>
+  <div class="dock">
+    <div class="accent" aria-hidden="true"></div>
+    <div class="copy">
+      <div class="title">LayoutPilot 工作台已收起</div>
+      <div class="status" id="status">PCB 保持可见 · 点击恢复工作台</div>
+    </div>
+    <button id="restoreBtn">展开工作台</button>
+  </div>
+  <script src="/dist/workbenchDock.js"></script>
+</body>
+</html>
