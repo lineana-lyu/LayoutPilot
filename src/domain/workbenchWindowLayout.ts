@@ -39,20 +39,3 @@ export function buildWorkbenchFrameLayout(
 		y: viewport.height - height >= 64 ? 44 : 8,
 	};
 }
-
-export function buildWorkbenchDockLayout(
-	viewport: WorkbenchHostViewport,
-): WorkbenchHostFrameLayout {
-	const width = Math.min(
-		Math.max(260, Math.round(viewport.width * 0.18)),
-		Math.min(340, Math.max(260, viewport.width - 32)),
-	);
-	const height = 48;
-
-	return {
-		width,
-		height,
-		x: Math.max(8, viewport.width - width - 18),
-		y: 52,
-	};
-}
