@@ -143,3 +143,32 @@ The revised transferable pattern is therefore:
 
 This keeps the interaction continuous and removes the entire hide → return
 lifecycle from routine PCB inspection.
+
+
+## 6. PCB canvas right-click is not an available extension surface
+
+`SYS_RightClickMenu.changeMenu()` initially looked like a possible popup-free
+return affordance. The current official contract rules it out for LayoutPilot:
+the API only supports right-click customization for items in the bottom
+component / symbol / footprint / reuse-module lists. It does **not** expose the
+PCB canvas context menu, and it is BETA.
+
+Therefore LayoutPilot must not build its PCB inspection lifecycle around a
+canvas right-click command. The stable manifest-level `LayoutPilot 工作台`
+header command remains the recovery entry point.
+
+Reference:
+https://prodocs.easyeda.com/cn/api/reference/pro-api.sys_rightclickmenu.changemenu.html
+
+## v0.9.29 decision
+
+The v0.9.28 sidecar model is retained and tightened around a PCB-visibility
+budget. The sidecar targets roughly 26% of the host width, keeps a readable
+430–520 px range where possible, and caps ordinary desktop/laptop occupancy near
+34%.
+
+Direct inspection does not hide the sidecar, register a runtime shortcut, create
+a return iframe, or rely on an unsupported PCB canvas right-click menu.
+
+The artifact build now includes a TypeScript `--noEmit` gate so stale window
+symbols cannot survive bundling unnoticed.
