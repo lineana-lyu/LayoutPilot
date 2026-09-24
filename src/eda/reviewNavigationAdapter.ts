@@ -103,20 +103,25 @@ export async function navigateReviewToPcb(
 		throw new Error('布局审查场景缺少冻结的 PCB Tab ID。');
 	}
 
-	const activated = await eda.dmt_EditorControl.activateDocument(documentTabId);
-	if (!activated) {
-		throw new Error('原始 PCB 文档已关闭或无法重新激活，请重新生成布局预览。');
-	}
-	await eda.dmt_EditorControl.removeIndicatorMarkers(documentTabId);
-
 	try {
-		await eda.pcb_SelectControl.clearSelected();
-	}
-	catch (error) {
-		console.warn('[LayoutPilot] unable to clear PCB selection before review navigation', error);
-	}
+		// Camera ownership is resolved first from LayoutPilot's explicit geometry.
+		// Selection and markers are presentation only and are not allowed to drive
+		// the viewport.
+		await focusExplicitRegion({
+			port: easyEdaEditorCameraPort,
+			documentTabId,
+			region: focus.region,
+		});
 
-	try {
+		await eda.dmt_EditorControl.removeIndicatorMarkers(documentTabId);
+
+		try {
+			await eda.pcb_SelectControl.clearSelected();
+		}
+		catch (error) {
+			console.warn('[LayoutPilot] unable to clear PCB selection after camera focus', error);
+		}
+
 		if (focus.selectPrimitiveId) {
 			try {
 				await eda.pcb_SelectControl.doSelectPrimitives(
@@ -163,12 +168,6 @@ export async function navigateReviewToPcb(
 				console.warn('[LayoutPilot] unable to generate CURRENT review marker');
 			}
 		}
-
-		await focusExplicitRegion({
-			port: easyEdaEditorCameraPort,
-			documentTabId,
-			region: focus.region,
-		});
 
 		return {
 			documentTabId,
