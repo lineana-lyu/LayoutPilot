@@ -34,10 +34,11 @@ import {
 	type LayoutPreviewFocusOptions,
 } from './eda/layoutPreviewAdapter';
 import { activateReviewPcbDocument, navigateReviewToPcb } from './eda/reviewNavigationAdapter';
-import { beginPcbEvidenceReview, collectPadEvidenceComponents, endPcbEvidenceReview } from './eda/pcbPhysicalAdapter';
+import { beginPcbEvidenceReview, collectPadEvidenceComponents, endPcbEvidenceReview, focusPcbEvidence } from './eda/pcbPhysicalAdapter';
 import {
 	collapseLayoutPilotWorkbench,
 	hideLayoutPilotWorkbench,
+	openLayoutPilotWorkbench,
 } from './ui/workbenchWindow';
 import { openEvidenceReviewBar, retireEvidenceReviewBar } from './ui/evidenceReviewWindow';
 import {
@@ -1144,13 +1145,14 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 				| undefined;
 			try {
 				await retireEvidenceReviewBar();
-				reviewContext = await beginPcbEvidenceReview({
+				const evidenceFocus = {
 					subjectId: task.componentId,
 					subjectDesignator: task.designator,
 					ownerId: candidate.id,
 					ownerDesignator: candidate.designator,
 					powerEvidence: candidate.powerPadEvidence,
-				});
+				};
+				reviewContext = await beginPcbEvidenceReview(evidenceFocus);
 
 				await setStoredEvidenceReviewSession(
 					createEvidenceReviewSession({
@@ -1169,6 +1171,13 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 
 				await openEvidenceReviewBar();
 				await hideLayoutPilotWorkbench();
+
+				// Match layout-preview navigation: perform the final camera move
+				// only after the workbench no longer occupies the PCB viewport.
+				await focusPcbEvidence(
+					evidenceFocus,
+					reviewContext.documentTabId,
+				);
 			}
 			catch (error) {
 				try {
@@ -1183,6 +1192,15 @@ function renderCurrentTask(tasks: OwnerTask[], model?: RuntimeModel): void {
 						await endPcbEvidenceReview(reviewContext);
 					}
 					await setStoredEvidenceReviewSession(undefined);
+				}
+				try {
+					await openLayoutPilotWorkbench();
+				}
+				catch (restoreError) {
+					console.warn(
+						'[LayoutPilot Workbench] unable to restore workbench after evidence failure',
+						restoreError,
+					);
 				}
 				console.error('[LayoutPilot Workbench] PCB evidence review failed', error);
 				showToast(`PCB 定位失败：${String(error)}`);
