@@ -80,9 +80,11 @@ register a runtime shortcut itself.
 The LayoutPlan accept/reject iframe is retained only for the actual plan decision
 flow. It is separate from direct PCB navigation.
 
-## Build-time audit gate
+## Build-time interaction audit gate
 
-The production bundle step is preceded by `tsc --noEmit` in CI. This is required because esbuild transpilation alone can bundle an unresolved runtime symbol without reporting a TypeScript name error. Window-lifecycle code must therefore pass both type checking and runtime/package regression tests before an `.eext` artifact is accepted.
+The production bundle step runs `npm run verify:interaction` before esbuild. The verifier encodes the window architecture itself: routine workbench code may not reintroduce `hideIFrame()` / `showIFrame()`, runtime shortcut return paths, compact/standard/wide controls, helper dock/evidence iframes, or navigation-only LayoutPreview state. It also asserts that the shared PCB navigation entry points remain present.
+
+This focused gate is intentionally scoped to the interaction architecture. The repository still contains legacy diagnostic code that predates a whole-project strict TypeScript gate; fixing unrelated diagnostic typing is not required to change the workbench lifecycle.
 
 ## Prohibited patterns
 
