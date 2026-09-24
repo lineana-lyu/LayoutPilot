@@ -7,7 +7,9 @@ import type {
 	ReviewNavigationFocus,
 } from '../domain/reviewNavigator';
 import { focusExplicitRegion } from '../application/editorCameraFocus';
+import { establishPcbEditorContext } from '../application/editorContextTransaction';
 import { easyEdaEditorCameraPort } from './editorCameraAdapter';
+import { easyEdaEditorContextPort } from './editorContextAdapter';
 
 function rotatedPadMarkers(
 	pad: LayoutReviewPad,
@@ -104,9 +106,17 @@ export async function navigateReviewToPcb(
 	}
 
 	try {
-		// Camera ownership is resolved first from LayoutPilot's explicit geometry.
-		// Selection and markers are presentation only and are not allowed to drive
-		// the viewport.
+		// Restore the complete host editor context before touching camera state.
+		// A tab id alone is insufficient when EasyEDA has multiple editor panes
+		// or a floating extension window owns input focus.
+		await establishPcbEditorContext({
+			port: easyEdaEditorContextPort,
+			documentTabId,
+			pcbDocumentType: String(EDMT_EditorDocumentType.PCB),
+		});
+
+		// Camera ownership is resolved only after the exact PCB split-screen and
+		// tab have been verified as the active editor context.
 		await focusExplicitRegion({
 			port: easyEdaEditorCameraPort,
 			documentTabId,
