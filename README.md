@@ -172,8 +172,9 @@ Obsolete popup-only runtime code was deleted: the evidence-review iframe, eviden
 review controller, workbench dock iframe/controller, navigation-mode layout-preview
 code, dock geometry policy and their package/build entries.
 
-The window/inspection invariants are frozen in
-`docs/WORKBENCH_WINDOW_CONTRACT.md` and
+The researched host/plugin patterns are recorded in
+`docs/EASYEDA_PLUGIN_UI_PATTERN_RESEARCH.md`. The window/inspection invariants
+are frozen in `docs/WORKBENCH_WINDOW_CONTRACT.md` and
 `docs/REVIEW_NAVIGATION_CONTRACT.md`.
 
 ## v0.9.26 Recoverable Workbench & Unified Navigation
