@@ -19,7 +19,7 @@ import { formatLayoutPlanItemReview } from './domain/layoutPlanReview';
 import { filterOwnershipPropertyNames, findOwnershipFields, findOwnershipMemberNames } from './domain/ownershipCapabilityProbe';
 import { collectPhysicalComponents, collectSimpleBoardBoundary, collectSimpleComponentKeepouts, moveComponentAndVerify, readComponentPhysicalState } from './eda/pcbPhysicalAdapter';
 import { collectAnalysisState } from './eda/analysisAdapter';
-import { openLayoutPilotWorkbench } from './ui/workbenchWindow';
+import { reopenLayoutPilotWorkbench } from './ui/workbenchWindow';
 import { clearStoredSemanticSnapshot, getStoredHumanOwnershipDecisions, getStoredLastPlacementCommand, getStoredSemanticSnapshot, removeStoredHumanOwnershipDecision, replaceStoredSemanticSnapshot, setStoredLastPlacementCommand, setStoredLayoutPlan, upsertStoredHumanOwnershipDecision } from './eda/workflowStore';
 import extensionConfig from '../extension.json' with { type: 'json' };
 
@@ -29,7 +29,7 @@ export function activate(status?: 'onStartupFinished', arg?: string): void {
 
 export async function openWorkbench(): Promise<void> {
   try {
-    await openLayoutPilotWorkbench();
+    await reopenLayoutPilotWorkbench();
   }
   catch (error) {
     console.error('[LayoutPilot] Workbench open failed', error);
