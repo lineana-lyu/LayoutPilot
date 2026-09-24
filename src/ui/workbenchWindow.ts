@@ -1,12 +1,8 @@
 import extensionConfig from '../../extension.json' with { type: 'json' };
 
-import {
-	buildWorkbenchDockLayout,
-	buildWorkbenchFrameLayout,
-} from '../domain/workbenchWindowLayout';
+import { buildWorkbenchFrameLayout } from '../domain/workbenchWindowLayout';
 
-const ACTIVE_WORKBENCH_ID_KEY = 'layoutpilot.workbench-active-id.v3';
-const WORKBENCH_DOCK_ID = 'layoutpilot-workbench-dock';
+const ACTIVE_WORKBENCH_ID_KEY = 'layoutpilot.workbench-active-id.v4';
 
 let instanceSequence = 0;
 
@@ -53,19 +49,10 @@ async function closeFrame(id: string | undefined): Promise<void> {
 		await eda.sys_IFrame.closeIFrame(id);
 	}
 	catch (error) {
-		console.warn('[LayoutPilot] unable to close iframe', {
+		console.warn('[LayoutPilot] unable to close workbench iframe', {
 			id,
 			error,
 		});
-	}
-}
-
-async function closeWorkbenchDock(): Promise<void> {
-	try {
-		await eda.sys_IFrame.closeIFrame(WORKBENCH_DOCK_ID);
-	}
-	catch {
-		// The dock normally does not exist while the workbench is expanded.
 	}
 }
 
@@ -82,9 +69,6 @@ async function openFreshWorkbenchFrame(): Promise<string> {
 		{
 			title: `LayoutPilot ${extensionConfig.version} · PCB 布局工作台`,
 			maximizeButton: true,
-			// Native minimize is intentionally disabled. In current EasyEDA builds
-			// the collapsed host rectangle can blend into the editor and may restore
-			// with stale placement after the whole application is minimized.
 			minimizeButton: false,
 			grayscaleMask: false,
 			x: layout.x,
@@ -106,35 +90,10 @@ async function openFreshWorkbenchFrame(): Promise<string> {
 	return id;
 }
 
-async function openWorkbenchDock(): Promise<void> {
-	await closeWorkbenchDock();
-	const viewport = eda.sys_Window.getViewportSize();
-	const layout = buildWorkbenchDockLayout(viewport);
-	const opened = await eda.sys_IFrame.openIFrame(
-		'/iframe/workbench-dock.html',
-		layout.width,
-		layout.height,
-		WORKBENCH_DOCK_ID,
-		{
-			title: 'LayoutPilot · 工作台已收起',
-			maximizeButton: false,
-			minimizeButton: false,
-			grayscaleMask: false,
-			x: layout.x,
-			y: layout.y,
-		},
-	);
-	if (!opened) {
-		throw new Error('嘉立创EDA未能打开 LayoutPilot 收起条。');
-	}
-}
-
 /**
- * Internal restore path used by preview/evidence return actions.
+ * Continuity-oriented restore used when returning from PCB inspection.
  *
- * It first attempts to reveal the exact hidden iframe so transient workbench
- * state (for example an inline layout review) survives a PCB inspection. If
- * the host no longer recognizes that iframe, a fresh frame is created.
+ * It prefers the exact hidden workbench so in-memory review state survives.
  */
 export async function openLayoutPilotWorkbench(): Promise<void> {
 	const activeId = getStoredActiveWorkbenchId();
@@ -142,7 +101,6 @@ export async function openLayoutPilotWorkbench(): Promise<void> {
 		try {
 			const shown = await eda.sys_IFrame.showIFrame(activeId);
 			if (shown) {
-				await closeWorkbenchDock();
 				return;
 			}
 		}
@@ -156,20 +114,17 @@ export async function openLayoutPilotWorkbench(): Promise<void> {
 
 	const freshId = await openFreshWorkbenchFrame();
 	await rememberActiveWorkbenchId(freshId);
-	await closeWorkbenchDock();
 	if (activeId && activeId !== freshId) {
 		await closeFrame(activeId);
 	}
 }
 
 /**
- * User-invoked recovery path from the extension menu.
+ * Recovery-oriented open used from the extension menu.
  *
- * Do not trust showIFrame() here: after the host application has been minimized
- * and restored, current EasyEDA builds may still report a stale iframe as
- * showable even though it is no longer visible or is positioned incorrectly.
- * A menu-level "open workbench" therefore recreates the host frame
- * transactionally from persisted workflow state.
+ * A fresh iframe is created before the previous id is retired. This keeps the
+ * prior minimize/restore recovery guarantee without requiring a persistent
+ * helper popup on the PCB canvas.
  */
 export async function reopenLayoutPilotWorkbench(): Promise<void> {
 	const previousId = getStoredActiveWorkbenchId();
@@ -183,66 +138,12 @@ export async function reopenLayoutPilotWorkbench(): Promise<void> {
 		throw error;
 	}
 
-	// The replacement is proven alive before retiring any existing recovery UI.
-	await closeWorkbenchDock();
 	if (previousId && previousId !== freshId) {
 		await closeFrame(previousId);
 	}
 }
 
-/**
- * Product-level collapse control.
- *
- * EasyEDA exposes open/hide/show/close for extension iframes but no arbitrary
- * runtime resize API. The old compact/standard/wide presets therefore did not
- * solve the actual need ("let me see the board"). Collapsing hides the working
- * iframe and opens a small branded return strip instead of using the host's
- * ambiguous native minimized rectangle.
- */
-export async function collapseLayoutPilotWorkbench(): Promise<void> {
-	const activeId = getStoredActiveWorkbenchId();
-	if (!activeId) {
-		throw new Error('当前没有可收起的 LayoutPilot 工作台实例。');
-	}
-
-	await openWorkbenchDock();
-	try {
-		const hidden = await eda.sys_IFrame.hideIFrame(activeId);
-		if (hidden === false) {
-			throw new Error('嘉立创EDA未能隐藏当前 LayoutPilot 工作台。');
-		}
-	}
-	catch (error) {
-		await closeWorkbenchDock();
-		throw error;
-	}
-}
-
-export async function restoreLayoutPilotWorkbenchFromDock(): Promise<void> {
-	const activeId = getStoredActiveWorkbenchId();
-	if (activeId) {
-		try {
-			const shown = await eda.sys_IFrame.showIFrame(activeId);
-			if (shown) {
-				await closeWorkbenchDock();
-				return;
-			}
-		}
-		catch (error) {
-			console.warn('[LayoutPilot] unable to restore collapsed workbench', {
-				activeId,
-				error,
-			});
-		}
-	}
-
-	// If the hidden frame was invalidated by a host minimize/restore cycle,
-	// recover from persisted workflow state with a fresh instance.
-	await reopenLayoutPilotWorkbench();
-}
-
 export async function closeLayoutPilotWorkbench(): Promise<void> {
-	await closeWorkbenchDock();
 	const activeId = getStoredActiveWorkbenchId();
 	await closeFrame(activeId);
 	await clearActiveWorkbenchId();
@@ -254,7 +155,6 @@ export async function hideLayoutPilotWorkbench(): Promise<void> {
 		throw new Error('当前没有可隐藏的 LayoutPilot 工作台实例。');
 	}
 
-	await closeWorkbenchDock();
 	const hidden = await eda.sys_IFrame.hideIFrame(activeId);
 	if (hidden === false) {
 		throw new Error('嘉立创EDA未能隐藏当前 LayoutPilot 工作台。');
