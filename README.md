@@ -132,6 +132,20 @@ Canvas review is also geometry-driven. LayoutPilot now frames Ghost Preview with
 
 The approach keeps existing safety gates unchanged: routing blockers still prevent Apply; the new work only makes the review path explicit and observable.
 
+## v0.9.20 Explicit Camera Navigation
+
+Real-board v0.9.19 testing exposed an EasyEDA host failure: implicit focus APIs could throw `Cannot destructure property 'minX' ... as it is undefined` while deriving their own internal BBox.
+
+v0.9.20 removes implicit-BBox zoom from the review path.
+
+1. Review selection is visual only; it no longer triggers `zoomToSelectedPrimitives()`.
+2. TARGET marker rendering uses `zoom=false`; marker creation no longer owns camera state.
+3. Camera control is isolated behind an `EditorCameraPort` with only three explicit operations: activate the frozen PCB tab, fit a known `CanvasRegion`, and center on known coordinates.
+4. The final center operation returns EasyEDA's actual viewport, which is checked against the existing viewport postcondition.
+5. There are no board-specific designators, fixture injection, or test-only production branches.
+
+This follows the host API's documented strengths: `zoomToRegion()` for a caller-supplied rectangle and `zoomTo(x,y,...)` for caller-supplied center coordinates, rather than asking the host to infer a primitive/marker BBox.
+
 ## v0.9.19 Review Navigation Contract
 
 v0.9.19 addresses a failure mode exposed by real-board testing: a review click could be blocked by a false physical-fingerprint mismatch before the editor ever reached the zoom command, and a successful `zoomToRegion()` boolean did not prove that the user actually received a local viewport.
