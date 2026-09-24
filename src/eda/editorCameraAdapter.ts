@@ -2,9 +2,6 @@ import type { CanvasRegion } from '../domain/canvasRegion';
 import type { EditorCameraPort } from '../application/editorCameraFocus';
 
 export const easyEdaEditorCameraPort: EditorCameraPort = {
-	activateDocument: async documentTabId =>
-		await eda.dmt_EditorControl.activateDocument(documentTabId),
-
 	fitRegion: async (documentTabId, region) =>
 		await eda.dmt_EditorControl.zoomToRegion(
 			region.left,
